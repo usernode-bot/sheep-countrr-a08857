@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+
   <script>
   // usernode-dev-console@1
   (function () {
@@ -64,118 +64,172 @@
   })();
   </script>
   <title>Sheep countrr</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%237c3aed'/><circle cx='50' cy='50' r='18' fill='white'/></svg>">
-  <!-- Tailwind, PRECOMPILED for this app (was cdn.tailwindcss.com's
-       in-browser engine plus an inline tailwind.config here). The config
-       moved to tailwind.config.js in the repo root; the Dockerfile's builder
-       stage compiles it to public/tailwind.css on every image build, so the
-       stylesheet is regenerated from THIS commit's markup every deploy and
-       can never drift behind the code. ~7 KB of CSS instead of a ~400 KB
-       engine, and no flash of unstyled content.
-       Writing class names as whole literals is what keeps this working — a
-       class assembled from fragments at runtime (e.g. "bg-" + tone + "-500")
-       is invisible to the compiler. If you genuinely need runtime-generated
-       classes, swap this link for the platform-hosted engine instead:
-       <script src="https://social-vibecoding.usernodelabs.org/usernode-tailwind/v1/tailwind.js"></script> -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐑</text></svg>">
+
+  <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+
+  <!-- Tailwind, precompiled for this app by the Dockerfile's builder stage
+       from tailwind.config.js — see that file for details. -->
   <link rel="stylesheet" href="/tailwind.css">
-</head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen">
-  <main class="max-w-md mx-auto px-4 py-10 flex flex-col gap-6">
 
-    <!-- usernode-starter-notice@1 — starter-template messaging. When building
-         the user's real app, replace this whole screen and delete this block,
-         both sentinel comments included. -->
-    <section class="rounded-2xl border border-violet-500/30 bg-gradient-to-b from-violet-600/20 to-transparent p-6 text-center flex flex-col items-center gap-3">
-      <span class="inline-block rounded-full bg-violet-600/20 text-violet-300 text-xs font-semibold uppercase tracking-wide px-3 py-1">Starter template</span>
-      <h1 class="text-2xl font-bold">Sheep countrr</h1>
-      <p class="text-sm text-zinc-300 leading-relaxed">Welcome to your new app! Everything on this screen is placeholder content that came with it.</p>
-      <p class="text-sm text-zinc-300 leading-relaxed">Tap <strong class="text-violet-300 font-semibold">Improve</strong> in the header, describe what you'd like in plain English, and it will be turned into your real app.</p>
-    </section>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/vendor/three/three.module.js"
+    }
+  }
+  </script>
 
-    <section>
-      <h2 class="text-sm font-medium text-zinc-500 mb-2 px-1">What's already working</h2>
-      <div class="rounded-xl border border-zinc-800 bg-zinc-900/60 divide-y divide-zinc-800">
-        <div class="flex items-start gap-3 p-4">
-          <svg class="w-5 h-5 text-violet-400 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L9 11.6l6.3-6.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd"/></svg>
-          <div>
-            <p class="text-sm font-semibold text-zinc-100">Sign-in</p>
-            <p class="text-sm text-zinc-400">You're signed in through Usernode automatically — no accounts to build.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-3 p-4">
-          <svg class="w-5 h-5 text-violet-400 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L9 11.6l6.3-6.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd"/></svg>
-          <div>
-            <p class="text-sm font-semibold text-zinc-100">Database</p>
-            <p class="text-sm text-zinc-400">Your app has its own private database, ready to store things.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-3 p-4">
-          <svg class="w-5 h-5 text-violet-400 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L9 11.6l6.3-6.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd"/></svg>
-          <div>
-            <p class="text-sm font-semibold text-zinc-100">Live API</p>
-            <p class="text-sm text-zinc-400">The example below talks to a real server — try it.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-    <!-- /usernode-starter-notice@1 -->
+  <style>
+    /* The `hidden` attribute and a Tailwind display utility (e.g. `flex`)
+       on the same element tie in specificity; Tailwind's stylesheet loads
+       after the browser default, so the utility would otherwise win and
+       the element would stay visible. Force `hidden` to actually hide. */
+    [hidden] { display: none !important; }
+    html, body { height: 100%; overscroll-behavior: none; }
+    body { touch-action: manipulation; }
+    #scene-root { touch-action: none; user-select: none; }
+    #scene-root canvas.sheep-canvas { display: block; width: 100%; height: 100%; }
 
-    <section class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 flex flex-col items-center gap-5">
-      <div class="w-full flex items-baseline justify-between gap-2">
-        <h2 class="text-sm font-medium text-zinc-500">Try the example</h2>
-        <span class="text-xs text-zinc-600">This example will be replaced</span>
-      </div>
-
-      <button id="press-btn" class="w-32 h-32 rounded-full bg-violet-600 hover:bg-violet-500 active:scale-95 transition-all text-white text-xl font-bold shadow-lg shadow-violet-600/30">
-        Press!
-      </button>
-
-      <div id="count" class="text-lg text-zinc-400">0 total presses</div>
-
-      <div class="w-full max-w-sm">
-        <h3 class="text-sm font-medium text-zinc-500 mb-2 text-center">Leaderboard</h3>
-        <div id="leaderboard" class="space-y-1"></div>
-      </div>
-    </section>
-
-    <p class="text-center text-xs text-zinc-600">Built on Usernode — this template screen disappears once you build your real app.</p>
-  </main>
-
-  <script>
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token') || '';
-    const headers = token ? { 'x-usernode-token': token } : {};
-
-    async function loadLeaderboard() {
-      const res = await fetch('/api/leaderboard', { headers });
-      if (!res.ok) return;
-      const { leaderboard } = await res.json();
-      const el = document.getElementById('leaderboard');
-      if (!leaderboard.length) {
-        el.innerHTML = '<p class="text-center text-zinc-600 text-sm">No presses yet</p>';
-        return;
-      }
-      el.innerHTML = leaderboard.map((r, i) =>
-        '<div class="flex justify-between px-3 py-1 rounded ' + (i === 0 ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-400') + '">' +
-        '<span>' + (i + 1) + '. ' + r.username + '</span>' +
-        '<span class="font-mono">' + r.presses + '</span></div>'
-      ).join('');
-      const total = leaderboard.reduce((s, r) => s + parseInt(r.presses), 0);
-      document.getElementById('count').textContent = total + ' total presses';
+    .sheep-fallback-field {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+      align-content: center;
+      gap: 18px;
+      padding: 24px;
+      background: linear-gradient(180deg, #8fd3ff 0%, #8fd3ff 45%, #6fbf4f 45%, #58a83e 100%);
+    }
+    .sheep-card {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border-radius: 9999px;
+      background: #f8f7f2;
+      border: 3px solid rgba(0,0,0,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      box-shadow: 0 6px 0 rgba(0,0,0,0.12);
+    }
+    .sheep-card.is-counted { background: #fef3c7; border-color: #f59e0b; }
+    .sheep-card-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      min-width: 1.75rem;
+      height: 1.75rem;
+      border-radius: 9999px;
+      background: #7c3aed;
+      color: white;
+      font-size: 1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid white;
     }
 
-    document.getElementById('press-btn').addEventListener('click', async () => {
-      try {
-        const res = await fetch('/api/press', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...headers },
-        });
-        if (res.ok) loadLeaderboard();
-        else if (res.status === 401) document.getElementById('count').textContent = 'Sign in to press!';
-      } catch {}
-    });
+    .visually-hidden {
+      position: absolute;
+      width: 1px; height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
 
-    loadLeaderboard();
-  </script>
+    #grownups-btn {
+      padding-top: var(--un-safe-inset-top, env(safe-area-inset-top, 0px));
+    }
+    #count-badge {
+      padding-top: var(--un-safe-inset-top, env(safe-area-inset-top, 0px));
+    }
+    #celebration, #grownups-panel {
+      padding-bottom: var(--un-safe-inset-bottom, env(safe-area-inset-bottom, 0px));
+    }
+  </style>
+</head>
+<body class="bg-sky-200 text-zinc-900 h-full overflow-hidden">
+  <div class="relative h-full w-full">
+
+    <!-- The 3D pasture (or the card fallback) fills the screen. -->
+    <div id="scene-root" class="absolute inset-0"></div>
+
+    <!-- Big readable count, top center. -->
+    <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex justify-center pt-4">
+      <div class="pointer-events-auto rounded-3xl bg-white/90 shadow-lg px-8 py-3 flex flex-col items-center min-w-[7rem]" aria-live="polite">
+        <span id="count-display" class="text-6xl font-black leading-none text-violet-700 tabular-nums">0</span>
+        <span id="count-word" class="text-base font-semibold text-violet-500 tracking-wide">Zero</span>
+      </div>
+    </div>
+
+    <!-- Small, deliberately unlabeled corner control for grown-ups. A
+         quick tap does nothing; only a ~1.5s press-and-hold opens the
+         panel, so a curious child mashing the screen can't get in. -->
+    <button id="grownups-btn" type="button"
+      class="absolute top-2 right-2 w-11 h-11 rounded-full bg-white/70 text-zinc-500 flex items-center justify-center text-lg"
+      aria-label="Grown-ups: press and hold to open settings">
+      ⚙
+    </button>
+
+    <!-- Hidden accessible mirror of every sheep, for keyboard/screen-reader use. -->
+    <div id="a11y-sheep-list" class="visually-hidden"></div>
+
+    <!-- Celebration panel, shown once every sheep in the round is counted. -->
+    <div id="celebration" hidden class="absolute inset-0 flex items-center justify-center bg-black/30 p-6">
+      <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-xs w-full text-center flex flex-col items-center gap-4">
+        <div class="text-5xl" aria-hidden="true">🎉🐑🎉</div>
+        <p class="text-2xl font-extrabold text-violet-700">You counted <span id="celebration-total">5</span> sheep!</p>
+        <button id="count-again-btn" type="button"
+          class="w-full rounded-2xl bg-violet-600 hover:bg-violet-500 active:scale-95 transition-all text-white text-xl font-bold py-4">
+          Count again
+        </button>
+      </div>
+    </div>
+
+    <!-- Grown-ups panel: sound toggle, herd size, reset, progress. -->
+    <div id="grownups-panel" hidden class="absolute inset-0 flex items-end sm:items-center justify-center bg-black/40 p-4">
+      <div class="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full flex flex-col gap-5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold text-zinc-800">Grown-ups</h2>
+          <button id="grownups-close" type="button" class="w-9 h-9 rounded-full bg-zinc-100 text-zinc-500 flex items-center justify-center" aria-label="Close">✕</button>
+        </div>
+
+        <label class="flex items-center justify-between gap-3">
+          <span class="text-sm font-medium text-zinc-700">Sound</span>
+          <input id="sound-toggle" type="checkbox" class="w-6 h-6 accent-violet-600">
+        </label>
+
+        <label class="flex items-center justify-between gap-3">
+          <span class="text-sm font-medium text-zinc-700">How many sheep</span>
+          <select id="herd-size-input" class="rounded-lg border border-zinc-300 px-2 py-1 text-sm">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+          </select>
+        </label>
+
+        <div class="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600 flex flex-col gap-1">
+          <div class="flex justify-between"><span>Best round</span><span id="best-value" class="font-semibold text-zinc-800">0</span></div>
+          <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="font-semibold text-zinc-800">0</span></div>
+          <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="font-semibold text-zinc-800">0</span></div>
+        </div>
+
+        <button id="start-over-btn" type="button" class="w-full rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-semibold py-3">
+          Start over
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

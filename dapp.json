@@ -1,3 +1,12 @@
 {
-  "secrets": []
+  "name": "Sheep countrr",
+  "icon": { "emoji": "🐑" },
+  "secrets": [],
+  "tests": [
+    { "name": "Pasture loads for a new child", "path": "/?scene=empty", "expectSelector": "#count-display", "expectText": "0" },
+    { "name": "Mid-count shows three", "path": "/?scene=midcount", "expectSelector": "#count-display", "expectText": "3" },
+    { "name": "Celebration after last sheep", "path": "/?scene=celebrate", "expectSelector": "#celebration", "expectText": "Count again" },
+    { "name": "Grown-ups panel", "path": "/?scene=grownups", "expectSelector": "#grownups-panel", "expectText": "Sound" },
+    { "name": "No-WebGL fallback still counts", "path": "/?scene=midcount&renderer=dom", "expectSelector": ".sheep-card", "expectText": "3" }
+  ]
 }
