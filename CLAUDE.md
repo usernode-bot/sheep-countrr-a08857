@@ -97,6 +97,27 @@ can't wander in. See `README.md` for the full feature description.
   `user_id`s and usernames prefixed "Staging demo — ..." so the
   grown-ups panel's community total isn't zero in a fresh preview;
   the seed never touches the visiting user's own row.
+- **The camera frames the flock, not the field.** `scene.js`'s
+  `fitCamera()` bisects the camera distance until every sheep (plus a
+  pad and the floating number plate height) projects inside the screen
+  area NOT covered by the count plate: below it in portrait, to its
+  right in landscape (CSS parks the plate top-left on short landscape
+  screens). `app.js` passes `getOverlayRect()` returning the plate's
+  DOMRect for this. Layout shape (`layoutRegion`) follows orientation,
+  and a portrait/landscape flip rebuilds the flock from the same seed;
+  a soft-keyboard resize only refits the camera. Don't hardcode camera
+  positions; herd sizes 1 to 10 must all stay fully visible at 390x844.
+- **Sheep are merged vertex-colored meshes** (`buildSheepBodyGeometry`,
+  `mergeColored` in `scene.js`; no `three/examples` imports). Only the
+  eyes, shadow, ribbon, number plate and pick sphere are separate
+  objects, so ten sheep stay under ~100 draw calls. Keep new sheep
+  detail inside the merge rather than adding per-sheep meshes.
+- **`NUMBER_COLORS` in `layout.js`** is the one pastel-per-number palette
+  used by the 3D ribbon/number plate and the DOM fallback badge. Both
+  renderers also expose an optional `celebrate()`; `app.js` calls it
+  when the celebration panel opens.
+- **User-facing copy carries no em dashes** (index.html and every string
+  the renderers write to the DOM). Comments may.
 - **`three` is a normal npm runtime dependency**, not a
   platform-hosted asset like the bridge/native-kit/Tailwind runtime —
   it's installed into the image and served from `/vendor/three` via

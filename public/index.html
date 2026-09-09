@@ -69,7 +69,7 @@
   <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
 
   <!-- Tailwind, precompiled for this app by the Dockerfile's builder stage
-       from tailwind.config.js — see that file for details. -->
+       from tailwind.config.js. See that file for details. -->
   <link rel="stylesheet" href="/tailwind.css">
 
   <script type="importmap">
@@ -81,54 +81,327 @@
   </script>
 
   <style>
+    :root {
+      --plum: #4a3b5c;
+      --plum-soft: #8a6fa3;
+      --cream: #fffaf2;
+      --pink: #ff8fab;
+      --pink-soft: #ffd6e3;
+      --peach: #ffb347;
+      --mint: #b9f0d1;
+      --sky-top: #d9c8ff;
+      --sky-mid: #bfe4ff;
+      --sky-low: #eaf7ff;
+      --horizon: #fff1d6;
+      --safe-top: var(--un-safe-inset-top, env(safe-area-inset-top, 0px));
+      --safe-bottom: var(--un-safe-inset-bottom, env(safe-area-inset-bottom, 0px));
+      --safe-left: var(--un-safe-inset-left, env(safe-area-inset-left, 0px));
+      --safe-right: var(--un-safe-inset-right, env(safe-area-inset-right, 0px));
+    }
+
     /* The `hidden` attribute and a Tailwind display utility (e.g. `flex`)
        on the same element tie in specificity; Tailwind's stylesheet loads
        after the browser default, so the utility would otherwise win and
        the element would stay visible. Force `hidden` to actually hide. */
     [hidden] { display: none !important; }
+
     html, body { height: 100%; overscroll-behavior: none; }
-    body { touch-action: manipulation; }
-    #scene-root { touch-action: none; user-select: none; }
+    body {
+      touch-action: manipulation;
+      font-family: "Nunito", ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Segoe UI", system-ui, sans-serif;
+      color: var(--plum);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Pastel sky behind the transparent WebGL canvas and the DOM fallback. */
+    #scene-root {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      background:
+        radial-gradient(60% 40% at 78% 8%, rgba(255, 244, 200, 0.9), rgba(255, 244, 200, 0) 70%),
+        linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
+    }
     #scene-root canvas.sheep-canvas { display: block; width: 100%; height: 100%; }
 
-    .sheep-fallback-field {
-      width: 100%;
-      height: 100%;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
-      align-content: center;
-      gap: 18px;
-      padding: 24px;
-      background: linear-gradient(180deg, #8fd3ff 0%, #8fd3ff 45%, #6fbf4f 45%, #58a83e 100%);
+    /* ---- Number plate ---- */
+    #count-badge { padding-top: calc(var(--safe-top) + 14px); }
+    .count-plate {
+      position: relative;
+      min-width: 8.5rem;
+      padding: 0.55rem 1.6rem 0.7rem;
+      border-radius: 2rem;
+      background: var(--cream);
+      border: 4px solid var(--pink-soft);
+      box-shadow:
+        0 10px 24px rgba(90, 60, 120, 0.18),
+        0 4px 0 #f4c6d6,
+        inset 0 -6px 0 #fff0f4;
     }
+    .count-plate::before,
+    .count-plate::after {
+      content: "";
+      position: absolute;
+      top: -14px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--pink-soft);
+    }
+    .count-plate::before { left: 22px; }
+    .count-plate::after { right: 22px; }
+    #count-display {
+      display: block;
+      font-size: 4.6rem;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: var(--plum);
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 3px 0 #efe2f5;
+    }
+    #count-word {
+      display: block;
+      margin-top: 0.15rem;
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--plum-soft);
+    }
+    .count-pop { animation: count-pop 0.42s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes count-pop {
+      0% { transform: scale(1); }
+      35% { transform: scale(1.22) rotate(-3deg); }
+      100% { transform: scale(1); }
+    }
+
+    /* ---- Grown-ups corner button: big target, quiet look ---- */
+    #grownups-btn {
+      top: calc(var(--safe-top) + 10px);
+      right: calc(var(--safe-right) + 10px);
+      width: 3.5rem;
+      height: 3.5rem;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.55);
+      color: rgba(74, 59, 92, 0.55);
+      font-size: 1.35rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 0 rgba(255,255,255,0.8), 0 4px 12px rgba(90, 60, 120, 0.12);
+      -webkit-touch-callout: none;
+      touch-action: none;
+    }
+
+    /* ---- Panels ---- */
+    .panel-backdrop {
+      background: radial-gradient(120% 90% at 50% 100%, rgba(255, 214, 227, 0.55), rgba(120, 90, 160, 0.45));
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      padding-bottom: calc(var(--safe-bottom) + 12px);
+      padding-top: calc(var(--safe-top) + 12px);
+      padding-left: calc(var(--safe-left) + 14px);
+      padding-right: calc(var(--safe-right) + 14px);
+    }
+    .panel-card {
+      background: var(--cream);
+      border-radius: 2.25rem;
+      border: 4px solid #fff;
+      box-shadow: 0 24px 50px rgba(74, 59, 92, 0.28), 0 6px 0 #f0e2f7;
+    }
+    .panel-pop { animation: panel-pop 0.5s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes panel-pop {
+      0% { transform: translateY(24px) scale(0.92); opacity: 0; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    .confetti-strip {
+      height: 14px;
+      border-radius: 9999px;
+      background: repeating-linear-gradient(90deg,
+        #ff8fab 0 14px, #ffb347 14px 28px, #ffd93d 28px 42px, #7ed957 42px 56px,
+        #5cc8ff 56px 70px, #b28dff 70px 84px);
+    }
+    .celebration-sheep {
+      font-size: 3.6rem;
+      line-height: 1;
+      letter-spacing: -0.2em;
+      animation: sheep-bounce 1.6s ease-in-out infinite;
+    }
+    .celebration-sheep span:nth-child(2) { animation-delay: 0.15s; display: inline-block; }
+    .celebration-sheep span { display: inline-block; animation: sheep-bounce 1.6s ease-in-out infinite; }
+    .celebration-sheep span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes sheep-bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    .celebration-title {
+      font-size: 1.9rem;
+      line-height: 1.15;
+      font-weight: 900;
+      color: var(--plum);
+    }
+    .celebration-total {
+      display: inline-block;
+      min-width: 2.6rem;
+      padding: 0 0.5rem;
+      border-radius: 1rem;
+      background: #fff0a6;
+      color: #8a5a00;
+      box-shadow: 0 3px 0 #f2d76a;
+    }
+
+    /* Big, soft, pressable button. */
+    .big-btn {
+      width: 100%;
+      min-height: 4.25rem;
+      border-radius: 1.75rem;
+      font-size: 1.5rem;
+      font-weight: 900;
+      letter-spacing: 0.01em;
+      color: #fff;
+      background: linear-gradient(180deg, #ff9fbb 0%, #ff7fa7 100%);
+      box-shadow: 0 7px 0 #e35d8a, 0 12px 22px rgba(255, 127, 167, 0.35);
+      text-shadow: 0 2px 0 rgba(160, 50, 90, 0.35);
+      transition: transform 0.08s ease, box-shadow 0.08s ease;
+    }
+    .big-btn:active { transform: translateY(5px); box-shadow: 0 2px 0 #e35d8a, 0 6px 12px rgba(255, 127, 167, 0.25); }
+    .soft-btn {
+      width: 100%;
+      min-height: 3.5rem;
+      border-radius: 1.5rem;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--plum);
+      background: #f4ecfa;
+      box-shadow: 0 5px 0 #dccbe9;
+      transition: transform 0.08s ease, box-shadow 0.08s ease;
+    }
+    .soft-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #dccbe9; }
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-height: 3.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 1.25rem;
+      background: #fff;
+      box-shadow: 0 3px 0 #f0e2f7;
+      font-weight: 800;
+    }
+    .setting-row select {
+      min-height: 2.75rem;
+      min-width: 4.5rem;
+      border-radius: 1rem;
+      border: 3px solid var(--pink-soft);
+      background: var(--cream);
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: var(--plum);
+      text-align: center;
+    }
+    .setting-row input[type="checkbox"] {
+      width: 2rem;
+      height: 2rem;
+      accent-color: var(--pink);
+    }
+    .stats-card {
+      border-radius: 1.5rem;
+      background: #fff;
+      box-shadow: 0 3px 0 #f0e2f7;
+      padding: 0.9rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      font-weight: 700;
+      color: var(--plum-soft);
+    }
+    .stats-card .stat-value {
+      font-weight: 900;
+      color: var(--plum);
+      font-size: 1.15rem;
+    }
+
+    /* ---- DOM fallback (no WebGL) ---- */
+    .sheep-fallback-field {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      background:
+        radial-gradient(45% 22% at 12% 92%, #b4e58a 0 60%, transparent 61%),
+        radial-gradient(60% 26% at 70% 96%, #8fd06a 0 60%, transparent 61%),
+        radial-gradient(70% 30% at 40% 104%, #9fdc74 0 60%, transparent 61%),
+        radial-gradient(30% 14% at 88% 78%, #b4e58a 0 60%, transparent 61%),
+        radial-gradient(14% 8% at 22% 66%, rgba(255,255,255,0.9) 0 60%, transparent 61%),
+        radial-gradient(18% 9% at 74% 58%, rgba(255,255,255,0.9) 0 60%, transparent 61%),
+        transparent;
+    }
+    .sheep-fallback-grid {
+      min-height: 100%;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+      align-content: center;
+      justify-items: center;
+      gap: 16px 12px;
+      padding: calc(var(--safe-top) + 170px) calc(var(--safe-right) + 18px) calc(var(--safe-bottom) + 28px) calc(var(--safe-left) + 18px);
+    }
+    .sheep-fallback-grid[data-size="1"],
+    .sheep-fallback-grid[data-size="2"] { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .sheep-fallback-grid[data-size="3"],
+    .sheep-fallback-grid[data-size="4"] { grid-template-columns: repeat(2, minmax(120px, 170px)); justify-content: center; }
     .sheep-card {
       position: relative;
+      width: 100%;
+      max-width: 180px;
       aspect-ratio: 1 / 1;
-      border-radius: 9999px;
-      background: #f8f7f2;
-      border: 3px solid rgba(0,0,0,0.08);
+      border-radius: 32%;
+      background: rgba(255, 255, 255, 0.55);
+      border: 4px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 0 8px 0 rgba(255,255,255,0.55), 0 12px 24px rgba(90, 60, 120, 0.12);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 2.5rem;
-      box-shadow: 0 6px 0 rgba(0,0,0,0.12);
+      padding: 6%;
+      animation: card-bob 2.6s ease-in-out infinite;
+      animation-delay: var(--bob-delay, 0s);
     }
-    .sheep-card.is-counted { background: #fef3c7; border-color: #f59e0b; }
+    .sheep-card:active { transform: scale(0.96); }
+    .sheep-card.is-counted {
+      background: color-mix(in srgb, var(--ribbon, #ff8fab) 18%, #fff);
+      border-color: var(--ribbon, #ff8fab);
+      animation: none;
+    }
+    .sheep-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .sheep-bow { opacity: 0; transform: scale(0); transform-origin: 60px 80px; transition: transform 0.35s cubic-bezier(.34,1.56,.64,1), opacity 0.2s; }
+    .is-counted .sheep-bow { opacity: 1; transform: scale(1); }
+    .sheep-eyes { transform-origin: 60px 58px; animation: blink 4.5s infinite; animation-delay: var(--bob-delay, 0s); }
+    @keyframes blink {
+      0%, 92%, 100% { transform: scaleY(1); }
+      95% { transform: scaleY(0.08); }
+    }
+    @keyframes card-bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
     .sheep-card-badge {
       position: absolute;
-      top: -6px;
-      right: -6px;
-      min-width: 1.75rem;
-      height: 1.75rem;
+      top: -10px;
+      right: -8px;
+      min-width: 2.5rem;
+      height: 2.5rem;
+      padding: 0 0.5rem;
       border-radius: 9999px;
-      background: #7c3aed;
-      color: white;
-      font-size: 1rem;
-      font-weight: 700;
+      background: var(--cream);
+      color: var(--plum);
+      font-size: 1.35rem;
+      font-weight: 900;
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 2px solid white;
+      border: 4px solid var(--ribbon, #ff8fab);
+      box-shadow: 0 4px 0 rgba(74, 59, 92, 0.15);
     }
 
     .visually-hidden {
@@ -139,36 +412,41 @@
       white-space: nowrap;
     }
 
-    #grownups-btn {
-      padding-top: var(--un-safe-inset-top, env(safe-area-inset-top, 0px));
+    /* Short landscape screens (a phone on its side): tuck the plate into
+       the top-left corner and shrink it so the flock keeps the height. */
+    @media (orientation: landscape) and (max-height: 520px) {
+      #count-badge { justify-content: flex-start; padding-left: calc(var(--safe-left) + 12px); padding-top: calc(var(--safe-top) + 10px); }
+      .count-plate { min-width: 6.5rem; padding: 0.4rem 1.1rem 0.5rem; border-radius: 1.5rem; }
+      .count-plate::before, .count-plate::after { display: none; }
+      #count-display { font-size: 3.2rem; }
+      #count-word { font-size: 0.85rem; }
+      .sheep-fallback-grid { padding-top: calc(var(--safe-top) + 24px); padding-left: calc(var(--safe-left) + 140px); }
     }
-    #count-badge {
-      padding-top: var(--un-safe-inset-top, env(safe-area-inset-top, 0px));
-    }
-    #celebration, #grownups-panel {
-      padding-bottom: var(--un-safe-inset-bottom, env(safe-area-inset-bottom, 0px));
+
+    @media (prefers-reduced-motion: reduce) {
+      .sheep-card, .sheep-eyes, .celebration-sheep, .celebration-sheep span { animation: none; }
+      .count-pop, .panel-pop { animation: none; }
     }
   </style>
 </head>
-<body class="bg-sky-200 text-zinc-900 h-full overflow-hidden">
+<body class="h-full overflow-hidden">
   <div class="relative h-full w-full">
 
     <!-- The 3D pasture (or the card fallback) fills the screen. -->
     <div id="scene-root" class="absolute inset-0"></div>
 
-    <!-- Big readable count, top center. -->
-    <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex justify-center pt-4">
-      <div class="pointer-events-auto rounded-3xl bg-white/90 shadow-lg px-8 py-3 flex flex-col items-center min-w-[7rem]" aria-live="polite">
-        <span id="count-display" class="text-6xl font-black leading-none text-violet-700 tabular-nums">0</span>
-        <span id="count-word" class="text-base font-semibold text-violet-500 tracking-wide">Zero</span>
+    <!-- Big readable count, top center, inside the safe area. -->
+    <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex justify-center">
+      <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
+        <span id="count-display">0</span>
+        <span id="count-word">Zero</span>
       </div>
     </div>
 
-    <!-- Small, deliberately unlabeled corner control for grown-ups. A
-         quick tap does nothing; only a ~1.5s press-and-hold opens the
-         panel, so a curious child mashing the screen can't get in. -->
-    <button id="grownups-btn" type="button"
-      class="absolute top-2 right-2 w-11 h-11 rounded-full bg-white/70 text-zinc-500 flex items-center justify-center text-lg"
+    <!-- Small, deliberately quiet corner control for grown-ups. A quick tap
+         does nothing; only a ~1.5s press-and-hold opens the panel, so a
+         curious child mashing the screen can't get in. -->
+    <button id="grownups-btn" type="button" class="absolute"
       aria-label="Grown-ups: press and hold to open settings">
       ⚙
     </button>
@@ -177,33 +455,33 @@
     <div id="a11y-sheep-list" class="visually-hidden"></div>
 
     <!-- Celebration panel, shown once every sheep in the round is counted. -->
-    <div id="celebration" hidden class="absolute inset-0 flex items-center justify-center bg-black/30 p-6">
-      <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-xs w-full text-center flex flex-col items-center gap-4">
-        <div class="text-5xl" aria-hidden="true">🎉🐑🎉</div>
-        <p class="text-2xl font-extrabold text-violet-700">You counted <span id="celebration-total">5</span> sheep!</p>
-        <button id="count-again-btn" type="button"
-          class="w-full rounded-2xl bg-violet-600 hover:bg-violet-500 active:scale-95 transition-all text-white text-xl font-bold py-4">
+    <div id="celebration" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-5">
+        <div class="confetti-strip w-full"></div>
+        <div class="celebration-sheep" aria-hidden="true"><span>🐑</span><span>🐑</span><span>🐑</span></div>
+        <p class="celebration-title">Hooray! You counted <span id="celebration-total" class="celebration-total">5</span> sheep!</p>
+        <button id="count-again-btn" type="button" class="big-btn">
           Count again
         </button>
       </div>
     </div>
 
     <!-- Grown-ups panel: sound toggle, herd size, reset, progress. -->
-    <div id="grownups-panel" hidden class="absolute inset-0 flex items-end sm:items-center justify-center bg-black/40 p-4">
-      <div class="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full flex flex-col gap-5">
+    <div id="grownups-panel" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-6 flex flex-col gap-4">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-bold text-zinc-800">Grown-ups</h2>
-          <button id="grownups-close" type="button" class="w-9 h-9 rounded-full bg-zinc-100 text-zinc-500 flex items-center justify-center" aria-label="Close">✕</button>
+          <h2 class="text-2xl font-black">Grown-ups</h2>
+          <button id="grownups-close" type="button" class="w-12 h-12 rounded-full bg-white shadow-sm text-xl font-black flex items-center justify-center" aria-label="Close">✕</button>
         </div>
 
-        <label class="flex items-center justify-between gap-3">
-          <span class="text-sm font-medium text-zinc-700">Sound</span>
-          <input id="sound-toggle" type="checkbox" class="w-6 h-6 accent-violet-600">
+        <label class="setting-row">
+          <span>Sound</span>
+          <input id="sound-toggle" type="checkbox">
         </label>
 
-        <label class="flex items-center justify-between gap-3">
-          <span class="text-sm font-medium text-zinc-700">How many sheep</span>
-          <select id="herd-size-input" class="rounded-lg border border-zinc-300 px-2 py-1 text-sm">
+        <label class="setting-row">
+          <span>How many sheep</span>
+          <select id="herd-size-input">
             <option value="1">1</option>
             <option value="2">2</option>
             <option value="3">3</option>
@@ -217,13 +495,13 @@
           </select>
         </label>
 
-        <div class="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600 flex flex-col gap-1">
-          <div class="flex justify-between"><span>Best round</span><span id="best-value" class="font-semibold text-zinc-800">0</span></div>
-          <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="font-semibold text-zinc-800">0</span></div>
-          <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="font-semibold text-zinc-800">0</span></div>
+        <div class="stats-card">
+          <div class="flex justify-between"><span>Best round</span><span id="best-value" class="stat-value">0</span></div>
+          <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="stat-value">0</span></div>
+          <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="stat-value">0</span></div>
         </div>
 
-        <button id="start-over-btn" type="button" class="w-full rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-semibold py-3">
+        <button id="start-over-btn" type="button" class="soft-btn">
           Start over
         </button>
       </div>

@@ -1,6 +1,13 @@
 // Deterministic seeded layout shared by both renderers, so the same round
 // always reproduces the same pasture arrangement after a reload.
 
+// One pastel per number, shared by the 3D ribbon and number plate and by
+// the DOM fallback's badge, so "3" always looks like the same "3".
+export const NUMBER_COLORS = [
+  '#ff8fab', '#ffb347', '#ffd93d', '#7ed957', '#5cc8ff',
+  '#b28dff', '#ff7eb6', '#6ee7c8', '#ffa07a', '#9ad0ff',
+];
+
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {

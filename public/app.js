@@ -107,6 +107,12 @@ async function mountScene() {
       container: els.sceneRoot,
       reducedMotion,
       onTap: handleTap,
+      // The number plate covers the top of the screen; the camera frames
+      // the flock in the space below it.
+      getOverlayRect: () => {
+        const plate = document.querySelector('.count-plate');
+        return plate ? plate.getBoundingClientRect() : null;
+      },
       onFatal: async () => {
         renderer?.destroy?.();
         renderer = await mountFallback();
@@ -140,7 +146,16 @@ function handleTap(index) {
   }
 }
 
+let lastShownCount = null;
 function updateChrome(state) {
+  if (lastShownCount !== null && state.count > lastShownCount) {
+    const plate = els.countDisplay.parentElement;
+    plate.classList.remove('count-pop');
+    // Restart the animation even when two taps land back to back.
+    void plate.offsetWidth;
+    plate.classList.add('count-pop');
+  }
+  lastShownCount = state.count;
   els.countDisplay.textContent = String(state.count);
   els.countWord.textContent = NUMBER_WORDS[Math.min(state.count, 10)] || String(state.count);
   els.bestValue.textContent = String(state.best);
@@ -165,6 +180,7 @@ function renderA11yList(state) {
 function openCelebration(state) {
   els.celebrationTotal.textContent = String(state.herdSize);
   els.celebration.hidden = false;
+  renderer?.celebrate?.();
   if (state.soundOn) playCelebration();
 }
 function closeCelebration() {
