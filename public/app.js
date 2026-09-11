@@ -1,5 +1,5 @@
 import { StateStore, createDefaultState } from './state.js';
-import { playTapChime, playCelebration, vibrateTap } from './sound.js';
+import { playTapChime, playCelebration } from './sound.js';
 
 const params = new URLSearchParams(window.location.search);
 const token = params.get('token') || sessionStorage.getItem('sheep-countrr:token') || '';
@@ -67,6 +67,8 @@ let renderer = null;
 function buildStaticState() {
   const base = createDefaultState();
   base.seed = 42;
+  if (sceneParam === 'flock') return { ...base, herdSize: 10, seed: 47 };
+  if (sceneParam === 'portrait') return { ...base, herdSize: 1, seed: 42 };
   if (sceneParam === 'empty') return { ...base, herdSize: 5, count: 0, counted: [] };
   if (sceneParam === 'midcount') return { ...base, herdSize: 5, count: 3, counted: [0, 1, 2] };
   if (sceneParam === 'celebrate') return { ...base, herdSize: 5, count: 5, counted: [0, 1, 2, 3, 4] };
@@ -127,7 +129,7 @@ async function mountScene() {
 
 async function mountFallback() {
   const { createFallbackRenderer } = await import('./fallback.js');
-  return createFallbackRenderer({ container: els.sceneRoot, onTap: handleTap });
+  return createFallbackRenderer({ container: els.sceneRoot, onTap: handleTap, reducedMotion });
 }
 
 function handleTap(index) {
@@ -139,10 +141,10 @@ function handleTap(index) {
   if (number == null) return;
   renderer.countSheep(index, number);
   if (store.state.soundOn) playTapChime(number);
-  vibrateTap();
+
   renderA11yList(store.state);
   if (store.isComplete()) {
-    setTimeout(() => openCelebration(store.state), 260);
+    setTimeout(() => { if (store.isComplete()) openCelebration(store.state); }, 1400);
   }
 }
 
@@ -166,15 +168,20 @@ function updateChrome(state) {
 }
 
 function renderA11yList(state) {
-  els.a11yList.innerHTML = '';
-  for (let i = 0; i < state.herdSize; i++) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    const isCounted = state.counted.includes(i);
-    btn.textContent = isCounted ? `Sheep ${i + 1}, counted` : `Sheep ${i + 1}, not counted yet`;
-    btn.addEventListener('click', () => handleTap(i));
-    els.a11yList.appendChild(btn);
+  // Keep the focused button alive while announcing its new counted state.
+  if (els.a11yList.children.length !== state.herdSize) {
+    els.a11yList.replaceChildren();
+    for (let i = 0; i < state.herdSize; i++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.addEventListener('click', () => handleTap(i));
+      els.a11yList.appendChild(btn);
+    }
   }
+  Array.from(els.a11yList.children).forEach((btn, i) => {
+    btn.textContent = state.counted.includes(i)
+      ? `Sheep ${i + 1}, counted` : `Sheep ${i + 1}, not counted yet`;
+  });
 }
 
 function openCelebration(state) {
@@ -208,6 +215,9 @@ els.grownupsBtn.addEventListener('pointerdown', startHold);
 els.grownupsBtn.addEventListener('pointerup', cancelHold);
 els.grownupsBtn.addEventListener('pointerleave', cancelHold);
 els.grownupsBtn.addEventListener('pointercancel', cancelHold);
+els.grownupsBtn.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openGrownups(store.state); }
+});
 
 function openGrownups(state) {
   els.bestValue.textContent = String(state.best);

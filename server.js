@@ -96,7 +96,7 @@ function defaultRow(user) {
     user_id: user.id,
     username: user.username,
     round: 1,
-    herd_size: 5,
+    herd_size: 3,
     seed: randomSeed(),
     count: 0,
     counted: [],
@@ -168,8 +168,7 @@ app.post('/api/state', async (req, res) => {
 
   if (!Array.isArray(body.counted)) return res.status(400).json({ error: 'counted must be an array' });
   const counted = [...new Set(body.counted.map((n) => parseInt(n, 10)))]
-    .filter((n) => Number.isInteger(n) && n >= 0 && n < herdSize)
-    .sort((a, b) => a - b);
+    .filter((n) => Number.isInteger(n) && n >= 0 && n < herdSize);
 
   const count = clamp(parseInt(body.count, 10), 0, herdSize);
   if (!Number.isFinite(count) || count !== counted.length) {
@@ -284,7 +283,7 @@ async function seedStagingData() {
   const demoRows = [
     { user_id: -101, username: 'Staging demo — Mabel', round: 4, herd_size: 8, seed: 1001, count: 8, counted: [0, 1, 2, 3, 4, 5, 6, 7], best: 8, total_counted: 23 },
     { user_id: -102, username: 'Staging demo — Otto', round: 2, herd_size: 6, seed: 1002, count: 2, counted: [0, 1], best: 6, total_counted: 11 },
-    { user_id: -103, username: 'Staging demo — Pip', round: 1, herd_size: 5, seed: 1003, count: 0, counted: [], best: 5, total_counted: 5 },
+    { user_id: -103, username: 'Staging demo — Pip', round: 1, herd_size: 3, seed: 1003, count: 0, counted: [], best: 5, total_counted: 5 },
   ];
   for (const r of demoRows) {
     await pool.query(

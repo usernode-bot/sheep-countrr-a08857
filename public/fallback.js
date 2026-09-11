@@ -66,7 +66,7 @@ const SHEEP_SVG = `
   </g>
 </svg>`;
 
-export function createFallbackRenderer({ container, onTap }) {
+export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   const field = document.createElement('div');
   field.className = 'sheep-fallback-field';
   const grid = document.createElement('div');
@@ -105,15 +105,15 @@ export function createFallbackRenderer({ container, onTap }) {
     const badge = btn.querySelector('.sheep-card-badge');
     badge.hidden = false;
     badge.textContent = String(number);
-    if (animate && btn.animate) {
+    if (animate && !reducedMotion && btn.animate) {
       btn.animate(
         [
           { transform: 'scale(1)' },
-          { transform: 'scale(0.9, 0.82) translateY(6px)' },
-          { transform: 'scale(1.1, 1.18) translateY(-16px)' },
+          { transform: 'scale(0.98)' },
+          { transform: 'scale(1.02)' },
           { transform: 'scale(1)' },
         ],
-        { duration: 460, easing: 'cubic-bezier(.34,1.56,.64,1)' }
+        { duration: 900, easing: 'cubic-bezier(.34,1.56,.64,1)' }
       );
       badge.animate(
         [{ transform: 'scale(0)' }, { transform: 'scale(1.25)' }, { transform: 'scale(1)' }],
@@ -124,7 +124,7 @@ export function createFallbackRenderer({ container, onTap }) {
 
   function wiggle(index) {
     const btn = cards[index];
-    if (!btn || !btn.animate) return;
+    if (reducedMotion || !btn || !btn.animate) return;
     btn.animate(
       [
         { transform: 'rotate(0deg)' },
@@ -137,15 +137,7 @@ export function createFallbackRenderer({ container, onTap }) {
     );
   }
 
-  function celebrate() {
-    cards.forEach((btn, i) => {
-      if (!btn.animate) return;
-      btn.animate(
-        [{ transform: 'translateY(0)' }, { transform: 'translateY(-18px)' }, { transform: 'translateY(0)' }],
-        { duration: 520, delay: i * 70, easing: 'ease-out' }
-      );
-    });
-  }
+  function celebrate() {}
 
   return {
     kind: 'dom',

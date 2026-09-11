@@ -1,34 +1,35 @@
 // The 3D pasture. Loaded lazily by app.js only when WebGL is available,
 // so devices without it never pay for importing three at all.
 //
-// Art direction: a soft, toy-like meadow. Every sheep is ONE vertex-colored
+// Art direction: a quiet dusk meadow with plush, sleepy sheep. Every sheep is ONE vertex-colored
 // mesh (body, wool puffs, face, ears, cheeks, smile, legs, hooves merged at
-// boot) plus two eye meshes that blink, a soft contact shadow, a pastel
+// boot) plus two eye meshes that blink and close, a soft contact shadow, a muted
 // ribbon and a number plate. Ten sheep is under a hundred draw calls, which
 // is what keeps the low tier smooth.
 import * as THREE from 'three';
 import { layoutPositions, NUMBER_COLORS } from './layout.js';
+import { wanderOffset } from './movement.js';
 
 const COLORS = {
-  wool: '#fdf8f1',
-  woolLight: '#ffffff',
-  woolShade: '#f3e9dc',
-  face: '#f7d5bf',
-  earInner: '#f9b6c6',
-  cheek: '#ffb0c4',
+  wool: '#f4eadb',
+  woolLight: '#fff8ed',
+  woolShade: '#e5d7c5',
+  face: '#bd9986',
+  earInner: '#d6a5a4',
+  cheek: '#d9a3a0',
   mouth: '#7a4f44',
   leg: '#e6c3ab',
   hoof: '#8a6558',
-  eyeWhite: '#ffffff',
+  eyeWhite: '#fff8ed',
   pupil: '#2b2530',
-  ground: '#9fdc74',
-  hillA: '#b4e58a',
-  hillB: '#8fd06a',
-  hillC: '#6fbd5b',
-  trunk: '#c8956d',
-  leaf: '#7fcf6f',
-  leafLight: '#a5e08e',
-  fog: '#e6f4ff',
+  ground: '#667d79',
+  hillA: '#738886',
+  hillB: '#5f7879',
+  hillC: '#4f686c',
+  trunk: '#7b7773',
+  leaf: '#586e6f',
+  leafLight: '#728786',
+  fog: '#a1afb8',
 };
 
 const FONT = '800 150px "Nunito", ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Segoe UI", system-ui, sans-serif';
@@ -167,7 +168,7 @@ function buildSunTexture() {
   glow.addColorStop(1, 'rgba(255, 220, 160, 0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = '#fff1b8';
+  ctx.fillStyle = '#eee4cc';
   ctx.beginPath();
   ctx.arc(c, c, 46, 0, Math.PI * 2);
   ctx.fill();
@@ -197,7 +198,7 @@ function buildStarTexture() {
   canvas.height = size;
   const ctx = canvas.getContext('2d');
   const c = size / 2;
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = '#fff8ed';
   ctx.beginPath();
   for (let i = 0; i < 8; i++) {
     const r = i % 2 === 0 ? 28 : 9;
@@ -215,7 +216,7 @@ function buildDotTexture() {
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = '#fff8ed';
   ctx.beginPath();
   ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
   ctx.fill();
@@ -225,84 +226,70 @@ function buildDotTexture() {
 // ---------------------------------------------------------------------------
 // Sheep geometry. Built once per variant, then shared by every sheep.
 
-function buildSheepBodyGeometry(variant) {
-  const sphere = new THREE.SphereGeometry(1, 14, 10);
-  const cone = new THREE.CylinderGeometry(1, 1, 1, 10);
-  const smile = new THREE.TorusGeometry(0.075, 0.014, 6, 14, Math.PI);
+export function buildSheepBodyGeometry(variant) {
+  const sphere = new THREE.SphereGeometry(1, 16, 12);
+  const smile = new THREE.TorusGeometry(0.048, 0.009, 6, 16, Math.PI);
+  const curl = new THREE.TorusGeometry(0.065, 0.025, 6, 14, Math.PI * 1.65);
   const parts = [];
-
-  // Round wool body.
-  parts.push({ geo: sphere, color: COLORS.wool, matrix: placeMatrix(0, 0.64, -0.02, 0.52, 0.46, 0.5) });
-
-  // Clustered puffs around the body. The variant nudges them so a flock
-  // isn't ten identical clones.
-  const puffs = [
-    [0.36, 0.86, 0.1, 0.24], [-0.36, 0.86, 0.1, 0.24], [0, 0.96, -0.12, 0.26],
-    [0.3, 0.9, -0.32, 0.22], [-0.3, 0.9, -0.32, 0.22], [0.42, 0.6, -0.3, 0.22],
-    [-0.42, 0.6, -0.3, 0.22], [0, 0.72, -0.5, 0.24], [0.4, 0.58, 0.28, 0.2],
-    [-0.4, 0.58, 0.28, 0.2], [0.18, 0.94, 0.3, 0.2], [-0.18, 0.94, 0.3, 0.2],
-  ];
-  puffs.forEach(([x, y, z, r], i) => {
-    const j = seededRand(variant * 17 + 3, i) - 0.5;
-    const k = seededRand(variant * 31 + 5, i) - 0.5;
-    const color = i % 3 === 0 ? COLORS.woolLight : i % 3 === 1 ? COLORS.wool : COLORS.woolShade;
-    parts.push({
-      geo: sphere,
-      color,
-      matrix: placeMatrix(x + j * 0.08, y + k * 0.05, z + j * 0.06, r + k * 0.03),
-    });
-  });
-
-  // Head, tilted up a touch so the face reads from the camera's height.
-  parts.push({ geo: sphere, color: COLORS.face, matrix: placeMatrix(0, 0.8, 0.5, 0.27, 0.26, 0.24) });
-  // Wool tuft on top of the head.
-  [[0, 1.02, 0.42, 0.14], [0.12, 0.98, 0.5, 0.11], [-0.12, 0.98, 0.5, 0.11]].forEach(([x, y, z, r]) => {
-    parts.push({ geo: sphere, color: COLORS.woolLight, matrix: placeMatrix(x, y, z, r) });
-  });
-  // Ears: face colored outer, pink inner.
-  [-1, 1].forEach((side) => {
-    parts.push({
-      geo: sphere,
-      color: COLORS.face,
-      matrix: placeMatrix(side * 0.3, 0.88, 0.44, 0.13, 0.08, 0.05, 0, 0, side * -0.55),
-    });
-    parts.push({
-      geo: sphere,
-      color: COLORS.earInner,
-      matrix: placeMatrix(side * 0.3, 0.88, 0.47, 0.085, 0.05, 0.03, 0, 0, side * -0.55),
-    });
-  });
-  // Rosy cheeks.
-  [-1, 1].forEach((side) => {
-    parts.push({ geo: sphere, color: COLORS.cheek, matrix: placeMatrix(side * 0.17, 0.74, 0.7, 0.062, 0.045, 0.03) });
-  });
-  // Little smile (a half torus, arc facing up so it curves like a grin).
-  parts.push({ geo: smile, color: COLORS.mouth, matrix: placeMatrix(0, 0.735, 0.735, 1, 1, 1, 0.2, 0, Math.PI) });
-  // Tiny nose.
-  parts.push({ geo: sphere, color: COLORS.cheek, matrix: placeMatrix(0, 0.775, 0.745, 0.028, 0.022, 0.02) });
-
-  // Legs and hooves.
-  [[-0.22, -0.2], [0.22, -0.2], [-0.24, 0.22], [0.24, 0.22]].forEach(([x, z]) => {
-    parts.push({ geo: cone, color: COLORS.leg, matrix: placeMatrix(x, 0.2, z, 0.075, 0.34, 0.075) });
-    parts.push({ geo: cone, color: COLORS.hoof, matrix: placeMatrix(x, 0.045, z, 0.082, 0.09, 0.082) });
-  });
-
-  const geo = mergeColored(parts);
-  sphere.dispose();
-  cone.dispose();
-  smile.dispose();
-  return geo;
+  const add = (color, x, y, z, sx, sy = sx, sz = sx, rz = 0) =>
+    parts.push({ geo: sphere, color, matrix: placeMatrix(x, y, z, sx, sy, sz, 0, 0, rz) });
+  // A soft pear-shaped silhouette, with overlapping wool locks rather
+  // than an exposed smooth ball. All locks share a single draw call.
+  add(COLORS.woolShade, 0, 0.64, -0.05, 0.51, 0.49, 0.5);
+  for (let row = 0; row < 5; row++) {
+    const latitude = -0.9 + row * 0.46;
+    const radius = Math.cos(latitude);
+    const locks = row === 4 ? 7 : 11;
+    for (let i = 0; i < locks; i++) {
+      const angle = i / locks * Math.PI * 2 + row * 0.34;
+      const wobble = seededRand(variant + 31, row * 11 + i);
+      const x = Math.cos(angle) * radius * 0.44;
+      const z = Math.sin(angle) * radius * 0.44 - 0.07;
+      const y = 0.65 + Math.sin(latitude) * 0.41;
+      const size = 0.155 + wobble * 0.045;
+      add(i % 4 === 0 ? COLORS.woolLight : COLORS.wool, x, y, z, size, size * 1.08, size);
+      if (row > 1 && i % 3 === 0 && z > 0) {
+        parts.push({ geo: curl, color: COLORS.woolShade,
+          matrix: placeMatrix(x, y, z + size * 0.88, 0.65, 0.65, 0.45, 0, 0, angle) });
+      }
+    }
+  }
+  // Tiny rounded feet peep from beneath the fleece.
+  for (const x of [-0.25, 0.25]) for (const z of [-0.22, 0.22]) {
+    add(COLORS.leg, x, 0.18, z, 0.085, 0.15, 0.085);
+    add(COLORS.hoof, x, 0.065, z + 0.025, 0.1, 0.065, 0.12);
+  }
+  add(COLORS.wool, 0, 0.65, -0.63, 0.16, 0.15, 0.2);
+  // Oversized forehead, small plush muzzle and low, wide-set eyes.
+  add(COLORS.face, 0, 0.84, 0.48, 0.31, 0.3, 0.25);
+  add('#dcc1a9', 0, 0.72, 0.685, 0.21, 0.13, 0.11);
+  for (const side of [-1, 1]) {
+    add(COLORS.face, side * 0.36, 0.91, 0.46, 0.19, 0.085, 0.065, side * -0.28);
+    add(COLORS.earInner, side * 0.37, 0.918, 0.505, 0.125, 0.044, 0.025, side * -0.28);
+    add(COLORS.cheek, side * 0.2, 0.775, 0.695, 0.063, 0.032, 0.026);
+  }
+  [[-0.2, 1.045, 0.5, 0.12], [-0.08, 1.11, 0.49, 0.145],
+    [0.08, 1.1, 0.48, 0.13], [0.21, 1.03, 0.5, 0.105]].forEach(([x,y,z,r]) =>
+      add(COLORS.woolLight, x,y,z,r));
+  parts.push({ geo: curl, color: COLORS.woolShade,
+    matrix: placeMatrix(-0.06, 1.115, 0.628, 0.7, 0.7, 0.5, 0, 0, 0.3 + variant * 0.2) });
+  add(COLORS.mouth, 0, 0.758, 0.8, 0.033, 0.021, 0.018);
+  parts.push({ geo: smile, color: COLORS.mouth,
+    matrix: placeMatrix(0, 0.723, 0.79, 1, 0.7, 1, 0, 0, Math.PI) });
+  const geometry = mergeColored(parts);
+  sphere.dispose(); smile.dispose(); curl.dispose();
+  return geometry;
 }
 
-function buildEyeGeometry() {
-  const sphere = new THREE.SphereGeometry(1, 12, 8);
-  const geo = mergeColored([
-    { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(0, 0, 0, 0.085, 0.09, 0.06) },
-    { geo: sphere, color: COLORS.pupil, matrix: placeMatrix(0, -0.005, 0.045, 0.052, 0.058, 0.035) },
-    { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(0.02, 0.024, 0.078, 0.018) },
+export function buildEyeGeometry() {
+  const sphere = new THREE.SphereGeometry(1, 14, 10);
+  const geometry = mergeColored([
+    { geo: sphere, color: COLORS.pupil, matrix: placeMatrix(0, 0, 0, 0.052, 0.063, 0.035) },
+    { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(-0.013, 0.021, 0.031, 0.016) },
+    { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(0.015, -0.016, 0.033, 0.007) },
   ]);
   sphere.dispose();
-  return geo;
+  return geometry;
 }
 
 function buildRibbonGeometry() {
@@ -310,11 +297,11 @@ function buildRibbonGeometry() {
   const sphere = new THREE.SphereGeometry(1, 10, 8);
   const geo = mergeColored([
     // Collar around the neck, tilted with the head.
-    { geo: torus, color: '#ffffff', matrix: placeMatrix(0, 0.74, 0.34, 1, 1, 1, Math.PI / 2 - 0.35, 0, 0) },
+    { geo: torus, color: '#fff8ed', matrix: placeMatrix(0, 0.74, 0.34, 1, 1, 1, Math.PI / 2 - 0.35, 0, 0) },
     // Bow: two loops and a knot, sitting to one side.
-    { geo: sphere, color: '#ffffff', matrix: placeMatrix(0.3, 0.86, 0.36, 0.085, 0.06, 0.05, 0, 0, 0.5) },
-    { geo: sphere, color: '#ffffff', matrix: placeMatrix(0.36, 0.74, 0.36, 0.085, 0.06, 0.05, 0, 0, -0.5) },
-    { geo: sphere, color: '#ffffff', matrix: placeMatrix(0.31, 0.8, 0.39, 0.045) },
+    { geo: sphere, color: '#fff8ed', matrix: placeMatrix(0.3, 0.86, 0.36, 0.085, 0.06, 0.05, 0, 0, 0.5) },
+    { geo: sphere, color: '#fff8ed', matrix: placeMatrix(0.36, 0.74, 0.36, 0.085, 0.06, 0.05, 0, 0, -0.5) },
+    { geo: sphere, color: '#fff8ed', matrix: placeMatrix(0.31, 0.8, 0.39, 0.045) },
   ]);
   torus.dispose();
   sphere.dispose();
@@ -491,8 +478,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 120);
 
-  scene.add(new THREE.HemisphereLight('#fff4ea', '#7fbf63', 1.05));
-  const sun = new THREE.DirectionalLight('#fff2d6', 1.15);
+  scene.add(new THREE.HemisphereLight('#e3e3f3', '#485e60', 1.6));
+  const sun = new THREE.DirectionalLight('#ffdfbe', 2.1);
   sun.position.set(-5, 9, 6);
   scene.add(sun);
   const fill = new THREE.DirectionalLight('#dbe9ff', 0.35);
@@ -505,7 +492,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   for (let i = 0; i < gp.count; i++) {
     const x = gp.getX(i);
     const y = gp.getY(i);
-    const far = Math.max(0, Math.abs(y) - 5) * 0.06;
+    const far = Math.max(0, Math.abs(y) - 5) * 0.015;
     gp.setZ(i, Math.sin(x * 0.45) * 0.08 + Math.cos(y * 0.5) * 0.08 + far * far * 0.4);
   }
   groundGeo.computeVertexNormals();
@@ -522,7 +509,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   ];
   hills.forEach(([x, z, r, h, color]) => {
     const m = new THREE.Mesh(hillGeo, new THREE.MeshLambertMaterial({ color }));
-    m.scale.set(r, h, r * 0.8);
+    m.scale.set(r, h * 0.42, r * 0.8);
     m.position.set(x, -0.1, z);
     scene.add(m);
   });
@@ -541,14 +528,14 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   // Flowers: one instanced mesh for petals, one for centers.
   const flowerCount = tier === 'low' ? 28 : 80;
   const petalGeo = new THREE.SphereGeometry(0.075, 7, 5);
-  const petalMat = new THREE.MeshLambertMaterial({ color: '#ffffff' });
+  const petalMat = new THREE.MeshLambertMaterial({ color: '#fff8ed' });
   const petals = new THREE.InstancedMesh(petalGeo, petalMat, flowerCount);
   const centerGeo = new THREE.SphereGeometry(0.03, 6, 4);
   const centers = new THREE.InstancedMesh(centerGeo, new THREE.MeshLambertMaterial({ color: '#ffe066' }), flowerCount);
   {
     const m = new THREE.Matrix4();
     const c = new THREE.Color();
-    const petalColors = ['#ffb3c6', '#ffffff', '#ffe08a', '#c9b6ff', '#ffc4a3', '#ffffff'];
+    const petalColors = ['#ffb3c6', '#fff8ed', '#ffe08a', '#c9b6ff', '#ffc4a3', '#fff8ed'];
     for (let i = 0; i < flowerCount; i++) {
       const x = (seededRand(9001, i) - 0.5) * 22;
       const z = -9 + seededRand(9002, i) * 14;
@@ -569,7 +556,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   // Sun and clouds as soft sprites, unaffected by fog.
   const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: buildSunTexture(), transparent: true, depthWrite: false, fog: false }));
-  sunSprite.scale.set(9, 9, 1);
+  sunSprite.scale.set(4.5, 4.5, 1);
   sunSprite.position.set(-7, 9.5, -24);
   scene.add(sunSprite);
 
@@ -577,7 +564,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const clouds = [];
   const cloudCount = tier === 'low' ? 3 : 6;
   for (let i = 0; i < cloudCount; i++) {
-    const mat = new THREE.SpriteMaterial({ map: cloudTexture, transparent: true, depthWrite: false, fog: false, opacity: 0.95 });
+    const mat = new THREE.SpriteMaterial({ map: cloudTexture, transparent: true, depthWrite: false, fog: false, opacity: 0.35 });
     const sprite = new THREE.Sprite(mat);
     const w = 5 + seededRand(77, i) * 3;
     sprite.scale.set(w, w * 0.5, 1);
@@ -586,39 +573,13 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     clouds.push({ sprite, speed: 0.08 + seededRand(81, i) * 0.1 });
   }
 
-  // Butterflies: two flapping wings each, wandering above the flock.
   const butterflies = [];
-  if (tier !== 'low') {
-    // Each wing is a pair of ovals (a big upper and a small lower lobe)
-    // hinged at the body, so the flap pivots like a real butterfly.
-    const lobe = new THREE.CircleGeometry(1, 14);
-    const wingGeo = mergeColored([
-      { geo: lobe, color: '#ffffff', matrix: placeMatrix(0.11, 0.06, 0, 0.11, 0.085, 1, 0, 0, 0.5) },
-      { geo: lobe, color: '#ffffff', matrix: placeMatrix(0.08, -0.07, 0, 0.07, 0.055, 1, 0, 0, -0.4) },
-    ]);
-    lobe.dispose();
-    const bodyGeo = new THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.014, 0.12, 3, 6) : new THREE.SphereGeometry(0.02, 6, 4);
-    const bodyMat = new THREE.MeshBasicMaterial({ color: '#5a4a66' });
-    ['#ffb3d1', '#b9d8ff', '#fff0a6'].forEach((color, i) => {
-      const g = new THREE.Group();
-      const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.95 });
-      const left = new THREE.Mesh(wingGeo, mat);
-      left.scale.x = -1;
-      const right = new THREE.Mesh(wingGeo, mat);
-      const body = new THREE.Mesh(bodyGeo, bodyMat);
-      g.add(left, right, body);
-      // Wings lie flat-ish, seen a little from above.
-      g.rotation.x = -0.9;
-      scene.add(g);
-      butterflies.push({ group: g, left, right, phase: i * 2.1, cx: (i - 1) * 2.2, cz: -1 + i * 0.8 });
-    });
-  }
 
   // Shared sheep assets.
   const bodyGeos = [0, 1, 2].map(buildSheepBodyGeometry);
   const eyeGeo = buildEyeGeometry();
   const ribbonGeo = buildRibbonGeometry();
-  const sheepMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const sheepMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0 });
   const shadowGeo = new THREE.PlaneGeometry(1.5, 1.5);
   const shadowMat = new THREE.MeshBasicMaterial({ map: buildShadowTexture(), transparent: true, depthWrite: false });
   const pickGeo = new THREE.SphereGeometry(0.9, 8, 6);
@@ -650,6 +611,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function buildFlock(state) {
     lastState = state;
+    sheep.forEach((s) => { s.ribbonMat.dispose(); s.numberSprite.material.dispose(); });
     scene.remove(sheepGroup);
     sheepGroup = new THREE.Group();
     scene.add(sheepGroup);
@@ -673,7 +635,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
       const eyes = [-1, 1].map((side) => {
         const eye = new THREE.Mesh(eyeGeo, sheepMat);
-        eye.position.set(side * 0.105, 0.83, 0.71);
+        eye.position.set(side * 0.123, 0.867, 0.709);
         g.add(eye);
         return eye;
       });
@@ -683,7 +645,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       shadow.position.set(0, 0.012, 0.05);
       g.add(shadow);
 
-      const ribbonMat = new THREE.MeshLambertMaterial({ color: '#ffffff' });
+      const ribbonMat = new THREE.MeshLambertMaterial({ color: '#fff8ed' });
       const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
       ribbon.visible = false;
       g.add(ribbon);
@@ -721,6 +683,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         ribbonMat,
         numberSprite,
         counted: false,
+        origin: { x: pos.x, z: pos.z },
+        heading: g.rotation.y,
+        index: i,
         phase: seededRand(state.seed, i + 200) * Math.PI * 2,
         bounceStart: -1,
         bounceDur: 0,
@@ -754,7 +719,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function fitCamera(minX, maxX, minZ, maxZ) {
     if (!Number.isFinite(minX)) return;
-    const pad = 0.65;
+    const pad = 1.0;
     const top = 1.9;
     const xs = [minX - pad, maxX + pad];
     const zs = [minZ - pad, maxZ + pad];
@@ -762,22 +727,24 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     let k = 0;
     xs.forEach((x) => zs.forEach((z) => ys.forEach((y) => corners[k++].set(x, y, z))));
 
-    // Keep the flock out from under the number plate: below it in
-    // portrait (where it spans the top), to the right of it in landscape
-    // (where CSS parks it in the top-left corner).
+    // Reserve space for the plate and bottom hint. The plate moves to
+    // the left only on short landscape screens, not every wide screen.
     const w = container.clientWidth || 1;
     const h = container.clientHeight || 1;
-    const overlay = (typeof getOverlayRect === 'function' ? getOverlayRect() : null) || { bottom: 0, right: 0 };
-    let topLimit = 0.92;
-    let leftLimit = -0.94;
-    if (isPortrait) topLimit = Math.max(0.15, 1 - (2 * overlay.bottom) / h - 0.06);
-    else leftLimit = Math.min(0.2, -1 + (2 * overlay.right) / w + 0.06);
+    const overlay = getOverlayRect?.() || { bottom: 0, right: 0 };
+    const sidePlate = !isPortrait && h <= 520;
+    const topLimit = sidePlate ? .92 : Math.max(.15, 1 - 2 * overlay.bottom / h - .06);
+    const leftLimit = sidePlate ? Math.min(.2, -1 + 2 * overlay.right / w + .06) : -.94;
     const sideLimit = 0.94;
-    const bottomLimit = -0.93;
+    const bottomLimit = -.84;
 
     // A lowish camera keeps the faces, the horizon and a strip of sky in
     // frame; portrait gets a wider lens so the flock can sit closer.
     camera.fov = isPortrait ? 54 : 46;
+    // Shift the optical center into the usable rectangle before fitting.
+    // Fitting a centered camera to a one-sided rectangle cannot converge.
+    camera.setViewOffset(w, h, -(leftLimit + sideLimit) * w / 4,
+      (topLimit + bottomLimit) * h / 4, w, h);
     camera.updateProjectionMatrix();
     const elevation = isPortrait ? 0.44 : 0.38;
     cameraDir.set(0, Math.sin(elevation), Math.cos(elevation));
@@ -801,36 +768,6 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       else lo = mid;
     }
     cameraDistance = hi;
-    // Shift the target so the flock sits centered in the free area, not
-    // pinned to the top edge of it.
-    fits(cameraDistance);
-    let minY = Infinity;
-    let maxY = -Infinity;
-    for (let i = 0; i < corners.length; i++) {
-      proj.copy(corners[i]).project(camera);
-      minY = Math.min(minY, proj.y);
-      maxY = Math.max(maxY, proj.y);
-    }
-    let minPX = Infinity;
-    let maxPX = -Infinity;
-    for (let i = 0; i < corners.length; i++) {
-      proj.copy(corners[i]).project(camera);
-      minPX = Math.min(minPX, proj.x);
-      maxPX = Math.max(maxPX, proj.x);
-    }
-    const worldPerNdc = cameraDistance * Math.tan((camera.fov * Math.PI) / 360);
-    const slack = (topLimit - maxY) - (minY - bottomLimit);
-    if (Math.abs(slack) > 0.02) {
-      // Raising the target lowers the flock on screen (and brings the
-      // horizon down into view), so subtract.
-      cameraTarget.y -= (slack / 2) * worldPerNdc * 0.9;
-    }
-    const slackX = (sideLimit - maxPX) - (minPX - leftLimit);
-    if (Math.abs(slackX) > 0.02) {
-      // Positive slack means room on the right: pan the camera left by
-      // moving the target left along the screen's x axis.
-      cameraTarget.x -= (slackX / 2) * worldPerNdc * camera.aspect * 0.9;
-    }
     fits(cameraDistance);
     cameraBase.copy(camera.position);
   }
@@ -839,6 +776,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     const s = sheep[index];
     if (!s || s.counted) return;
     s.counted = true;
+    if (lastState && !lastState.counted.includes(index)) {
+      lastState = { ...lastState, counted: [...lastState.counted, index] };
+    }
     const color = NUMBER_COLORS[(number - 1) % NUMBER_COLORS.length];
     s.ribbonMat.color.set(color);
     s.ribbon.visible = true;
@@ -847,29 +787,24 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     s.numberSprite.visible = true;
     if (animate && !reducedMotion) {
       s.bounceStart = clock.elapsedTime;
-      s.bounceDur = 0.5;
+      s.bounceDur = 0.9;
       s.wiggle = false;
       s.ribbonPop = clock.elapsedTime;
       const p = s.group.position;
-      sparklePool.burst(p.x, 0.9 * s.group.scale.x, p.z + 0.2);
+      // A sleepy nod is enough feedback; no burst of sparkles.
     }
   }
 
   function wiggleSheep(index) {
     const s = sheep[index];
-    if (!s) return;
+    if (!s || reducedMotion) return;
     s.bounceStart = clock.elapsedTime;
     s.bounceDur = 0.34;
     s.wiggle = true;
   }
 
   function celebrate() {
-    if (reducedMotion) return;
-    confettiPool.start(flockCenter.x, flockCenter.z, Math.max(flockSpread, 2.5));
-    sheep.forEach((s, i) => {
-      // Whole flock hops, a beat apart.
-      s.hopStart = clock.elapsedTime + i * 0.06;
-    });
+    // Counted sheep settle quietly. No confetti or synchronized jumping.
   }
 
   const raycaster = new THREE.Raycaster();
@@ -918,10 +853,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       if (sheep.length) {
         let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
         sheep.forEach((s) => {
-          minX = Math.min(minX, s.group.position.x);
-          maxX = Math.max(maxX, s.group.position.x);
-          minZ = Math.min(minZ, s.group.position.z);
-          maxZ = Math.max(maxZ, s.group.position.z);
+          minX = Math.min(minX, s.origin.x);
+          maxX = Math.max(maxX, s.origin.x);
+          minZ = Math.min(minZ, s.origin.z);
+          maxZ = Math.max(maxZ, s.origin.z);
         });
         fitCamera(minX, maxX, minZ, maxZ);
       }
@@ -976,33 +911,22 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     lowTierAccum = 0;
 
     const t = clock.elapsedTime;
-    if (!reducedMotion) {
-      camera.position.set(cameraBase.x + Math.sin(t * 0.18) * 0.12, cameraBase.y + Math.sin(t * 0.23) * 0.05, cameraBase.z);
-      camera.lookAt(cameraTarget);
-    }
-
     sheep.forEach((s) => {
       // Breathing.
-      const breathe = reducedMotion ? 0 : Math.sin(t * 1.6 + s.phase) * 0.018;
+      const breathe = reducedMotion ? 0 : Math.sin(t * 0.9 + s.phase) * 0.012;
       let sy = 1 + breathe;
       let sx = 1 - breathe * 0.6;
       let y = 0;
       let rz = 0;
 
-      // Occasional idle hop.
-      if (!reducedMotion && !s.counted && s.hopStart < 0 && t > s.nextHop) {
-        s.hopStart = t;
-      }
-      if (s.hopStart >= 0 && t >= s.hopStart) {
-        const p = (t - s.hopStart) / 0.55;
-        if (p >= 1) {
-          s.hopStart = -1;
-          s.nextHop = t + 6 + Math.random() * 10;
-        } else {
-          y += Math.sin(p * Math.PI) * 0.28;
-          sy *= 1 + Math.sin(p * Math.PI) * 0.08;
-          sx *= 1 - Math.sin(p * Math.PI) * 0.05;
-        }
+      // Seeded, bounded wandering gets gently more varied as the flock
+      // grows. Counted sheep stop where they are, ready for sleep.
+      if (!reducedMotion && !s.counted) {
+        const offset = wanderOffset(lastState.seed, s.index, lastState.herdSize, t);
+        s.group.position.x = s.origin.x + offset.x;
+        s.group.position.z = s.origin.z + offset.z;
+        s.group.rotation.y = s.heading + offset.turn;
+        y = Math.sin(t * 2 + s.phase) * 0.008;
       }
 
       // Tap reaction: squash, then a hop with a little overshoot.
@@ -1012,27 +936,28 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
           s.bounceStart = -1;
           s.wiggle = false;
         } else if (s.wiggle) {
-          rz = Math.sin(p * Math.PI * 4) * 0.14 * (1 - p);
-          y += Math.sin(p * Math.PI) * 0.06;
+          rz = Math.sin(p * Math.PI * 4) * 0.035 * (1 - p);
+          y += Math.sin(p * Math.PI) * 0.015;
         } else {
           const squash = p < 0.25 ? Math.sin((p / 0.25) * Math.PI) : 0;
           const hop = p >= 0.2 ? Math.sin(((p - 0.2) / 0.8) * Math.PI) : 0;
-          sy *= 1 - squash * 0.18 + hop * 0.12;
-          sx *= 1 + squash * 0.14 - hop * 0.06;
-          y += hop * 0.34;
+          sy *= 1 - squash * 0.04 + hop * 0.025;
+          sx *= 1 + squash * 0.14 - hop * 0.015;
+          y += hop * 0.035;
         }
       }
 
       const base = s.group.scale.x;
       s.body.scale.set(sx, sy, sx);
       s.eyes.forEach((e) => {
-        e.position.y = 0.83 * sy;
+        e.position.y = 0.867 * sy;
       });
       s.group.position.y = y * base;
       s.group.rotation.z = rz;
 
-      // Blink.
-      if (!reducedMotion) {
+      // Counted sheep close their eyes, including in reduced motion.
+      if (s.counted) s.eyes.forEach((e) => e.scale.set(1, 0.14, 1));
+      if (!reducedMotion && !s.counted) {
         if (s.blinkStart < 0 && t > s.nextBlink) s.blinkStart = t;
         let eyeY = 1;
         if (s.blinkStart >= 0) {
@@ -1050,7 +975,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       // Ribbon pops in with overshoot when counted.
       if (s.ribbonPop >= 0) {
         const p = Math.min(1, (t - s.ribbonPop) / 0.45);
-        const k = easeOutBack(p);
+        const k = p * p * (3 - 2 * p);
         s.ribbon.scale.setScalar(Math.max(0.01, k));
         s.numberSprite.scale.set(0.62 * k, 0.62 * k, 1);
         if (p >= 1) s.ribbonPop = -1;
@@ -1061,7 +986,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     });
 
     clouds.forEach((c) => {
-      c.sprite.position.x += (reducedMotion ? 0.3 : 1) * c.speed * stepDt;
+      c.sprite.position.x += (reducedMotion ? 0 : 0.35) * c.speed * stepDt;
       if (c.sprite.position.x > 18) c.sprite.position.x = -18;
     });
 

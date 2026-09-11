@@ -427,6 +427,55 @@
       .sheep-card, .sheep-eyes, .celebration-sheep, .celebration-sheep span { animation: none; }
       .count-pop, .panel-pop { animation: none; }
     }
+    /* Bedtime tuning: muted dusk, quiet controls, no flashing rewards. */
+    :root {
+      color-scheme: dark;
+      --plum: #f0e9de;
+      --plum-soft: #b7bdc7;
+      --cream: #303d4b;
+      --pink: #b7afc5;
+      --pink-soft: #73808d;
+      --sky-top: #283448;
+      --sky-mid: #637487;
+      --sky-low: #a1afb8;
+      --horizon: #b1b5aa;
+    }
+    body { margin: 0; background: #283448; -webkit-font-smoothing: antialiased; }
+    #scene-root { background: linear-gradient(180deg, var(--sky-top), var(--sky-mid) 40%, var(--horizon)); }
+    .count-plate { background: #303d4bea; border: 1px solid #ffffff26; box-shadow: none; padding: .65rem 1.8rem; }
+    .count-plate::before, .count-plate::after { display: none; }
+    #count-display { font-size: 3.5rem; font-weight: 600; text-shadow: none; }
+    #count-word { font-weight: 500; letter-spacing: .02em; text-transform: none; }
+    #grownups-btn { color: #e3e3e9; background: #303d4b9e; box-shadow: none; }
+    #bedtime-hint { position: absolute; bottom: calc(var(--safe-bottom) + 18px); left: 12px; right: 12px; margin: 0; text-align: center; color: #f5f0e6; font-size: 1rem; pointer-events: none; text-shadow: 0 1px 4px #283448; }
+    .panel-backdrop { background: #202b3bb8; }
+    .panel-card { background: var(--cream); border: 1px solid #ffffff26; box-shadow: none; }
+    .panel-pop { animation: panel-rest .8s ease-out; }
+    @keyframes panel-rest { from { opacity: 0; } to { opacity: 1; } }
+    .celebration-title { font-weight: 500; font-size: 1.75rem; }
+    .celebration-total { color: #ecdbc0; }
+    .bedtime-eyebrow, .bedtime-message { margin: 0; color: #c0c7cf; }
+    .big-btn { background: #c9c0d4; color: #2c3545; box-shadow: none; border: 0; font-weight: 600; }
+    .big-btn:hover { background: #d3ccdc; }
+    .soft-btn, #grownups-close { background: #ffffff12; color: #f0e9de; box-shadow: none; border: 1px solid #ffffff26; }
+    .setting-row, .stats-card { background: #ffffff08; border-color: #ffffff20; }
+    .setting-row select { color: #f0e9de; background: #283448; }
+    .stat-value { color: #ecdbc0; }
+    .count-pop { animation: count-rest .8s ease-in-out; }
+    @keyframes count-rest { 50% { transform: scale(1.025); } }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #ecdbc0; outline-offset: 4px; }
+    .sheep-fallback-field { background:
+      radial-gradient(65% 25% at 15% 100%, #738886 0 70%, transparent 71%),
+      radial-gradient(90% 35% at 85% 110%, #5f7879 0 70%, transparent 71%); }
+    .setting-row, .stats-card { box-shadow: none; }
+    .sheep-card { background: #ffffff0d; border-color: #ffffff2b; box-shadow: none; animation-duration: 7s; }
+    .sheep-card.is-counted { background: #ffffff15; border-color: #b7afc5; }
+    .is-counted .sheep-eyes { animation: none; transform: scaleY(.14); }
+    .sheep-card-badge { box-shadow: none; }
+    #a11y-sheep-list:focus-within { clip: auto; width: auto; height: auto; inset: auto 12px 52px; white-space: normal; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #303d4b; border-radius: 16px; }
+    #a11y-sheep-list button { min-height: 48px; padding: 8px; }
+    @media (max-height: 520px) { #bedtime-hint { bottom: 6px; font-size: .875rem; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
   </style>
 </head>
 <body class="h-full overflow-hidden">
@@ -443,6 +492,8 @@
       </div>
     </div>
 
+    <p id="bedtime-hint">Count a sheep. Take your time.</p>
+
     <!-- Small, deliberately quiet corner control for grown-ups. A quick tap
          does nothing; only a ~1.5s press-and-hold opens the panel, so a
          curious child mashing the screen can't get in. -->
@@ -457,9 +508,9 @@
     <!-- Celebration panel, shown once every sheep in the round is counted. -->
     <div id="celebration" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-5">
-        <div class="confetti-strip w-full"></div>
-        <div class="celebration-sheep" aria-hidden="true"><span>🐑</span><span>🐑</span><span>🐑</span></div>
-        <p class="celebration-title">Hooray! You counted <span id="celebration-total" class="celebration-total">5</span> sheep!</p>
+        <p class="bedtime-eyebrow">A little closer to dreamland</p>
+        <p class="bedtime-message">The meadow is resting.</p>
+        <p class="celebration-title">You counted <span id="celebration-total" class="celebration-total">5</span> sheep.</p>
         <button id="count-again-btn" type="button" class="big-btn">
           Count again
         </button>

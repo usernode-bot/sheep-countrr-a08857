@@ -18,7 +18,7 @@ function randomSeed() {
 export function createDefaultState() {
   return {
     round: 1,
-    herdSize: 5,
+    herdSize: 3,
     seed: randomSeed(),
     count: 0,
     counted: [],
@@ -120,9 +120,10 @@ export class StateStore {
   // Returns the 1-based number assigned to this tap, or null if the
   // sheep was already counted / the flock is already complete.
   countSheep(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.state.herdSize) return null;
     if (this.state.counted.includes(index)) return null;
     if (this.state.counted.length >= this.state.herdSize) return null;
-    const counted = [...this.state.counted, index].sort((a, b) => a - b);
+    const counted = [...this.state.counted, index];
     this.state = {
       ...this.state,
       counted,

@@ -16,13 +16,13 @@ function getCtx() {
 export function playTapChime(step) {
   const c = getCtx();
   if (!c) return;
-  const freq = 440 + Math.min(step, 12) * 30;
+  const freq = 220 + Math.min(step, 12) * 12;
   const osc = c.createOscillator();
   const gain = c.createGain();
   osc.type = 'sine';
   osc.frequency.value = freq;
   gain.gain.setValueAtTime(0.0001, c.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.2, c.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.045, c.currentTime + 0.06);
   gain.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.25);
   osc.connect(gain).connect(c.destination);
   osc.start();
@@ -32,15 +32,15 @@ export function playTapChime(step) {
 export function playCelebration() {
   const c = getCtx();
   if (!c) return;
-  const notes = [523.25, 659.25, 783.99, 1046.5];
+  const notes = [261.63, 329.63];
   notes.forEach((freq, i) => {
     const start = c.currentTime + i * 0.12;
     const osc = c.createOscillator();
     const gain = c.createGain();
-    osc.type = 'triangle';
+    osc.type = 'sine';
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.25, start + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.035, start + 0.08);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.4);
     osc.connect(gain).connect(c.destination);
     osc.start(start);
