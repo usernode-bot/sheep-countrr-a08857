@@ -1,27 +1,50 @@
 # Sheep countrr
 
-> **Starter template** — this repo was scaffolded by Usernode Social
-> Vibecoding. Everything in it is placeholder example code until the
-> app's first real feature is built.
+A tap-to-count game for very young children. A small pasture of fluffy
+3D sheep grazes on screen; tap a sheep to count it, and a big number
+badge tracks the total as you go. When every sheep in the flock has
+been counted, the flock rests and a quiet invitation to count again appears. No reading required, no
+scoring, no losing — just counting.
 
-The scaffold is a small working demo that proves the plumbing works:
+## How it works
 
-- **Sign-in** — the server verifies the platform-issued user token
-  (an RS256 JWT) on every request, so the app already knows who is
-  using it. No accounts to build.
-- **Database** — the app has its own private Postgres database; the
-  demo stores button presses in a `presses` table.
-- **Live API** — two example routes (`/api/press`,
-  `/api/leaderboard`) read and write through a real Express server.
-- **Styling** — Tailwind CSS, precompiled by the Dockerfile on every
-  deploy, so there is nothing to rebuild by hand.
+- **The pasture** is rendered in 3D with Three.js: a handful of
+  procedurally-built sheep standing on a grassy field. Tapping an
+  uncounted sheep adds a numbered ribbon onto it and bumps the count;
+  tapping an already-counted sheep gives it a friendly wiggle instead.
+  Devices without WebGL (or `?renderer=dom`, used for testing) fall
+  back to the same interaction as a grid of big round cards — same
+  counting logic, no 3D required.
+- **The count** is shown oversized at the top of the screen, both as
+  a numeral and as its word ("3" / "Three"), readable from across the
+  room.
+- **Sound is off by default.** There are no vibrations;
+  soft, low chimes only play once a grown-up turns
+  sound on.
+- **The grown-ups panel** (sound toggle, flock size, progress, start
+  over) is reached by a ~1.5 second press-and-hold (or Enter/Space with a keyboard) on the small
+  gear icon in the corner — a quick tap does nothing, so a child
+  mashing the screen can't wander into settings.
+- **Progress syncs to the server** per signed-in user (current flock,
+  best round, lifetime sheep counted) and to a community total shown
+  in the grown-ups panel, so it picks up where it left off on any
+  device.
 
-## Replacing the template
+## App-specific notes
 
-Open the app on Usernode, tap **Improve** in the header, and describe
-the app you want in plain English — the template will be replaced with
-your real app. You can also run Claude Code against this repo directly;
-start with `CLAUDE.md`, which carries the app-specific notes and
-points at the platform rules.
+See `CLAUDE.md` for platform conventions and repo-specific details
+(the `sheep_progress` table, staging seed rows, screenshot-state deep
+links used by the declared `dapp.json` checks).
 
-Once the real app exists, rewrite this README to describe it.
+## Bedtime sheep update
+
+The flock starts with three sheep and grows by one per round to ten. Uncounted
+sheep follow bounded, seeded wandering paths that become slightly more varied
+as the flock grows; counted sheep hold still and close their eyes. The camera
+stays still. Reduced-motion preference disables wandering and tap animations
+in both renderers.
+
+Run `npm ci`, `npm run build`, and `npm test`. Browser review fixtures:
+`/?scene=portrait` (one sheep), `/?scene=flock` (ten),
+`/?scene=midcount`, `/?scene=celebrate`, and `/?renderer=dom` (playable fallback).
+Fixtures never persist progress. Use `/` for normal play and round progression.

@@ -60,11 +60,65 @@ tables you've marked private), etc.
 
 ## About Sheep countrr
 
-_(add a sentence or two of product context here so Claude Code has a
-shared understanding of what this app is for)_
+A tap-to-count game for very young children: a 3D pasture of
+procedurally-built sheep (Three.js), rendered full-screen. Tapping an
+uncounted sheep counts it and bumps a big readable number badge; once
+every sheep in the round is counted, a short celebration plays. Sound
+is off by default (taps always vibrate); a grown-up reaches settings
+(sound, flock size, progress, start over) only via a ~1.5s
+press-and-hold on the corner gear icon, so a child mashing the screen
+can't wander in. See `README.md` for the full feature description.
 
 ## App-specific conventions
 
-_(optional — e.g. "all currency values stored as integer cents, not
-floats"; "the `posts` table is append-only"; "avoid adding new
-dependencies"; etc.)_
+- **Screenshot-state fixtures live behind `?scene=`** (`empty`,
+  `midcount`, `celebrate`, `grownups` — see `dapp.json`'s `tests`).
+  `public/app.js`'s `staticMode` branch renders these from hardcoded
+  data only (`buildStaticState()`) and never touches localStorage or
+  the server — keep it that way, since these routes are exempted from
+  the auth gate in `server.js` specifically because they carry no real
+  user data. Don't make `staticMode` read from the store or network.
+- **`?renderer=dom` forces the DOM/card fallback** (used by the
+  "No-WebGL fallback" test) even on a device that supports WebGL. It
+  shares the same `onTap(index)` contract and counting logic as the 3D
+  scene (`public/scene.js` vs `public/fallback.js`) — keep both
+  renderers behaviorally identical when changing counting logic.
+- **`server.js`'s catch-all auth gate exempts requests carrying a
+  `?scene=` query param** (`if (!req.user && !req.query.scene)`) so
+  the platform's screenshot/check pipeline — which cannot supply a
+  real signed platform token — can still reach the declared test
+  paths. The bare `/` route (real user progress) and all `/api/*`
+  routes remain fully gated. If you ever add a new screenshot-state
+  fixture parameter, extend this exemption deliberately and keep the
+  fixture side-effect-free, the same way `?scene=` is.
+- **`sheep_progress`** is a public table (per-user counters: current
+  herd size, best round, lifetime total, community total) — nothing
+  in it is sensitive. Staging seeds three demo rows with negative
+  `user_id`s and usernames prefixed "Staging demo — ..." so the
+  grown-ups panel's community total isn't zero in a fresh preview;
+  the seed never touches the visiting user's own row.
+- **The camera frames the flock, not the field.** `scene.js`'s
+  `fitCamera()` bisects the camera distance until every sheep (plus a
+  pad and the floating number plate height) projects inside the screen
+  area NOT covered by the count plate: below it in portrait, to its
+  right in landscape (CSS parks the plate top-left on short landscape
+  screens). `app.js` passes `getOverlayRect()` returning the plate's
+  DOMRect for this. Layout shape (`layoutRegion`) follows orientation,
+  and a portrait/landscape flip rebuilds the flock from the same seed;
+  a soft-keyboard resize only refits the camera. Don't hardcode camera
+  positions; herd sizes 1 to 10 must all stay fully visible at 390x844.
+- **Sheep are merged vertex-colored meshes** (`buildSheepBodyGeometry`,
+  `mergeColored` in `scene.js`; no `three/examples` imports). Only the
+  eyes, shadow, ribbon, number plate and pick sphere are separate
+  objects, so ten sheep stay under ~100 draw calls. Keep new sheep
+  detail inside the merge rather than adding per-sheep meshes.
+- **`NUMBER_COLORS` in `layout.js`** is the one pastel-per-number palette
+  used by the 3D ribbon/number plate and the DOM fallback badge. Both
+  renderers also expose an optional `celebrate()`; `app.js` calls it
+  when the celebration panel opens.
+- **User-facing copy carries no em dashes** (index.html and every string
+  the renderers write to the DOM). Comments may.
+- **`three` is a normal npm runtime dependency**, not a
+  platform-hosted asset like the bridge/native-kit/Tailwind runtime —
+  it's installed into the image and served from `/vendor/three` via
+  Express static, not vendored into git.
