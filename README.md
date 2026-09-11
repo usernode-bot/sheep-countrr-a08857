@@ -48,3 +48,16 @@ Run `npm ci`, `npm run build`, and `npm test`. Browser review fixtures:
 `/?scene=portrait` (one sheep), `/?scene=flock` (ten),
 `/?scene=midcount`, `/?scene=celebrate`, and `/?renderer=dom` (playable fallback).
 Fixtures never persist progress. Use `/` for normal play and round progression.
+
+## Bird’s-eye meadow
+
+The camera looks down at 60 degrees and always frames the entire roaming area.
+Sheep choose seeded destinations across that area, steer around each other and
+turn smoothly. Larger flocks change direction more often and trot a little
+faster; pauses and capped acceleration keep the pace gentle. Leg swings follow
+actual distance travelled. Counted sheep stop in place. Grass tufts, five-petal
+daisies, little stones, raised wool curls and wagging tails add quiet detail.
+
+Review `/?scene=birdseye`, `/?scene=roaming`, and `/?scene=still` (a non-persistent
+reduced-motion fixture). Normal play remains `/`. The non-WebGL fallback stays
+a stationary card grid for accessibility and lower-powered devices.

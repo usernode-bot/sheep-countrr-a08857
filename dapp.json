@@ -51,6 +51,22 @@
       "path": "/?scene=celebrate",
       "expectSelector": "#celebration",
       "expectText": "The meadow is resting."
+    },
+    {
+      "name": "Bird-eye meadow",
+      "path": "/?scene=birdseye",
+      "expectSelector": "canvas[data-camera=\"birdseye\"]",
+      "expectText": "Take your time."
+    },
+    {
+      "name": "Ten sheep roam across the meadow",
+      "path": "/?scene=roaming",
+      "expectSelector": "canvas[data-motion=\"roaming\"]"
+    },
+    {
+      "name": "Reduced-motion meadow holds still",
+      "path": "/?scene=still",
+      "expectSelector": "canvas[data-motion=\"still\"]"
     }
   ]
 }

@@ -11,7 +11,8 @@ const rendererParam = params.get('renderer');
 // touch localStorage or the server, in any environment.
 const staticMode = !!sceneParam;
 
-const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reducedMotion = sceneParam === 'still' || !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+document.documentElement.dataset.motion = reducedMotion ? 'still' : 'full';
 
 const NUMBER_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
 
@@ -67,6 +68,8 @@ let renderer = null;
 function buildStaticState() {
   const base = createDefaultState();
   base.seed = 42;
+  if (sceneParam === 'birdseye') return { ...base, herdSize: 5, seed: 47 };
+  if (sceneParam === 'roaming' || sceneParam === 'still') return { ...base, herdSize: 10, seed: 47 };
   if (sceneParam === 'flock') return { ...base, herdSize: 10, seed: 47 };
   if (sceneParam === 'portrait') return { ...base, herdSize: 1, seed: 42 };
   if (sceneParam === 'empty') return { ...base, herdSize: 5, count: 0, counted: [] };
