@@ -1,56 +1,85 @@
 {
   "name": "Sheep countrr",
   "icon": {
-    "emoji": "\ud83d\udc11"
+    "emoji": "🐑"
   },
   "secrets": [],
   "tests": [
     {
-      "name": "Pasture loads for a new child",
-      "path": "/?scene=empty",
-      "expectSelector": "#count-display",
-      "expectText": "0"
+      "id": "round.one",
+      "name": "Round 1 shows one still sheep",
+      "path": "/?round=1",
+      "expectSelector": "#a11y-sheep-list button:nth-child(1)",
+      "expectText": "Round 1",
+      "visual": true,
+      "impact": [
+        "public/**",
+        "server.js",
+        "dapp.json"
+      ]
     },
     {
-      "name": "Mid-count shows three",
+      "id": "round.chaotic",
+      "name": "Round 8 board renders a jittery flock",
+      "path": "/?round=8",
+      "expectSelector": "#a11y-sheep-list button:nth-child(11)",
+      "expectText": "Round 8",
+      "visual": true,
+      "impact": [
+        "public/rounds.js",
+        "public/movement.js",
+        "public/scene.js",
+        "public/fallback.js",
+        "public/app.js"
+      ]
+    },
+    {
+      "name": "Round 1 board draws on a canvas",
+      "path": "/?round=1",
+      "expectSelector": "canvas.sheep-canvas",
+      "expectText": "of 1 sheep"
+    },
+    {
+      "name": "Round 5 counts in with no sheep tapped",
+      "path": "/?round=5",
+      "expectSelector": "#count-display",
+      "expectText": "of 7 sheep"
+    },
+    {
+      "name": "Mid-count keeps the running tap count on screen",
       "path": "/?scene=midcount",
       "expectSelector": "#count-display",
-      "expectText": "3"
+      "expectText": "Round 5"
     },
     {
-      "name": "Celebration after last sheep",
-      "path": "/?scene=celebrate",
-      "expectSelector": "#celebration",
-      "expectText": "Count again"
+      "name": "Round complete message names the next flock",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete-title",
+      "expectText": "Round 4 counted."
     },
     {
-      "name": "Grown-ups panel",
+      "name": "Game over shows the round reached and a restart",
+      "path": "/?scene=gameover",
+      "expectSelector": "#restart-btn",
+      "expectText": "You reached round"
+    },
+    {
+      "name": "Grown-ups panel shows best round",
       "path": "/?scene=grownups",
       "expectSelector": "#grownups-panel",
-      "expectText": "Sound"
+      "expectText": "Best round"
     },
     {
-      "name": "No-WebGL fallback still counts",
-      "path": "/?scene=midcount&renderer=dom",
-      "expectSelector": ".sheep-card",
-      "expectText": "3"
+      "name": "No-WebGL fallback renders the same round",
+      "path": "/?round=8&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(11)",
+      "expectText": "Round 8"
     },
     {
-      "name": "Sleepy sheep portrait",
-      "path": "/?scene=portrait",
-      "expectSelector": ".sheep-canvas",
-      "expectText": "Take your time."
-    },
-    {
-      "name": "Larger wandering flock",
+      "name": "Largest flock still fits the board",
       "path": "/?scene=flock",
-      "expectSelector": "#a11y-sheep-list button:nth-child(10)"
-    },
-    {
-      "name": "Quiet bedtime completion",
-      "path": "/?scene=celebrate",
-      "expectSelector": "#celebration",
-      "expectText": "The meadow is resting."
+      "expectSelector": "#a11y-sheep-list button:nth-child(12)",
+      "expectText": "Round 9"
     }
   ]
 }

@@ -3,6 +3,8 @@
 // 3D scene: same tap contract (onTap(index)), same counted-badge numbers,
 // same pastel per number.
 import { NUMBER_COLORS } from './layout.js';
+import { wanderOffset } from './movement.js';
+import { motionForRound } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -66,6 +68,10 @@ const SHEEP_SVG = `
   </g>
 </svg>`;
 
+// World units are metres in the 3D pasture; here they are card-sized
+// nudges, so the same round profile reads as the same kind of restlessness.
+const PX_PER_UNIT = 22;
+
 export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   const field = document.createElement('div');
   field.className = 'sheep-fallback-field';
@@ -75,12 +81,18 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   container.appendChild(field);
 
   let cards = [];
+  let current = null;
+  let motion = motionForRound(1);
+  let rafId = null;
+  const startedAt = performance.now();
 
   function render(state) {
     grid.innerHTML = '';
     cards = [];
-    grid.dataset.size = String(state.herdSize);
-    for (let i = 0; i < state.herdSize; i++) {
+    current = state;
+    motion = motionForRound(state.round);
+    grid.dataset.size = String(state.sheepCount);
+    for (let i = 0; i < state.sheepCount; i++) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'sheep-card';
@@ -94,6 +106,31 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       cards.push(btn);
     }
     state.counted.forEach((idx, order) => markCounted(idx, order + 1, false));
+    startDrift();
+  }
+
+  // The cards drift with the same seeded motion the 3D flock uses, so a
+  // late round is just as hard to follow in either renderer. Offsets are
+  // left/top on an already-relative card, which leaves the tap animations
+  // on `transform` alone.
+  function startDrift() {
+    cancelAnimationFrame(rafId);
+    if (reducedMotion || !current || !(motion.radius > 0)) {
+      cards.forEach((btn) => { btn.style.left = '0px'; btn.style.top = '0px'; });
+      return;
+    }
+    const step = () => {
+      rafId = requestAnimationFrame(step);
+      const t = (performance.now() - startedAt) / 1000;
+      for (let i = 0; i < cards.length; i++) {
+        const btn = cards[i];
+        if (btn.classList.contains('is-counted')) continue;
+        const offset = wanderOffset(current.seed, i, cards.length, t, motion);
+        btn.style.left = `${(offset.x * PX_PER_UNIT).toFixed(1)}px`;
+        btn.style.top = `${(offset.z * PX_PER_UNIT * 0.6).toFixed(1)}px`;
+      }
+    };
+    rafId = requestAnimationFrame(step);
   }
 
   function markCounted(index, number, animate = true) {
@@ -101,6 +138,8 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     if (!btn) return;
     const color = NUMBER_COLORS[(number - 1) % NUMBER_COLORS.length];
     btn.classList.add('is-counted');
+    btn.style.left = '0px';
+    btn.style.top = '0px';
     btn.style.setProperty('--ribbon', color);
     const badge = btn.querySelector('.sheep-card-badge');
     badge.hidden = false;
@@ -157,6 +196,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       render(state);
     },
     destroy() {
+      cancelAnimationFrame(rafId);
       field.remove();
     },
   };

@@ -176,6 +176,53 @@
       100% { transform: scale(1); }
     }
 
+
+    /* ---- Round pill: which round is being played, always on screen ---- */
+    .round-pill {
+      padding: 0.3rem 1.15rem;
+      border-radius: 9999px;
+      background: rgba(255, 250, 242, 0.92);
+      border: 3px solid var(--pink-soft);
+      font-size: 1rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--plum);
+      box-shadow: 0 6px 16px rgba(90, 60, 120, 0.16);
+    }
+
+    /* ---- Bottom action bar ---- */
+    #action-bar {
+      pointer-events: none;
+      padding-bottom: calc(var(--safe-bottom) + 14px);
+      padding-left: calc(var(--safe-left) + 12px);
+      padding-right: calc(var(--safe-right) + 12px);
+    }
+    #play-hint {
+      margin: 0;
+      text-align: center;
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--plum);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+    .submit-btn {
+      pointer-events: auto;
+      min-height: 3.75rem;
+      min-width: 13rem;
+      padding: 0.8rem 2.2rem;
+      border-radius: 9999px;
+      background: var(--pink);
+      color: #fff;
+      font-size: 1.35rem;
+      font-weight: 900;
+      letter-spacing: 0.01em;
+      box-shadow: 0 6px 0 #e35d8a, 0 12px 22px rgba(255, 127, 167, 0.3);
+      touch-action: manipulation;
+    }
+    .submit-btn:active { transform: translateY(5px); box-shadow: 0 2px 0 #e35d8a; }
+    .submit-btn[disabled] { opacity: 0.5; box-shadow: none; transform: none; }
+
     /* ---- Grown-ups corner button: big target, quiet look ---- */
     #grownups-btn {
       top: calc(var(--safe-top) + 10px);
@@ -345,7 +392,7 @@
       align-content: center;
       justify-items: center;
       gap: 16px 12px;
-      padding: calc(var(--safe-top) + 170px) calc(var(--safe-right) + 18px) calc(var(--safe-bottom) + 28px) calc(var(--safe-left) + 18px);
+      padding: calc(var(--safe-top) + 170px) calc(var(--safe-right) + 18px) calc(var(--safe-bottom) + 140px) calc(var(--safe-left) + 18px);
     }
     .sheep-fallback-grid[data-size="1"],
     .sheep-fallback-grid[data-size="2"] { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
@@ -421,6 +468,10 @@
       #count-display { font-size: 3.2rem; }
       #count-word { font-size: 0.85rem; }
       .sheep-fallback-grid { padding-top: calc(var(--safe-top) + 24px); padding-left: calc(var(--safe-left) + 140px); }
+      .round-pill { font-size: 0.8rem; padding: 0.2rem 0.85rem; }
+      #action-bar { padding-bottom: calc(var(--safe-bottom) + 6px); gap: 0.25rem; }
+      #play-hint { font-size: 0.85rem; }
+      .submit-btn { min-height: 3rem; min-width: 11rem; font-size: 1.1rem; padding: 0.55rem 1.6rem; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -447,7 +498,10 @@
     #count-display { font-size: 3.5rem; font-weight: 600; text-shadow: none; }
     #count-word { font-weight: 500; letter-spacing: .02em; text-transform: none; }
     #grownups-btn { color: #e3e3e9; background: #303d4b9e; box-shadow: none; }
-    #bedtime-hint { position: absolute; bottom: calc(var(--safe-bottom) + 18px); left: 12px; right: 12px; margin: 0; text-align: center; color: #f5f0e6; font-size: 1rem; pointer-events: none; text-shadow: 0 1px 4px #283448; }
+    #play-hint { color: #f5f0e6; font-weight: 500; text-shadow: 0 1px 4px #283448; }
+    .round-pill { background: #303d4bea; border: 1px solid #ffffff26; color: #f0e9de; font-weight: 600; letter-spacing: .04em; text-transform: none; box-shadow: none; }
+    .submit-btn { background: #c9c0d4; color: #2c3545; font-weight: 600; box-shadow: none; }
+    .submit-btn:active { transform: translateY(2px); box-shadow: none; }
     .panel-backdrop { background: #202b3bb8; }
     .panel-card { background: var(--cream); border: 1px solid #ffffff26; box-shadow: none; }
     .panel-pop { animation: panel-rest .8s ease-out; }
@@ -472,9 +526,9 @@
     .sheep-card.is-counted { background: #ffffff15; border-color: #b7afc5; }
     .is-counted .sheep-eyes { animation: none; transform: scaleY(.14); }
     .sheep-card-badge { box-shadow: none; }
-    #a11y-sheep-list:focus-within { clip: auto; width: auto; height: auto; inset: auto 12px 52px; white-space: normal; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #303d4b; border-radius: 16px; }
+    #a11y-sheep-list:focus-within { clip: auto; width: auto; height: auto; inset: auto 12px 132px; white-space: normal; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #303d4b; border-radius: 16px; }
     #a11y-sheep-list button { min-height: 48px; padding: 8px; }
-    @media (max-height: 520px) { #bedtime-hint { bottom: 6px; font-size: .875rem; } }
+    @media (max-height: 520px) { #play-hint { font-size: .875rem; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
   </style>
 </head>
@@ -484,45 +538,64 @@
     <!-- The 3D pasture (or the card fallback) fills the screen. -->
     <div id="scene-root" class="absolute inset-0"></div>
 
-    <!-- Big readable count, top center, inside the safe area. -->
-    <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex justify-center">
+    <!-- Round and running tap count, on screen at all times. -->
+    <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex flex-col items-center gap-2">
+      <div id="round-badge" class="round-pill">Round 1</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
         <span id="count-display">0</span>
-        <span id="count-word">Zero</span>
+        <span id="count-word">of 1 sheep</span>
       </div>
     </div>
-
-    <p id="bedtime-hint">Count a sheep. Take your time.</p>
 
     <!-- Small, deliberately quiet corner control for grown-ups. A quick tap
          does nothing; only a ~1.5s press-and-hold opens the panel, so a
          curious child mashing the screen can't get in. -->
     <button id="grownups-btn" type="button" class="absolute"
       aria-label="Grown-ups: press and hold to open settings">
-      ⚙
+      &#9881;
     </button>
 
     <!-- Hidden accessible mirror of every sheep, for keyboard/screen-reader use. -->
     <div id="a11y-sheep-list" class="visually-hidden"></div>
 
-    <!-- Celebration panel, shown once every sheep in the round is counted. -->
-    <div id="celebration" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
-      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-5">
-        <p class="bedtime-eyebrow">A little closer to dreamland</p>
-        <p class="bedtime-message">The meadow is resting.</p>
-        <p class="celebration-title">You counted <span id="celebration-total" class="celebration-total">5</span> sheep.</p>
-        <button id="count-again-btn" type="button" class="big-btn">
-          Count again
+    <!-- Bottom action bar: the hint, and the button that ends the round. -->
+    <div id="action-bar" class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2">
+      <p id="play-hint">Tap every sheep.</p>
+      <button id="submit-count" type="button" class="submit-btn">
+        Done counting
+      </button>
+    </div>
+
+    <!-- Round passed: a short message, then on to a bigger, faster flock. -->
+    <div id="round-complete" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+        <p class="celebration-sheep" aria-hidden="true"><span>&#128017;</span><span>&#128017;</span><span>&#128017;</span></p>
+        <p id="round-complete-title" class="celebration-title">Round 1 counted.</p>
+        <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
+        <button id="next-round-btn" type="button" class="big-btn">
+          Next round
         </button>
       </div>
     </div>
 
-    <!-- Grown-ups panel: sound toggle, herd size, reset, progress. -->
+    <!-- Run over: how far the player got, and a way back to round 1. -->
+    <div id="game-over" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+        <p class="bedtime-eyebrow">The flock scattered</p>
+        <p id="game-over-reason" class="bedtime-message">Some sheep were left uncounted.</p>
+        <p class="celebration-title">You reached round <span id="game-over-round" class="celebration-total">1</span>.</p>
+        <button id="restart-btn" type="button" class="big-btn">
+          Start again
+        </button>
+      </div>
+    </div>
+
+    <!-- Grown-ups panel: sound toggle, progress, start a fresh run. -->
     <div id="grownups-panel" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-6 flex flex-col gap-4">
         <div class="flex items-center justify-between">
           <h2 class="text-2xl font-black">Grown-ups</h2>
-          <button id="grownups-close" type="button" class="w-12 h-12 rounded-full bg-white shadow-sm text-xl font-black flex items-center justify-center" aria-label="Close">✕</button>
+          <button id="grownups-close" type="button" class="w-12 h-12 rounded-full bg-white shadow-sm text-xl font-black flex items-center justify-center" aria-label="Close">&#10005;</button>
         </div>
 
         <label class="setting-row">
@@ -530,30 +603,15 @@
           <input id="sound-toggle" type="checkbox">
         </label>
 
-        <label class="setting-row">
-          <span>How many sheep</span>
-          <select id="herd-size-input">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-            <option value="6">6</option>
-            <option value="7">7</option>
-            <option value="8">8</option>
-            <option value="9">9</option>
-            <option value="10">10</option>
-          </select>
-        </label>
-
         <div class="stats-card">
-          <div class="flex justify-between"><span>Best round</span><span id="best-value" class="stat-value">0</span></div>
+          <div class="flex justify-between"><span>This round</span><span id="round-value" class="stat-value">1</span></div>
+          <div class="flex justify-between"><span>Best round</span><span id="best-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="stat-value">0</span></div>
           <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="stat-value">0</span></div>
         </div>
 
         <button id="start-over-btn" type="button" class="soft-btn">
-          Start over
+          Start over at round 1
         </button>
       </div>
     </div>
