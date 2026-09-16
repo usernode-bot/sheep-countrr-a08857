@@ -32,6 +32,18 @@ const COLORS = {
   fog: '#a1afb8',
 };
 
+// One plush fleece color per sheep, repeating across bigger flocks. The
+// face stays the same warm tan on every sheep so they all still read as
+// the same little animal, just in different pajamas.
+const FLEECES = [
+  { wool: '#f4eadb', woolLight: '#fff8ed', woolShade: '#e5d7c5' },
+  { wool: '#ded4f7', woolLight: '#f1ecff', woolShade: '#c4b7ea' },
+  { wool: '#f9d9e4', woolLight: '#feeef4', woolShade: '#e8bccc' },
+  { wool: '#d5ecdd', woolLight: '#ecf9f1', woolShade: '#b4d6c1' },
+  { wool: '#d7e8f7', woolLight: '#ecf5ff', woolShade: '#b7d0e8' },
+  { wool: '#f8ecc9', woolLight: '#fdf6e0', woolShade: '#e3d2a4' },
+];
+
 const FONT = '800 150px "Nunito", ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Segoe UI", system-ui, sans-serif';
 
 function seededRand(seed, salt) {
@@ -226,7 +238,7 @@ function buildDotTexture() {
 // ---------------------------------------------------------------------------
 // Sheep geometry. Built once per variant, then shared by every sheep.
 
-export function buildSheepBodyGeometry(variant) {
+export function buildSheepBodyGeometry(variant, fleece = FLEECES[0]) {
   const sphere = new THREE.SphereGeometry(1, 16, 12);
   const smile = new THREE.TorusGeometry(0.048, 0.009, 6, 16, Math.PI);
   const curl = new THREE.TorusGeometry(0.065, 0.025, 6, 14, Math.PI * 1.65);
@@ -235,7 +247,7 @@ export function buildSheepBodyGeometry(variant) {
     parts.push({ geo: sphere, color, matrix: placeMatrix(x, y, z, sx, sy, sz, 0, 0, rz) });
   // A soft pear-shaped silhouette, with overlapping wool locks rather
   // than an exposed smooth ball. All locks share a single draw call.
-  add(COLORS.woolShade, 0, 0.64, -0.05, 0.51, 0.49, 0.5);
+  add(fleece.woolShade, 0, 0.64, -0.05, 0.51, 0.49, 0.5);
   for (let row = 0; row < 5; row++) {
     const latitude = -0.9 + row * 0.46;
     const radius = Math.cos(latitude);
@@ -247,9 +259,9 @@ export function buildSheepBodyGeometry(variant) {
       const z = Math.sin(angle) * radius * 0.44 - 0.07;
       const y = 0.65 + Math.sin(latitude) * 0.41;
       const size = 0.155 + wobble * 0.045;
-      add(i % 4 === 0 ? COLORS.woolLight : COLORS.wool, x, y, z, size, size * 1.08, size);
+      add(i % 4 === 0 ? fleece.woolLight : fleece.wool, x, y, z, size, size * 1.08, size);
       if (row > 1 && i % 3 === 0 && z > 0) {
-        parts.push({ geo: curl, color: COLORS.woolShade,
+        parts.push({ geo: curl, color: fleece.woolShade,
           matrix: placeMatrix(x, y, z + size * 0.88, 0.65, 0.65, 0.45, 0, 0, angle) });
       }
     }
@@ -259,7 +271,7 @@ export function buildSheepBodyGeometry(variant) {
     add(COLORS.leg, x, 0.18, z, 0.085, 0.15, 0.085);
     add(COLORS.hoof, x, 0.065, z + 0.025, 0.1, 0.065, 0.12);
   }
-  add(COLORS.wool, 0, 0.65, -0.63, 0.16, 0.15, 0.2);
+  add(fleece.wool, 0, 0.65, -0.63, 0.16, 0.15, 0.2);
   // Oversized forehead, small plush muzzle and low, wide-set eyes.
   add(COLORS.face, 0, 0.84, 0.48, 0.31, 0.3, 0.25);
   add('#dcc1a9', 0, 0.72, 0.685, 0.21, 0.13, 0.11);
@@ -270,7 +282,7 @@ export function buildSheepBodyGeometry(variant) {
   }
   [[-0.2, 1.045, 0.5, 0.12], [-0.08, 1.11, 0.49, 0.145],
     [0.08, 1.1, 0.48, 0.13], [0.21, 1.03, 0.5, 0.105]].forEach(([x,y,z,r]) =>
-      add(COLORS.woolLight, x,y,z,r));
+      add(fleece.woolLight, x,y,z,r));
   parts.push({ geo: curl, color: COLORS.woolShade,
     matrix: placeMatrix(-0.06, 1.115, 0.628, 0.7, 0.7, 0.5, 0, 0, 0.3 + variant * 0.2) });
   add(COLORS.mouth, 0, 0.758, 0.8, 0.033, 0.021, 0.018);
@@ -576,7 +588,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const butterflies = [];
 
   // Shared sheep assets.
-  const bodyGeos = [0, 1, 2].map(buildSheepBodyGeometry);
+  const bodyGeos = FLEECES.map((fleece, i) => buildSheepBodyGeometry(i % 3, fleece));
   const eyeGeo = buildEyeGeometry();
   const ribbonGeo = buildRibbonGeometry();
   const sheepMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0 });
