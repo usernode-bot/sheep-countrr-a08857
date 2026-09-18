@@ -69,6 +69,7 @@ function buildStaticState() {
   const base = createDefaultState();
   base.seed = 42;
   if (sceneParam === 'birdseye') return { ...base, herdSize: 5, seed: 47 };
+  if (sceneParam === 'trio') return { ...base, herdSize: 3, seed: 47 };
   if (sceneParam === 'roaming' || sceneParam === 'still') return { ...base, herdSize: 10, seed: 47 };
   if (sceneParam === 'flock') return { ...base, herdSize: 10, seed: 47 };
   if (sceneParam === 'portrait') return { ...base, herdSize: 1, seed: 42 };

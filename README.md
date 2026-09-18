@@ -58,6 +58,15 @@ faster; pauses and capped acceleration keep the pace gentle. Leg swings follow
 actual distance travelled. Counted sheep stop in place. Grass tufts, five-petal
 daisies, little stones, raised wool curls and wagging tails add quiet detail.
 
-Review `/?scene=birdseye`, `/?scene=roaming`, and `/?scene=still` (a non-persistent
+Review `/?scene=trio` (a small roaming flock), `/?scene=roaming` (ten sheep),
+`/?scene=birdseye` (bird's-eye detail) and `/?scene=still` (a non-persistent
 reduced-motion fixture). Normal play remains `/`. The non-WebGL fallback stays
 a stationary card grid for accessibility and lower-powered devices.
+
+`npm test` covers the parts that have no pixels: seeded determinism at any
+frame rate, field coverage, boundary and separation limits, speed and turn
+caps, tuning that grows with the flock, counted sheep stopping and keeping
+their numbers, a field that never ticks staying put, camera coverage in
+portrait and landscape at phone and desktop sizes, pointer selection after
+minutes of movement, and the DOM fallback numbering sheep exactly like the
+3D pasture.

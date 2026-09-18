@@ -1,7 +1,7 @@
 {
   "name": "Sheep countrr",
   "icon": {
-    "emoji": "\ud83d\udc11"
+    "emoji": "🐑"
   },
   "secrets": [],
   "tests": [
@@ -56,7 +56,22 @@
       "name": "Bird-eye meadow",
       "path": "/?scene=birdseye",
       "expectSelector": "canvas[data-camera=\"birdseye\"]",
-      "expectText": "Take your time."
+      "expectText": "Take your time.",
+      "id": "meadow.birdseye",
+      "visual": true,
+      "impact": [
+        "public/scene.js",
+        "public/camera.js",
+        "public/movement.js",
+        "public/layout.js",
+        "public/app.js",
+        "public/index.html"
+      ]
+    },
+    {
+      "name": "Small flock roams the meadow",
+      "path": "/?scene=trio",
+      "expectSelector": "#a11y-sheep-list button:nth-child(3):last-child"
     },
     {
       "name": "Ten sheep roam across the meadow",

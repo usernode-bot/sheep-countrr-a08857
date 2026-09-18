@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { StateStore } from '../public/state.js';
 import { createRoamingFlock, roamingTuning } from '../public/movement.js';
-import { layoutPositions } from '../public/layout.js';
+import { layoutPositions, NUMBER_COLORS } from '../public/layout.js';
 import { fitBirdCamera, meadowRegion, BIRD_ELEVATION } from '../public/camera.js';
 import * as THREE from 'three';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
@@ -107,3 +107,135 @@ test('all plush sheep variants have finite geometry and stay inside the picking 
     geo.dispose();
   }
 });
+
+test('a field that never ticks stays exactly where it was laid out', () => {
+  // Reduced motion never calls update(); a stray zero/invalid frame must be
+  // just as inert, so the stationary meadow can never drift.
+  const { simulation, positions } = makeFlock(47, 6);
+  for (const dt of [0, -1 / 60, NaN, undefined]) simulation.update(dt);
+  simulation.agents.forEach((s, i) => {
+    assert.equal(s.x, positions[i].x);
+    assert.equal(s.z, positions[i].z);
+    assert.equal(s.distance, 0);
+  });
+});
+
+test('every roaming sheep stays separately tappable after minutes of movement', () => {
+  const count = 10;
+  const { simulation, region } = makeFlock(47, count);
+  const camera = new THREE.PerspectiveCamera();
+  fitBirdCamera(camera, { width: 390, height: 844, region, overlay: { bottom: 150, right: 0 } });
+  const picks = simulation.agents.map(() =>
+    new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 6), new THREE.MeshBasicMaterial()));
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  for (let frame = 0; frame < 60 * 60 * 3; frame++) {
+    simulation.update(1 / 60);
+    if (frame % 600) continue;
+    picks.forEach((pick, i) => {
+      // Same envelope scene.js gives each sheep: a sphere at chest height.
+      pick.position.set(simulation.agents[i].x, 0.62, simulation.agents[i].z);
+      pick.updateMatrixWorld(true);
+    });
+    picks.forEach((pick, i) => {
+      const screen = pick.position.clone().project(camera);
+      assert.ok(Math.abs(screen.x) <= 1 && Math.abs(screen.y) <= 1, 'sheep tapped off-screen');
+      pointer.set(screen.x, screen.y);
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(picks, false);
+      assert.ok(hits.length, `sheep ${i} has no pick target at frame ${frame}`);
+      // scene.js counts hits[0]; aiming at a sheep must never count another.
+      assert.equal(picks.indexOf(hits[0].object), i, `tap on sheep ${i} would count another`);
+    });
+  }
+  picks.forEach((p) => { p.geometry.dispose(); p.material.dispose(); });
+});
+
+test('counted sheep keep their number and cannot be counted twice', () => {
+  const store = new StateStore({ staticMode: true });
+  store.setHerdSize(5);
+  const numbers = new Map();
+  [3, 0, 4].forEach((idx) => numbers.set(idx, store.countSheep(idx)));
+  assert.deepEqual([...numbers.values()], [1, 2, 3]);
+  // Re-tapping a counted sheep is a no-op; the badge it already wears stands.
+  for (const idx of numbers.keys()) assert.equal(store.countSheep(idx), null);
+  for (const [idx, number] of numbers) {
+    assert.equal(store.state.counted.indexOf(idx) + 1, number);
+    assert.equal(NUMBER_COLORS[(number - 1) % NUMBER_COLORS.length], NUMBER_COLORS[number - 1]);
+  }
+  assert.equal(store.state.count, 3);
+});
+
+test('the DOM fallback numbers and colors sheep exactly like the 3D pasture', async () => {
+  const dom = installMinimalDom();
+  try {
+    const { createFallbackRenderer } = await import('../public/fallback.js');
+    const container = dom.createElement('div');
+    const tapped = [];
+    const renderer = createFallbackRenderer({ container, onTap: (i) => tapped.push(i), reducedMotion: false });
+    const store = new StateStore({ staticMode: true });
+    store.setHerdSize(4);
+    renderer.setState(store.state);
+
+    const cards = dom.findAll(container, (el) => el.className === 'sheep-card');
+    assert.equal(cards.length, 4);
+    cards[2].listeners.click.forEach((fn) => fn());
+    assert.deepEqual(tapped, [2]);
+
+    [2, 0].forEach((idx) => renderer.countSheep(idx, store.countSheep(idx)));
+    const badge = (card) => dom.findAll(card, (el) => el.className === 'sheep-card-badge')[0];
+    assert.equal(badge(cards[2]).textContent, '1');
+    assert.equal(badge(cards[0]).textContent, '2');
+    assert.equal(cards[2].style.props['--ribbon'], NUMBER_COLORS[0]);
+    assert.equal(cards[0].style.props['--ribbon'], NUMBER_COLORS[1]);
+    assert.ok(cards[2].classes.has('is-counted') && !cards[1].classes.has('is-counted'));
+    assert.equal(badge(cards[1]).hidden, true);
+  } finally {
+    dom.restore();
+  }
+});
+
+// A pocket-sized stand-in for the handful of DOM calls fallback.js makes,
+// so the card renderer is covered without pulling in a browser environment.
+function installMinimalDom() {
+  const previous = globalThis.document;
+  const parse = (html, make) => {
+    // fallback.js only ever injects its fixed SVG plus one badge span.
+    const out = [];
+    for (const match of html.matchAll(/<span class="([^"]+)"([^>]*)>/g)) {
+      const el = make('span');
+      el.className = match[1];
+      el.hidden = /\bhidden\b/.test(match[2]);
+      out.push(el);
+    }
+    return out;
+  };
+  const createElement = (tag) => {
+    const el = {
+      tagName: tag, className: '', textContent: '', hidden: false, tabIndex: 0,
+      children: [], dataset: {}, attributes: {}, listeners: {},
+      classes: new Set(), style: { props: {}, setProperty(k, v) { this.props[k] = v; } },
+      classList: { add: (c) => el.classes.add(c), remove: (c) => el.classes.delete(c) },
+      appendChild(child) { this.children.push(child); return child; },
+      setAttribute(k, v) { this.attributes[k] = v; },
+      addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
+      remove() {},
+      set innerHTML(html) { this.children = html ? parse(html, createElement) : []; },
+      get innerHTML() { return ''; },
+      querySelector(selector) {
+        return findAll(this, (node) => node.className === selector.replace('.', ''))[0] || null;
+      },
+    };
+    return el;
+  };
+  const findAll = (root, predicate) => root.children.flatMap(
+    (child) => (predicate(child) ? [child] : []).concat(findAll(child, predicate)));
+  globalThis.document = { createElement };
+  return {
+    createElement, findAll,
+    restore() {
+      if (previous === undefined) delete globalThis.document;
+      else globalThis.document = previous;
+    },
+  };
+}
