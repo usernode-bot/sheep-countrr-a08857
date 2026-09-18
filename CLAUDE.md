@@ -60,43 +60,72 @@ tables you've marked private), etc.
 
 ## About Sheep countrr
 
-A tap-to-count game for very young children: a 3D pasture of
-procedurally-built sheep (Three.js), rendered full-screen. Tapping an
-uncounted sheep counts it and bumps a big readable number badge; once
-every sheep in the round is counted, a short celebration plays. Sound
-is off by default (taps always vibrate); a grown-up reaches settings
-(sound, flock size, progress, start over) only via a ~1.5s
+A round-based tap-to-count game for young children. Round 1 is one
+stationary sheep; each completed round adds roughly one or two more and
+raises the movement speed and randomness, so remembering which sheep you
+already counted is the difficulty. Tapping an uncounted sheep counts it
+and marks it permanently (numbered ribbon, eyes closed, motion stopped);
+tapping a counted sheep, or submitting a short count, ends the run and
+shows the round reached with a restart button. Sound is off by default; a
+grown-up reaches settings (sound, progress, start over) only via a ~1.5s
 press-and-hold on the corner gear icon, so a child mashing the screen
-can't wander in. See `README.md` for the full feature description.
+cannot wander in. See `README.md` for the full feature description.
 
 ## App-specific conventions
 
-- **Screenshot-state fixtures live behind `?scene=`** (`empty`,
-  `midcount`, `celebrate`, `grownups` — see `dapp.json`'s `tests`).
-  `public/app.js`'s `staticMode` branch renders these from hardcoded
-  data only (`buildStaticState()`) and never touches localStorage or
-  the server — keep it that way, since these routes are exempted from
-  the auth gate in `server.js` specifically because they carry no real
-  user data. Don't make `staticMode` read from the store or network.
+- **The round difficulty curve lives in `public/rounds.js`** and nowhere
+  else: `sheepForRound`, `motionForRound`, `roundSeed` and `roamRadius`
+  are pure functions of the round number, which is what makes `/?round=N`
+  reproducible and lets `tests/game.test.mjs` assert the escalation
+  without a browser. Tune difficulty there rather than in a renderer.
+  `roamRadius(round)` must stay a genuine upper bound on
+  `wanderOffset`'s vector magnitude — `scene.js` pads the camera by it,
+  so an under-estimate lets a late-round sheep wander off screen. The
+  test sweeps it; don't relax that assertion to make a tweak pass.
+- **`/?round=N` is a playable deep link, not a frozen fixture.** It
+  starts a real run at that round from the round's fixed seed, but the
+  store is constructed `ephemeral` + `deterministic`, so it never reads
+  or writes localStorage or the server. That is what lets it share the
+  auth exemption with `?scene=`; keep it side-effect-free.
+- **Frozen screenshot fixtures live behind `?scene=`** (`portrait`,
+  `empty`, `midcount`, `roundcomplete`, `gameover`, `grownups`, `flock`
+  — see `dapp.json`'s `tests`). `public/app.js`'s `staticMode` branch
+  renders these from hardcoded data only (`buildStaticState()`) and never
+  touches localStorage or the server — keep it that way, since these
+  routes are exempted from the auth gate in `server.js` specifically
+  because they carry no real user data. Don't make `staticMode` read from
+  the store or network. `staticMode` also suppresses the round-complete
+  auto-advance timer, so `?scene=roundcomplete` holds still long enough
+  to photograph.
 - **`?renderer=dom` forces the DOM/card fallback** (used by the
   "No-WebGL fallback" test) even on a device that supports WebGL. It
   shares the same `onTap(index)` contract and counting logic as the 3D
   scene (`public/scene.js` vs `public/fallback.js`) — keep both
   renderers behaviorally identical when changing counting logic.
 - **`server.js`'s catch-all auth gate exempts requests carrying a
-  `?scene=` query param** (`if (!req.user && !req.query.scene)`) so
+  `?scene=` or `?round=` query param**
+  (`if (!req.user && !req.query.scene && !req.query.round)`) so
   the platform's screenshot/check pipeline — which cannot supply a
   real signed platform token — can still reach the declared test
   paths. The bare `/` route (real user progress) and all `/api/*`
   routes remain fully gated. If you ever add a new screenshot-state
   fixture parameter, extend this exemption deliberately and keep the
   fixture side-effect-free, the same way `?scene=` is.
-- **`sheep_progress`** is a public table (per-user counters: current
-  herd size, best round, lifetime total, community total) — nothing
-  in it is sensitive. Staging seeds three demo rows with negative
-  `user_id`s and usernames prefixed "Staging demo — ..." so the
-  grown-ups panel's community total isn't zero in a fresh preview;
-  the seed never touches the visiting user's own row.
+- **`sheep_progress`** is a public table (per-user counters: which round
+  to start on, best round reached, lifetime total) — nothing in it is
+  sensitive. Only run-spanning values are stored: a half-counted round is
+  deliberately never persisted, because resuming into taps the player
+  does not remember making would end the run on the next tap. The
+  `herd_size` / `count` / `counted` / `best` columns predate rounds and
+  are no longer read; `best_round` is added by an idempotent
+  `ADD COLUMN IF NOT EXISTS`. `POST /api/state` takes
+  `{ round, bestRound, newTaps, soundOn }` and bounds every value
+  server-side, `newTaps` being a delta so one request can't inflate the
+  community total. Staging seeds three demo rows with negative
+  `user_id`s and usernames prefixed "Staging demo: ..." so the grown-ups
+  panel's community total isn't zero in a fresh preview; the seed never
+  touches the visiting user's own row, and never fabricates a signal the
+  app's own logic reads.
 - **The camera frames the flock, not the field.** `scene.js`'s
   `fitCamera()` bisects the camera distance until every sheep (plus a
   pad and the floating number plate height) projects inside the screen
@@ -106,16 +135,25 @@ can't wander in. See `README.md` for the full feature description.
   DOMRect for this. Layout shape (`layoutRegion`) follows orientation,
   and a portrait/landscape flip rebuilds the flock from the same seed;
   a soft-keyboard resize only refits the camera. Don't hardcode camera
-  positions; herd sizes 1 to 10 must all stay fully visible at 390x844.
+  positions; every round's flock (1 up to MAX_SHEEP = 12 sheep, plus the
+  round's `roamRadius` pad) must stay fully visible at 390x844.
+  `getBottomOverlayRect()` passes the Done-button bar the same way, so
+  the flock is framed between the count plate and the submit button
+  rather than underneath either.
 - **Sheep are merged vertex-colored meshes** (`buildSheepBodyGeometry`,
   `mergeColored` in `scene.js`; no `three/examples` imports). Only the
   eyes, shadow, ribbon, number plate and pick sphere are separate
-  objects, so ten sheep stay under ~100 draw calls. Keep new sheep
+  objects, so a full flock of twelve stays under ~100 draw calls. Keep new sheep
   detail inside the merge rather than adding per-sheep meshes.
+- **Both renderers animate from the same `wanderOffset`.** `scene.js`
+  moves sheep in world units; `fallback.js` applies the same offsets as
+  `left`/`top` on the already-relative cards, deliberately leaving
+  `transform` to the tap and wiggle animations. A counted sheep snaps
+  back to its home spot and stops moving in both.
 - **`NUMBER_COLORS` in `layout.js`** is the one pastel-per-number palette
   used by the 3D ribbon/number plate and the DOM fallback badge. Both
   renderers also expose an optional `celebrate()`; `app.js` calls it
-  when the celebration panel opens.
+  when a round is passed.
 - **User-facing copy carries no em dashes** (index.html and every string
   the renderers write to the DOM). Comments may.
 - **`three` is a normal npm runtime dependency**, not a

@@ -3,6 +3,8 @@
 // 3D scene: same tap contract (onTap(index)), same counted-badge numbers,
 // same pastel per number.
 import { NUMBER_COLORS } from './layout.js';
+import { wanderOffset } from './movement.js';
+import { motionForRound } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -21,15 +23,15 @@ const SHEEP_SVG = `
     <rect x="62" y="100" width="10" height="7" rx="3.5"/>
     <rect x="78" y="98" width="10" height="7" rx="3.5"/>
   </g>
-  <g fill="#fdf8f1">
+  <g fill="var(--fleece, #fdf8f1)">
     <circle cx="60" cy="62" r="30"/>
-    <circle cx="36" cy="60" r="16" fill="#ffffff"/>
-    <circle cx="84" cy="60" r="16" fill="#ffffff"/>
+    <circle cx="36" cy="60" r="16" fill="var(--fleece-light, #ffffff)"/>
+    <circle cx="84" cy="60" r="16" fill="var(--fleece-light, #ffffff)"/>
     <circle cx="44" cy="42" r="15"/>
     <circle cx="76" cy="42" r="15"/>
-    <circle cx="60" cy="36" r="16" fill="#ffffff"/>
-    <circle cx="40" cy="78" r="14" fill="#f3e9dc"/>
-    <circle cx="80" cy="78" r="14" fill="#f3e9dc"/>
+    <circle cx="60" cy="36" r="16" fill="var(--fleece-light, #ffffff)"/>
+    <circle cx="40" cy="78" r="14" fill="var(--fleece-shade, #f3e9dc)"/>
+    <circle cx="80" cy="78" r="14" fill="var(--fleece-shade, #f3e9dc)"/>
     <circle cx="60" cy="84" r="16"/>
   </g>
   <ellipse cx="30" cy="56" rx="9" ry="5" fill="#f7d5bf" transform="rotate(-25 30 56)"/>
@@ -66,6 +68,21 @@ const SHEEP_SVG = `
   </g>
 </svg>`;
 
+// World units are metres in the 3D pasture; here they are card-sized
+// nudges, so the same round profile reads as the same kind of restlessness.
+const PX_PER_UNIT = 22;
+
+// Same pastel palette the 3D renderer uses, so a sheep looks like itself
+// whichever way the device draws it.
+const FLEECES = [
+  { fleece: '#f4eadb', 'fleece-light': '#fff8ed', 'fleece-shade': '#e5d7c5' },
+  { fleece: '#ded4f7', 'fleece-light': '#f1ecff', 'fleece-shade': '#c4b7ea' },
+  { fleece: '#f9d9e4', 'fleece-light': '#feeef4', 'fleece-shade': '#e8bccc' },
+  { fleece: '#d5ecdd', 'fleece-light': '#ecf9f1', 'fleece-shade': '#b4d6c1' },
+  { fleece: '#d7e8f7', 'fleece-light': '#ecf5ff', 'fleece-shade': '#b7d0e8' },
+  { fleece: '#f8ecc9', 'fleece-light': '#fdf6e0', 'fleece-shade': '#e3d2a4' },
+];
+
 export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   const field = document.createElement('div');
   field.className = 'sheep-fallback-field';
@@ -75,12 +92,18 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   container.appendChild(field);
 
   let cards = [];
+  let current = null;
+  let motion = motionForRound(1);
+  let rafId = null;
+  const startedAt = performance.now();
 
   function render(state) {
     grid.innerHTML = '';
     cards = [];
-    grid.dataset.size = String(state.herdSize);
-    for (let i = 0; i < state.herdSize; i++) {
+    current = state;
+    motion = motionForRound(state.round);
+    grid.dataset.size = String(state.sheepCount);
+    for (let i = 0; i < state.sheepCount; i++) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'sheep-card';
@@ -88,12 +111,40 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       btn.tabIndex = -1;
       btn.dataset.index = String(i);
       btn.style.setProperty('--bob-delay', `${(i * 0.37) % 2.2}s`);
+      for (const [name, value] of Object.entries(FLEECES[i % FLEECES.length])) {
+        btn.style.setProperty(`--${name}`, value);
+      }
       btn.innerHTML = SHEEP_SVG + '<span class="sheep-card-badge" hidden></span>';
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
       cards.push(btn);
     }
     state.counted.forEach((idx, order) => markCounted(idx, order + 1, false));
+    startDrift();
+  }
+
+  // The cards drift with the same seeded motion the 3D flock uses, so a
+  // late round is just as hard to follow in either renderer. Offsets are
+  // left/top on an already-relative card, which leaves the tap animations
+  // on `transform` alone.
+  function startDrift() {
+    cancelAnimationFrame(rafId);
+    if (reducedMotion || !current || !(motion.radius > 0)) {
+      cards.forEach((btn) => { btn.style.left = '0px'; btn.style.top = '0px'; });
+      return;
+    }
+    const step = () => {
+      rafId = requestAnimationFrame(step);
+      const t = (performance.now() - startedAt) / 1000;
+      for (let i = 0; i < cards.length; i++) {
+        const btn = cards[i];
+        if (btn.classList.contains('is-counted')) continue;
+        const offset = wanderOffset(current.seed, i, cards.length, t, motion);
+        btn.style.left = `${(offset.x * PX_PER_UNIT).toFixed(1)}px`;
+        btn.style.top = `${(offset.z * PX_PER_UNIT * 0.6).toFixed(1)}px`;
+      }
+    };
+    rafId = requestAnimationFrame(step);
   }
 
   function markCounted(index, number, animate = true) {
@@ -101,6 +152,8 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     if (!btn) return;
     const color = NUMBER_COLORS[(number - 1) % NUMBER_COLORS.length];
     btn.classList.add('is-counted');
+    btn.style.left = '0px';
+    btn.style.top = '0px';
     btn.style.setProperty('--ribbon', color);
     const badge = btn.querySelector('.sheep-card-badge');
     badge.hidden = false;
@@ -157,6 +210,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       render(state);
     },
     destroy() {
+      cancelAnimationFrame(rafId);
       field.remove();
     },
   };

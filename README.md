@@ -1,72 +1,71 @@
 # Sheep countrr
 
-A tap-to-count game for very young children. A small pasture of fluffy
-3D sheep grazes on screen; tap a sheep to count it, and a big number
-badge tracks the total as you go. When every sheep in the flock has
-been counted, the flock rests and a quiet invitation to count again appears. No reading required, no
-scoring, no losing — just counting.
+A tap-to-count game for young children, played in rounds. Round 1 puts
+one sheep on screen and it stands perfectly still. Count it, and the next
+round brings another sheep or two, moving a little faster and a little
+less predictably. Keep going and the flock ends up bouncing and jittering
+across the pasture, which is the whole game: the counting stays easy, the
+keeping track of who you already counted does not.
 
 ## How it works
 
-- **The pasture** is rendered in 3D with Three.js: a handful of
-  procedurally-built sheep standing on a grassy field. Tapping an
-  uncounted sheep adds a numbered ribbon onto it and bumps the count;
-  tapping an already-counted sheep gives it a friendly wiggle instead.
-  Devices without WebGL (or `?renderer=dom`, used for testing) fall
-  back to the same interaction as a grid of big round cards — same
-  counting logic, no 3D required.
-- **The count** is shown oversized at the top of the screen, both as
-  a numeral and as its word ("3" / "Three"), readable from across the
-  room.
-- **Sound is off by default.** There are no vibrations;
-  soft, low chimes only play once a grown-up turns
-  sound on.
-- **The grown-ups panel** (sound toggle, flock size, progress, start
-  over) is reached by a ~1.5 second press-and-hold (or Enter/Space with a keyboard) on the small
-  gear icon in the corner — a quick tap does nothing, so a child
-  mashing the screen can't wander into settings.
-- **Progress syncs to the server** per signed-in user (current flock,
-  best round, lifetime sheep counted) and to a community total shown
-  in the grown-ups panel, so it picks up where it left off on any
-  device.
+- **Rounds.** Round 1 is a single stationary sheep. Each completed round
+  adds roughly one or two more sheep (up to twelve, so every sheep stays
+  tappable on a phone) and turns up the movement: a slow drift at first,
+  then pacing and bouncing, then a nervous jitter on top.
+- **Counting.** Tap a sheep to count it. It stops, closes its eyes and
+  puts on a numbered ribbon, so a counted sheep is impossible to mistake
+  for an uncounted one. The current round and the running tap count sit
+  at the top of the screen the whole time.
+- **Finishing a round.** Tap every sheep and the round completes itself,
+  or tap "Done counting" when you think you have them all. A correct
+  count shows a short round-complete message and moves on.
+- **Ending a run.** Tapping a sheep you already counted, or saying you
+  are done while sheep are still uncounted, ends the run. The game-over
+  screen names the round you reached and offers "Start again", which
+  returns to round 1.
+- **Touch first.** The whole board is taps: big hit targets, no drag, no
+  pinch, and the Done button sits clear of the safe area at the bottom.
+  The camera reframes on rotation so the whole flock stays visible.
+- **Renderers.** The pasture is Three.js (procedurally-built sheep on a
+  grassy field). Devices without WebGL, or `?renderer=dom`, fall back to
+  a grid of big round cards that drift with the same seeded motion and
+  share the same counting logic.
+- **Sound is off by default.** Soft chimes only play once a grown-up
+  turns sound on.
+- **The grown-ups panel** (sound, progress, start over) is reached by a
+  ~1.5 second press-and-hold on the small gear icon in the corner, or
+  Enter/Space with a keyboard. A quick tap does nothing, so a child
+  mashing the screen cannot wander into settings.
+- **Progress syncs to the server** per signed-in user (which round to
+  start on, best round reached, lifetime sheep counted) plus a community
+  total shown in the grown-ups panel. A half-counted round is never
+  restored, since returning to taps you do not remember making would end
+  the run on the next tap.
+- Reduced-motion preference holds the flock still and drops the tap
+  animations in both renderers.
+
+## Running and reviewing
+
+Run `npm ci`, `npm run build`, `npm test`.
+
+Review fixtures, all of which avoid localStorage and the server:
+
+- `/?round=N` starts a real, playable run at round N from that round's
+  fixed seed, so the same URL always frames the same pasture. This is the
+  deep link the screenshot checks use: `/?round=1` for the still single
+  sheep, `/?round=8` for a chaotic flock of eleven.
+- `/?scene=midcount`, `/?scene=roundcomplete`, `/?scene=gameover`,
+  `/?scene=grownups`, `/?scene=flock`, `/?scene=portrait`,
+  `/?scene=empty` freeze one screen for a screenshot.
+- `?renderer=dom` forces the card fallback and composes with either
+  (`/?round=8&renderer=dom`).
+
+Use `/` for normal play.
 
 ## App-specific notes
 
-See `CLAUDE.md` for platform conventions and repo-specific details
-(the `sheep_progress` table, staging seed rows, screenshot-state deep
-links used by the declared `dapp.json` checks).
-
-## Bedtime sheep update
-
-The flock starts with three sheep and grows by one per round to ten. Uncounted
-sheep follow bounded, seeded wandering paths that become slightly more varied
-as the flock grows; counted sheep hold still and close their eyes. The camera
-stays still. Reduced-motion preference disables wandering and tap animations
-in both renderers.
-
-Run `npm ci`, `npm run build`, and `npm test`. Browser review fixtures:
-`/?scene=portrait` (one sheep), `/?scene=flock` (ten),
-`/?scene=midcount`, `/?scene=celebrate`, and `/?renderer=dom` (playable fallback).
-Fixtures never persist progress. Use `/` for normal play and round progression.
-
-## Bird’s-eye meadow
-
-The camera looks down at 60 degrees and always frames the entire roaming area.
-Sheep choose seeded destinations across that area, steer around each other and
-turn smoothly. Larger flocks change direction more often and trot a little
-faster; pauses and capped acceleration keep the pace gentle. Leg swings follow
-actual distance travelled. Counted sheep stop in place. Grass tufts, five-petal
-daisies, little stones, raised wool curls and wagging tails add quiet detail.
-
-Review `/?scene=trio` (a small roaming flock), `/?scene=roaming` (ten sheep),
-`/?scene=birdseye` (bird's-eye detail) and `/?scene=still` (a non-persistent
-reduced-motion fixture). Normal play remains `/`. The non-WebGL fallback stays
-a stationary card grid for accessibility and lower-powered devices.
-
-`npm test` covers the parts that have no pixels: seeded determinism at any
-frame rate, field coverage, boundary and separation limits, speed and turn
-caps, tuning that grows with the flock, counted sheep stopping and keeping
-their numbers, a field that never ticks staying put, camera coverage in
-portrait and landscape at phone and desktop sizes, pointer selection after
-minutes of movement, and the DOM fallback numbering sheep exactly like the
-3D pasture.
+See `CLAUDE.md` for platform conventions and repo-specific details (the
+`sheep_progress` table, staging seed rows, how the round difficulty curve
+is laid out in `public/rounds.js`, and the screenshot-state deep links
+used by the declared `dapp.json` checks).
