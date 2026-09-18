@@ -33,10 +33,13 @@ COPY --chown=1000:1000 . .
 # source tree (which deliberately does not contain one).
 COPY --from=css --chown=1000:1000 /build/public/tailwind.css ./public/tailwind.css
 
-# Non-root from here on. The app itself writes nothing to disk (all state
-# lives in Postgres), but npm and node still want a writable HOME for their
-# caches, and /app is owned by the same uid so a future write target inside
-# the app dir works without another chown.
+# Non-root from here on, named by NUMBER (UID 1000): the platform runs
+# containers with runAsNonRoot, which refuses an image that would run as
+# root or names its user instead of giving a numeric UID. The app itself
+# writes nothing to disk (all state lives in Postgres), but npm and node
+# still want a writable HOME for their caches, and /app is owned by the
+# same uid so a future write target inside the app dir works without
+# another chown.
 ENV HOME=/home/node
 USER 1000:1000
 
