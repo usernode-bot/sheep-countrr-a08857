@@ -1,15 +1,25 @@
-// Shared client state for a counting round: local persistence plus a
-// debounced sync to /api/state. Both renderers read this same shape so
-// the 3D scene and the DOM fallback can never drift apart.
+// Shared client state for a run of Sheep countrr: which round is being
+// played, which sheep have been tapped, and whether the run is still
+// alive. Both renderers read this same shape, so the 3D scene and the DOM
+// fallback can never drift apart.
+//
+// A run is a sequence of rounds. Tap every sheep in the round and the
+// round is passed; miss one and submit, or tap a sheep you already
+// counted, and the run ends.
+
+import { MAX_SHEEP, normalizeRound, roundSeed, sheepForRound } from './rounds.js';
 
 const STORAGE_PREFIX = 'sheep-countrr:';
-const HERD_MIN = 1;
-const HERD_MAX = 10;
 const SYNC_DEBOUNCE_MS = 1500;
 
-function clamp(n, lo, hi) {
-  return Math.max(lo, Math.min(hi, n));
-}
+// Run phases.
+export const COUNTING = 'counting';
+export const ROUND_PASSED = 'roundPassed';
+export const RUN_OVER = 'runOver';
+
+// Why a run ended, for the game-over copy.
+export const ENDED_DOUBLE_TAP = 'doubleTap';
+export const ENDED_MISSED = 'missed';
 
 function randomSeed() {
   return Math.floor(Math.random() * 2 ** 31);
@@ -18,11 +28,13 @@ function randomSeed() {
 export function createDefaultState() {
   return {
     round: 1,
-    herdSize: 3,
-    seed: randomSeed(),
+    sheepCount: sheepForRound(1),
+    seed: roundSeed(1),
     count: 0,
     counted: [],
-    best: 0,
+    phase: COUNTING,
+    endedBy: null,
+    bestRound: 1,
     totalCounted: 0,
     communityTotal: 0,
     soundOn: false,
@@ -30,14 +42,20 @@ export function createDefaultState() {
 }
 
 export class StateStore {
-  constructor({ userId, token, onChange, staticMode }) {
+  constructor({ userId, token, onChange, ephemeral, deterministic } = {}) {
     this.userId = userId || 'anon';
     this.token = token || '';
     this.onChange = onChange || (() => {});
-    // Deep-link screenshot states (?scene=...) are pure UI fixtures: they
-    // must never read or write localStorage or the server.
-    this.staticMode = !!staticMode;
+    // Deep-link fixtures (?round=N, ?scene=...) are ephemeral: they must
+    // never read or write localStorage or the server, so they carry
+    // nothing worth authenticating and a screenshot run cannot clobber a
+    // real player's progress.
+    this.ephemeral = !!ephemeral;
+    // Deep links reuse the round's fixed seed so the same URL always
+    // renders the same pasture; ordinary play scatters a fresh flock.
+    this.deterministic = !!deterministic;
     this.state = createDefaultState();
+    this.unsyncedTaps = 0;
     this._syncTimer = null;
   }
 
@@ -45,59 +63,80 @@ export class StateStore {
     return STORAGE_PREFIX + this.userId;
   }
 
+  seedFor(round) {
+    return this.deterministic ? roundSeed(round) : randomSeed();
+  }
+
   loadLocal() {
-    if (this.staticMode) return this.state;
+    if (this.ephemeral) return this.state;
     try {
       const raw = localStorage.getItem(this.storageKey);
-      if (raw) this.state = { ...this.state, ...JSON.parse(raw) };
+      if (!raw) return this.state;
+      const saved = JSON.parse(raw);
+      // Only the run-spanning values are restored. A half-counted round
+      // is never resumed: coming back mid-round and finding taps you do
+      // not remember making is a run-ending trap.
+      this.state = {
+        ...this.state,
+        round: normalizeRound(saved.round),
+        bestRound: normalizeRound(saved.bestRound || saved.round),
+        totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
+        soundOn: !!saved.soundOn,
+      };
+      this.startRound(this.state.round, { silent: true });
     } catch {
-      /* ignore corrupt/unavailable storage */
+      /* ignore corrupt or unavailable storage */
     }
     return this.state;
   }
 
   saveLocal() {
-    if (this.staticMode) return;
+    if (this.ephemeral) return;
     try {
-      localStorage.setItem(this.storageKey, JSON.stringify(this.state));
+      localStorage.setItem(this.storageKey, JSON.stringify({
+        round: this.state.round,
+        bestRound: this.state.bestRound,
+        totalCounted: this.state.totalCounted,
+        soundOn: this.state.soundOn,
+      }));
     } catch {
-      /* storage full or unavailable — round still works this session */
+      /* storage full or unavailable; the run still works this session */
     }
   }
 
   async loadRemote() {
-    if (this.staticMode || !this.token) return this.state;
+    if (this.ephemeral || !this.token) return this.state;
     try {
       const res = await fetch('/api/state', { headers: { 'x-usernode-token': this.token } });
       if (!res.ok) return this.state;
       const data = await res.json();
       this.state = {
-        round: data.round,
-        herdSize: data.herdSize,
-        seed: data.seed,
-        count: data.count,
-        counted: data.counted || [],
-        best: data.best,
-        totalCounted: data.totalCounted,
-        communityTotal: data.communityTotal,
+        ...this.state,
+        round: normalizeRound(data.round),
+        bestRound: normalizeRound(data.bestRound),
+        totalCounted: Math.max(0, Number(data.totalCounted) || 0),
+        communityTotal: Math.max(0, Number(data.communityTotal) || 0),
         soundOn: !!data.soundOn,
       };
+      this.startRound(this.state.round, { silent: true });
       this.saveLocal();
     } catch {
-      /* offline or no server — keep whatever localStorage had */
+      /* offline or no server: keep whatever localStorage had */
     }
     return this.state;
   }
 
   scheduleSync() {
-    if (this.staticMode || !this.token) return;
+    if (this.ephemeral || !this.token) return;
     clearTimeout(this._syncTimer);
     this._syncTimer = setTimeout(() => this.flush(), SYNC_DEBOUNCE_MS);
   }
 
   async flush() {
-    if (this.staticMode || !this.token) return;
+    if (this.ephemeral || !this.token) return;
     clearTimeout(this._syncTimer);
+    const taps = this.unsyncedTaps;
+    this.unsyncedTaps = 0;
     try {
       await fetch('/api/state', {
         method: 'POST',
@@ -105,83 +144,101 @@ export class StateStore {
         keepalive: true,
         body: JSON.stringify({
           round: this.state.round,
-          herdSize: this.state.herdSize,
-          seed: this.state.seed,
-          count: this.state.count,
-          counted: this.state.counted,
+          bestRound: this.state.bestRound,
+          newTaps: taps,
           soundOn: this.state.soundOn,
         }),
       });
     } catch {
-      /* best-effort — next change reschedules a sync */
+      /* best effort; the next change reschedules a sync */
     }
   }
 
-  // Returns the 1-based number assigned to this tap, or null if the
-  // sheep was already counted / the flock is already complete.
-  countSheep(index) {
-    if (!Number.isInteger(index) || index < 0 || index >= this.state.herdSize) return null;
-    if (this.state.counted.includes(index)) return null;
-    if (this.state.counted.length >= this.state.herdSize) return null;
+  // Start (or restart) a round: fresh flock, nothing counted, run alive.
+  startRound(round, { silent } = {}) {
+    const next = normalizeRound(round);
+    this.state = {
+      ...this.state,
+      round: next,
+      sheepCount: sheepForRound(next),
+      seed: this.seedFor(next),
+      count: 0,
+      counted: [],
+      phase: COUNTING,
+      endedBy: null,
+      bestRound: Math.max(this.state.bestRound, next),
+    };
+    if (!silent) {
+      this.saveLocal();
+      this.flush();
+      this.onChange(this.state);
+    }
+    return this.state;
+  }
+
+  // A tap on a sheep. Returns what it did:
+  //   { outcome: 'counted', number }  a new sheep, numbered in tap order
+  //   { outcome: 'doubleTap' }        already counted, so the run ends
+  //   { outcome: 'ignored' }          the run is not accepting taps
+  tapSheep(index) {
+    if (this.state.phase !== COUNTING) return { outcome: 'ignored' };
+    if (!Number.isInteger(index) || index < 0 || index >= this.state.sheepCount) {
+      return { outcome: 'ignored' };
+    }
+    if (this.state.counted.includes(index)) {
+      this.endRun(ENDED_DOUBLE_TAP);
+      return { outcome: 'doubleTap' };
+    }
     const counted = [...this.state.counted, index];
+    this.unsyncedTaps += 1;
     this.state = {
       ...this.state,
       counted,
       count: counted.length,
-      best: Math.max(this.state.best, counted.length),
       totalCounted: this.state.totalCounted + 1,
     };
     this.saveLocal();
     this.scheduleSync();
     this.onChange(this.state);
-    return counted.length;
+    return { outcome: 'counted', number: counted.length };
   }
 
   isComplete() {
-    return this.state.count >= this.state.herdSize;
+    return this.state.count >= this.state.sheepCount;
   }
 
-  // "Count again": a fresh scatter, one sheep more (up to the max) so the
-  // game grows gently with the child.
-  startNewRound({ carryHerdGrowth } = {}) {
-    const nextHerd = carryHerdGrowth
-      ? clamp(this.state.herdSize + 1, HERD_MIN, HERD_MAX)
-      : this.state.herdSize;
-    this.state = {
-      ...this.state,
-      round: this.state.round + 1,
-      herdSize: nextHerd,
-      seed: randomSeed(),
-      count: 0,
-      counted: [],
-    };
+  // The player says that is all of them. Right count passes the round;
+  // anything short ends the run.
+  submitCount() {
+    if (this.state.phase !== COUNTING) return { outcome: 'ignored' };
+    if (this.isComplete()) {
+      this.state = { ...this.state, phase: ROUND_PASSED };
+      this.saveLocal();
+      this.flush();
+      this.onChange(this.state);
+      return { outcome: 'passed', round: this.state.round };
+    }
+    this.endRun(ENDED_MISSED);
+    return { outcome: 'missed', round: this.state.round };
+  }
+
+  endRun(reason) {
+    this.state = { ...this.state, phase: RUN_OVER, endedBy: reason };
     this.saveLocal();
     this.flush();
     this.onChange(this.state);
+    return this.state;
   }
 
-  // Grown-up picked a specific herd size from the panel.
-  setHerdSize(n) {
-    const herdSize = clamp(n, HERD_MIN, HERD_MAX);
-    this.state = {
-      ...this.state,
-      round: this.state.round + 1,
-      herdSize,
-      seed: randomSeed(),
-      count: 0,
-      counted: [],
-    };
-    this.saveLocal();
-    this.flush();
-    this.onChange(this.state);
+  nextRound() {
+    return this.startRound(this.state.round + 1);
   }
 
-  // "Start over": same herd size, fresh scatter.
-  resetRound() {
-    this.state = { ...this.state, seed: randomSeed(), count: 0, counted: [] };
-    this.saveLocal();
-    this.flush();
-    this.onChange(this.state);
+  // After a run ends: back to round 1 with a fresh flock. bestRound is
+  // kept, so the grown-ups panel still shows how far the player got.
+  restartRun() {
+    const state = this.startRound(1);
+    return state;
   }
 
   setSoundOn(on) {
@@ -191,3 +248,5 @@ export class StateStore {
     this.onChange(this.state);
   }
 }
+
+export { MAX_SHEEP, sheepForRound };

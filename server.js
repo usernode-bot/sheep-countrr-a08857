@@ -32,8 +32,13 @@ const APP_AUDIENCE = process.env.USERNODE_APP_ID
 // Everything else requires a valid platform-issued JWT.
 const PUBLIC_API_PATHS = new Set(['/health']);
 
-const HERD_MIN = 1;
-const HERD_MAX = 10;
+// The highest round a client may report, and the most sheep one sync can
+// claim to have tapped. The per-round sheep count lives in
+// public/rounds.js (sheepForRound); MAX_TAPS_PER_SYNC only has to be at
+// least as large as its cap, since it exists to bound how much a single
+// request can add to the shared community total.
+const MAX_ROUND = 999;
+const MAX_TAPS_PER_SYNC = 12;
 
 app.use(express.json());
 
@@ -96,47 +101,31 @@ function randomSeed() {
   return Math.floor(Math.random() * 2 ** 31);
 }
 
-function defaultRow(user) {
-  return {
-    user_id: user.id,
-    username: user.username,
-    round: 1,
-    herd_size: 3,
-    seed: randomSeed(),
-    count: 0,
-    counted: [],
-    best: 0,
-    total_counted: 0,
-    sound_on: false,
-  };
-}
-
 // Current progress for the signed-in child, plus how many sheep everyone
 // else has ever counted (the "community total" line in the grown-ups
-// panel). Creates a fresh row with a random seed on first visit.
+// panel). Creates a fresh row on first visit.
+//
+// Only run-spanning values travel: which round to start on, the best round
+// reached, lifetime taps and the sound setting. A half-counted round is
+// deliberately not stored, because resuming into taps you do not remember
+// making would end the run on the next tap.
 app.get('/api/state', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT round, herd_size, seed, count, counted, best, total_counted, sound_on
+      `SELECT round, best_round, total_counted, sound_on
        FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
 
     let row = rows[0];
     if (!row) {
-      const fresh = defaultRow(req.user);
       await pool.query(
-        `INSERT INTO sheep_progress
-           (user_id, username, round, herd_size, seed, count, counted, best, total_counted, sound_on)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO sheep_progress (user_id, username, round, best_round, seed)
+         VALUES ($1, $2, 1, 1, $3)
          ON CONFLICT (user_id) DO NOTHING`,
-        [fresh.user_id, fresh.username, fresh.round, fresh.herd_size, fresh.seed,
-         fresh.count, JSON.stringify(fresh.counted), fresh.best, fresh.total_counted, fresh.sound_on]
+        [req.user.id, req.user.username, randomSeed()]
       );
-      row = {
-        round: fresh.round, herd_size: fresh.herd_size, seed: fresh.seed, count: fresh.count,
-        counted: fresh.counted, best: fresh.best, total_counted: fresh.total_counted, sound_on: fresh.sound_on,
-      };
+      row = { round: 1, best_round: 1, total_counted: 0, sound_on: false };
     }
 
     const { rows: totalRows } = await pool.query(
@@ -147,11 +136,7 @@ app.get('/api/state', async (req, res) => {
 
     res.json({
       round: row.round,
-      herdSize: row.herd_size,
-      seed: Number(row.seed),
-      count: row.count,
-      counted: row.counted,
-      best: row.best,
+      bestRound: row.best_round,
       totalCounted: row.total_counted,
       soundOn: row.sound_on,
       communityTotal,
@@ -168,56 +153,37 @@ app.get('/api/state', async (req, res) => {
 app.post('/api/state', async (req, res) => {
   const body = req.body || {};
 
-  const herdSize = clamp(parseInt(body.herdSize, 10), HERD_MIN, HERD_MAX);
-  if (!Number.isFinite(herdSize)) return res.status(400).json({ error: 'herdSize must be a number' });
-
-  if (!Array.isArray(body.counted)) return res.status(400).json({ error: 'counted must be an array' });
-  const counted = [...new Set(body.counted.map((n) => parseInt(n, 10)))]
-    .filter((n) => Number.isInteger(n) && n >= 0 && n < herdSize);
-
-  const count = clamp(parseInt(body.count, 10), 0, herdSize);
-  if (!Number.isFinite(count) || count !== counted.length) {
-    return res.status(400).json({ error: 'count must equal counted.length' });
-  }
-
-  const round = Math.max(1, parseInt(body.round, 10) || 1);
-  const seed = Number.isFinite(Number(body.seed)) ? Math.trunc(Number(body.seed)) : randomSeed();
+  const round = clamp(parseInt(body.round, 10) || 1, 1, MAX_ROUND);
+  const claimedBest = clamp(parseInt(body.bestRound, 10) || round, 1, MAX_ROUND);
+  // Taps are reported as a delta since the last sync, and bounded, so no
+  // single request can inflate the shared community total.
+  const newTaps = clamp(parseInt(body.newTaps, 10) || 0, 0, MAX_TAPS_PER_SYNC);
   const soundOn = !!body.soundOn;
 
   try {
     const { rows } = await pool.query(
-      `SELECT round, herd_size, best, total_counted FROM sheep_progress WHERE user_id = $1`,
+      `SELECT best_round, total_counted FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
     const prev = rows[0];
 
-    if (prev && round < prev.round) {
-      return res.status(400).json({ error: 'round cannot move backward' });
-    }
-
-    const best = Math.max(prev ? prev.best : 0, count);
-    // A client can only ever add up to herdSize new sheep per sync — this
-    // caps how much any single request can inflate the shared total,
-    // regardless of what the client claims.
-    const totalCounted = (prev ? prev.total_counted : 0) + Math.min(count, herdSize);
+    // A run restarts at round 1, so the round may move backward freely;
+    // only the best round ever reached is monotonic.
+    const bestRound = Math.max(prev ? prev.best_round : 1, claimedBest, round);
+    const totalCounted = (prev ? prev.total_counted : 0) + newTaps;
 
     await pool.query(
       `INSERT INTO sheep_progress
-         (user_id, username, round, herd_size, seed, count, counted, best, total_counted, sound_on)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (user_id, username, round, best_round, total_counted, sound_on, seed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (user_id) DO UPDATE SET
          username = EXCLUDED.username,
          round = EXCLUDED.round,
-         herd_size = EXCLUDED.herd_size,
-         seed = EXCLUDED.seed,
-         count = EXCLUDED.count,
-         counted = EXCLUDED.counted,
-         best = EXCLUDED.best,
+         best_round = EXCLUDED.best_round,
          total_counted = EXCLUDED.total_counted,
          sound_on = EXCLUDED.sound_on,
          updated_at = NOW()`,
-      [req.user.id, req.user.username, round, herdSize, seed, count,
-       JSON.stringify(counted), best, totalCounted, soundOn]
+      [req.user.id, req.user.username, round, bestRound, totalCounted, soundOn, randomSeed()]
     );
 
     res.json({ ok: true });
@@ -245,14 +211,15 @@ app.use((req, res, next) => {
 // of a redirect, so the platform shell is never loaded INSIDE its own
 // app iframe and stray visits still don't reveal the app.
 //
-// `?scene=` screenshot-state fixtures are the one exception: app.js's
-// `staticMode` branch renders only hardcoded demo data and never touches
-// localStorage or the server, so they carry nothing worth gating. They
-// stay reachable with no token so the platform's checks/screenshots (and
-// this repo's own usernode-run-checks) can navigate straight to them —
-// neither can mint a real platform-signed token.
+// The screenshot-state deep links are the one exception: `?scene=`
+// fixtures render hardcoded demo data, and `?round=N` starts a playable
+// run from a fixed seed. Both branches in app.js are ephemeral, so they
+// never touch localStorage or the server and carry nothing worth gating.
+// They stay reachable with no token so the platform's checks/screenshots
+// (and this repo's own usernode-run-checks) can navigate straight to them,
+// since neither can mint a real platform-signed token.
 app.get('*', (req, res) => {
-  if (!req.user && !req.query.scene) {
+  if (!req.user && !req.query.scene && !req.query.round) {
     // Deep-link pass-through (platform #743): carry the visited
     // path+query into the chromeless view so share links land on the
     // shared screen, not Home. The clean platform route stores `path`
@@ -286,26 +253,26 @@ app.get('*', (req, res) => {
 // while production stayed empty.
 async function seedStagingData() {
   const demoRows = [
-    { user_id: -101, username: 'Staging demo — Mabel', round: 4, herd_size: 8, seed: 1001, count: 8, counted: [0, 1, 2, 3, 4, 5, 6, 7], best: 8, total_counted: 23 },
-    { user_id: -102, username: 'Staging demo — Otto', round: 2, herd_size: 6, seed: 1002, count: 2, counted: [0, 1], best: 6, total_counted: 11 },
-    { user_id: -103, username: 'Staging demo — Pip', round: 1, herd_size: 3, seed: 1003, count: 0, counted: [], best: 5, total_counted: 5 },
+    { user_id: -101, username: 'Staging demo: Mabel', round: 4, best_round: 9, total_counted: 23 },
+    { user_id: -102, username: 'Staging demo: Otto', round: 2, best_round: 6, total_counted: 11 },
+    { user_id: -103, username: 'Staging demo: Pip', round: 1, best_round: 3, total_counted: 5 },
   ];
   for (const r of demoRows) {
     await pool.query(
       `INSERT INTO sheep_progress
-         (user_id, username, round, herd_size, seed, count, counted, best, total_counted, sound_on)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
+         (user_id, username, round, best_round, total_counted, sound_on, seed)
+       VALUES ($1, $2, $3, $4, $5, false, $6)
        ON CONFLICT (user_id) DO NOTHING`,
-      [r.user_id, r.username, r.round, r.herd_size, r.seed, r.count, JSON.stringify(r.counted), r.best, r.total_counted]
+      [r.user_id, r.username, r.round, r.best_round, r.total_counted, 1000 - r.user_id]
     );
   }
 }
 
 async function start() {
-  // Public table: holds a public username, a flock size and counters —
-  // nothing a stranger seeing every row would care about — and the
-  // community total needs real rows in staging, so it stays unmarked
-  // (no `staging:private` comment) and copies normally.
+  // Public table: holds a public username and round counters — nothing a
+  // stranger seeing every row would care about — and the community total
+  // needs real rows in staging, so it stays unmarked (no
+  // `staging:private` comment) and copies normally.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sheep_progress (
       user_id INTEGER PRIMARY KEY,
@@ -321,6 +288,12 @@ async function start() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+
+  // Round-based play: the furthest round a run has ever reached. The older
+  // per-count columns stay for rows written before rounds existed; nothing
+  // reads them now, so they simply keep their defaults.
+  await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS best_round INTEGER NOT NULL DEFAULT 1`);
+  await pool.query(`ALTER TABLE sheep_progress ALTER COLUMN seed SET DEFAULT 0`);
 
   if (IS_STAGING) await seedStagingData();
 

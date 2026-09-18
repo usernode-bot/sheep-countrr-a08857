@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { layoutPositions, NUMBER_COLORS } from './layout.js';
 import { wanderOffset } from './movement.js';
+import { MAX_SHEEP, motionForRound, roamRadius } from './rounds.js';
 
 const COLORS = {
   wool: '#f4eadb',
@@ -111,7 +112,7 @@ function roundRect(ctx, x, y, w, h, r) {
 
 function buildNumberTextures() {
   const textures = [];
-  for (let n = 1; n <= 10; n++) {
+  for (let n = 1; n <= MAX_SHEEP; n++) {
     const size = 256;
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -121,7 +122,7 @@ function buildNumberTextures() {
     ctx.fillStyle = 'rgba(80, 50, 90, 0.18)';
     roundRect(ctx, 26, 34, size - 52, size - 60, 64);
     ctx.fill();
-    ctx.fillStyle = NUMBER_COLORS[n - 1];
+    ctx.fillStyle = NUMBER_COLORS[(n - 1) % NUMBER_COLORS.length];
     roundRect(ctx, 20, 20, size - 40, size - 52, 64);
     ctx.fill();
     ctx.fillStyle = '#fffaf2';
@@ -467,7 +468,7 @@ function detectTier() {
   return 'high';
 }
 
-export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, getOverlayRect }) {
+export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, getOverlayRect, getBottomOverlayRect }) {
   let tier = detectTier();
 
   const canvas = document.createElement('canvas');
@@ -609,6 +610,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const confettiPool = createConfettiPool(scene, tier === 'low' ? 40 : 90, dotTexture);
 
   let lastState = null;
+  // How this round's flock moves. Round 1 is perfectly still; later
+  // rounds are faster, bouncier and eventually jittery.
+  let motion = motionForRound(1);
   let isPortrait = true;
 
   function layoutRegion(n) {
@@ -623,21 +627,22 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function buildFlock(state) {
     lastState = state;
+    motion = motionForRound(state.round);
     sheep.forEach((s) => { s.ribbonMat.dispose(); s.numberSprite.material.dispose(); });
     scene.remove(sheepGroup);
     sheepGroup = new THREE.Group();
     scene.add(sheepGroup);
     sheep = [];
 
-    const region = layoutRegion(state.herdSize);
-    const positions = layoutPositions(state.seed + (isPortrait ? 0 : 7), state.herdSize, {
+    const region = layoutRegion(state.sheepCount);
+    const positions = layoutPositions(state.seed + (isPortrait ? 0 : 7), state.sheepCount, {
       width: region.width,
       depth: region.depth,
       minSeparation: 1.3,
     });
 
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    for (let i = 0; i < state.herdSize; i++) {
+    for (let i = 0; i < state.sheepCount; i++) {
       const g = new THREE.Group();
       const scale = 0.92 + seededRand(state.seed, i) * 0.16;
       g.scale.setScalar(scale);
@@ -731,7 +736,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function fitCamera(minX, maxX, minZ, maxZ) {
     if (!Number.isFinite(minX)) return;
-    const pad = 1.0;
+    // Pad by the round's roam radius so a wandering sheep can never leave
+    // the frame, however chaotic the round gets.
+    const pad = 1.0 + roamRadius(lastState ? lastState.round : 1);
     const top = 1.9;
     const xs = [minX - pad, maxX + pad];
     const zs = [minZ - pad, maxZ + pad];
@@ -744,11 +751,19 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     const w = container.clientWidth || 1;
     const h = container.clientHeight || 1;
     const overlay = getOverlayRect?.() || { bottom: 0, right: 0 };
+    const bottomOverlay = getBottomOverlayRect?.();
     const sidePlate = !isPortrait && h <= 520;
     const topLimit = sidePlate ? .92 : Math.max(.15, 1 - 2 * overlay.bottom / h - .06);
     const leftLimit = sidePlate ? Math.min(.2, -1 + 2 * overlay.right / w + .06) : -.94;
     const sideLimit = 0.94;
-    const bottomLimit = -.84;
+    // The Done button sits across the bottom; keep sheep above it so every
+    // one of them stays tappable.
+    let bottomLimit = -.84;
+    if (bottomOverlay && bottomOverlay.height > 0) {
+      const wanted = -1 + 2 * (h - bottomOverlay.top) / h + .04;
+      bottomLimit = Math.max(-.94, Math.min(-.2, wanted));
+    }
+    if (topLimit - bottomLimit < .5) bottomLimit = topLimit - .5;
 
     // A lowish camera keeps the faces, the horizon and a strip of sky in
     // frame; portrait gets a wider lens so the flock can sit closer.
@@ -794,7 +809,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     const color = NUMBER_COLORS[(number - 1) % NUMBER_COLORS.length];
     s.ribbonMat.color.set(color);
     s.ribbon.visible = true;
-    s.numberSprite.material.map = numberTextures[Math.min(number, 10) - 1];
+    s.numberSprite.material.map = numberTextures[Math.min(number, MAX_SHEEP) - 1];
     s.numberSprite.material.needsUpdate = true;
     s.numberSprite.visible = true;
     if (animate && !reducedMotion) {
@@ -934,7 +949,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       // Seeded, bounded wandering gets gently more varied as the flock
       // grows. Counted sheep stop where they are, ready for sleep.
       if (!reducedMotion && !s.counted) {
-        const offset = wanderOffset(lastState.seed, s.index, lastState.herdSize, t);
+        const offset = wanderOffset(lastState.seed, s.index, lastState.sheepCount, t, motion);
         s.group.position.x = s.origin.x + offset.x;
         s.group.position.z = s.origin.z + offset.z;
         s.group.rotation.y = s.heading + offset.turn;
