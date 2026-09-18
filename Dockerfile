@@ -17,28 +17,36 @@ RUN npm install tailwindcss@3.4.17 --no-audit --no-fund \
       -o public/tailwind.css --minify
 
 # Stage 2 — the app itself.
-#
-# The runtime stage must declare a NUMERIC non-root user: app and preview
-# Pods run with runAsNonRoot: true and no runAsUser of their own, and
-# Kubernetes cannot verify the uid behind a symbolic "USER node", so a
-# root-default (or symbolically named) image fails with
-# CreateContainerConfigError. 1000:1000 is the node image's existing
-# node:node account, so its HOME (/home/node, used for the npm cache
-# below) already exists and is writable.
 FROM node:22-alpine
-# /app is created here rather than implicitly by WORKDIR so it can be
-# handed to the runtime uid before anything writes into it: npm install
-# puts node_modules in this directory as that user.
-RUN mkdir -p /app && chown 1000:1000 /app
 WORKDIR /app
-USER 1000:1000
-COPY --chown=1000:1000 package.json ./
-RUN npm install --production
+
+# Everything the runtime user needs is copied in already owned by uid 1000,
+# so nothing has to be chowned after the fact and nothing is left root-owned.
+# (node:22-alpine ships a `node` user at 1000:1000; we name it numerically
+# because Kubernetes sets runAsNonRoot without a runAsUser and cannot verify
+# the UID behind a symbolic name.)
+COPY --chown=1000:1000 package.json package-lock.json ./
+RUN npm install --omit=dev --no-audit --no-fund \
+ && chown -R 1000:1000 /app
 COPY --chown=1000:1000 . .
 # After COPY . . so the compiled stylesheet is not overwritten by the
 # source tree (which deliberately does not contain one).
 COPY --from=css --chown=1000:1000 /build/public/tailwind.css ./public/tailwind.css
+
+# Non-root from here on, named by NUMBER (UID 1000): the platform runs
+# containers with runAsNonRoot, which refuses an image that would run as
+# root or names its user instead of giving a numeric UID. The app itself
+# writes nothing to disk (all state lives in Postgres), but npm and node
+# still want a writable HOME for their caches, and /app is owned by the
+# same uid so a future write target inside the app dir works without
+# another chown.
+ENV HOME=/home/node
+USER 1000:1000
+
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget -qO- http://localhost:3000/health || exit 1
+# Exec form: node is PID 1 and receives SIGTERM directly, so the graceful
+# shutdown handler in server.js actually runs instead of being swallowed by
+# an intermediate shell.
 CMD ["node", "server.js"]
