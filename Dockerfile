@@ -16,16 +16,34 @@ RUN npm install tailwindcss@3.4.17 --no-audit --no-fund \
       -c tailwind.config.js -i styles/tailwind-input.css \
       -o public/tailwind.css --minify
 
-# Stage 2 — the app itself (unchanged apart from the one COPY at the end).
+# Stage 2 — the app itself.
 FROM node:22-alpine
 WORKDIR /app
-COPY package.json ./
-RUN npm install --production
-COPY . .
+
+# Everything the runtime user needs is copied in already owned by uid 1000,
+# so nothing has to be chowned after the fact and nothing is left root-owned.
+# (node:22-alpine ships a `node` user at 1000:1000; we name it numerically
+# because Kubernetes sets runAsNonRoot without a runAsUser and cannot verify
+# the UID behind a symbolic name.)
+COPY --chown=1000:1000 package.json package-lock.json ./
+RUN npm install --omit=dev --no-audit --no-fund \
+ && chown -R 1000:1000 /app
+COPY --chown=1000:1000 . .
 # After COPY . . so the compiled stylesheet is not overwritten by the
 # source tree (which deliberately does not contain one).
-COPY --from=css /build/public/tailwind.css ./public/tailwind.css
+COPY --from=css --chown=1000:1000 /build/public/tailwind.css ./public/tailwind.css
+
+# Non-root from here on. The app itself writes nothing to disk (all state
+# lives in Postgres), but npm and node still want a writable HOME for their
+# caches, and /app is owned by the same uid so a future write target inside
+# the app dir works without another chown.
+ENV HOME=/home/node
+USER 1000:1000
+
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget -qO- http://localhost:3000/health || exit 1
+# Exec form: node is PID 1 and receives SIGTERM directly, so the graceful
+# shutdown handler in server.js actually runs instead of being swallowed by
+# an intermediate shell.
 CMD ["node", "server.js"]
