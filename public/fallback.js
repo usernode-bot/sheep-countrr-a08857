@@ -21,15 +21,15 @@ const SHEEP_SVG = `
     <rect x="62" y="100" width="10" height="7" rx="3.5"/>
     <rect x="78" y="98" width="10" height="7" rx="3.5"/>
   </g>
-  <g fill="#fdf8f1">
+  <g fill="var(--fleece, #fdf8f1)">
     <circle cx="60" cy="62" r="30"/>
-    <circle cx="36" cy="60" r="16" fill="#ffffff"/>
-    <circle cx="84" cy="60" r="16" fill="#ffffff"/>
+    <circle cx="36" cy="60" r="16" fill="var(--fleece-light, #ffffff)"/>
+    <circle cx="84" cy="60" r="16" fill="var(--fleece-light, #ffffff)"/>
     <circle cx="44" cy="42" r="15"/>
     <circle cx="76" cy="42" r="15"/>
-    <circle cx="60" cy="36" r="16" fill="#ffffff"/>
-    <circle cx="40" cy="78" r="14" fill="#f3e9dc"/>
-    <circle cx="80" cy="78" r="14" fill="#f3e9dc"/>
+    <circle cx="60" cy="36" r="16" fill="var(--fleece-light, #ffffff)"/>
+    <circle cx="40" cy="78" r="14" fill="var(--fleece-shade, #f3e9dc)"/>
+    <circle cx="80" cy="78" r="14" fill="var(--fleece-shade, #f3e9dc)"/>
     <circle cx="60" cy="84" r="16"/>
   </g>
   <ellipse cx="30" cy="56" rx="9" ry="5" fill="#f7d5bf" transform="rotate(-25 30 56)"/>
@@ -66,6 +66,17 @@ const SHEEP_SVG = `
   </g>
 </svg>`;
 
+// Same pastel palette the 3D renderer uses, so a sheep looks like itself
+// whichever way the device draws it.
+const FLEECES = [
+  { fleece: '#f4eadb', 'fleece-light': '#fff8ed', 'fleece-shade': '#e5d7c5' },
+  { fleece: '#ded4f7', 'fleece-light': '#f1ecff', 'fleece-shade': '#c4b7ea' },
+  { fleece: '#f9d9e4', 'fleece-light': '#feeef4', 'fleece-shade': '#e8bccc' },
+  { fleece: '#d5ecdd', 'fleece-light': '#ecf9f1', 'fleece-shade': '#b4d6c1' },
+  { fleece: '#d7e8f7', 'fleece-light': '#ecf5ff', 'fleece-shade': '#b7d0e8' },
+  { fleece: '#f8ecc9', 'fleece-light': '#fdf6e0', 'fleece-shade': '#e3d2a4' },
+];
+
 export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   const field = document.createElement('div');
   field.className = 'sheep-fallback-field';
@@ -88,6 +99,9 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       btn.tabIndex = -1;
       btn.dataset.index = String(i);
       btn.style.setProperty('--bob-delay', `${(i * 0.37) % 2.2}s`);
+      for (const [name, value] of Object.entries(FLEECES[i % FLEECES.length])) {
+        btn.style.setProperty(`--${name}`, value);
+      }
       btn.innerHTML = SHEEP_SVG + '<span class="sheep-card-badge" hidden></span>';
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
