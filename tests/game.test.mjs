@@ -8,7 +8,17 @@ import {
   ENDED_DOUBLE_TAP,
   ENDED_MISSED,
 } from '../public/state.js';
-import { MAX_SHEEP, motionForRound, roamRadius, roundSeed, sheepForRound, normalizeRound } from '../public/rounds.js';
+import {
+  MAX_SHEEP,
+  motionForRound,
+  paceLine,
+  roamRadius,
+  roundIntroText,
+  roundSeed,
+  sheepForRound,
+  sheepPhrase,
+  normalizeRound,
+} from '../public/rounds.js';
 import { wanderOffset } from '../public/movement.js';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
 
@@ -190,5 +200,39 @@ test('all plush sheep variants have finite geometry and stay inside the picking 
     assert.ok(box.max.y <= 1.3 && box.min.y >= -.1);
     for (const attr of Object.values(geo.attributes)) assert.ok(attr.array.every(Number.isFinite));
     geo.dispose();
+  }
+});
+
+test('the pre-round briefing names the round, its flock, and how it moves', () => {
+  // Exact wording a first-time player reads on round 1.
+  assert.equal(roundIntroText(1), 'Round 1 has 1 sheep. This one stands still.');
+  // A run that starts on a later round names the bigger, faster flock.
+  const late = roundIntroText(8);
+  assert.ok(late.startsWith(`Round 8 has ${sheepPhrase(sheepForRound(8))}. `), late);
+  assert.ok(late.endsWith(paceLine(8)), late);
+  assert.notEqual(paceLine(8), 'This one stands still.');
+  // The flock size and pace track the same pure functions the renderers use.
+  for (const round of [1, 2, 4, 5, 8, 12]) {
+    const text = roundIntroText(round);
+    assert.ok(text.includes(sheepPhrase(sheepForRound(round))), `round ${round}: ${text}`);
+    assert.ok(text.includes(paceLine(round)), `round ${round}: ${text}`);
+  }
+  // No em dashes in anything the player reads.
+  for (const round of [1, 5, 12]) {
+    assert.ok(!roundIntroText(round).includes('\u2014'), `em dash in round ${round}`);
+  }
+  assert.equal(roundIntroText('3'), 'Round 3 has ' + sheepPhrase(sheepForRound(3)) + '. ' + paceLine(3));
+  assert.equal(roundIntroText(0), 'Round 1 has 1 sheep. This one stands still.');
+});
+
+test('sheep phrases and pace lines read naturally at their edges', () => {
+  assert.equal(sheepPhrase(1), '1 sheep');
+  assert.equal(sheepPhrase(7), '7 sheep');
+  assert.equal(sheepPhrase(12), '12 sheep');
+  assert.equal(paceLine(1), 'This one stands still.');
+  assert.ok(paceLine(2).length > 0);
+  assert.ok(paceLine(12).length > 0);
+  for (const line of [paceLine(1), paceLine(2), paceLine(5), paceLine(8), paceLine(12)]) {
+    assert.ok(!line.includes('\u2014'), line);
   }
 });

@@ -19,6 +19,18 @@
       ]
     },
     {
+      "name": "Round 1 explains the objective before counting",
+      "id": "round.intro",
+      "visual": true,
+      "path": "/?round=1",
+      "expectSelector": "#round-intro",
+      "expectText": "Tap every sheep",
+      "impact": [
+        "public/**",
+        "dapp.json"
+      ]
+    },
+    {
       "id": "round.chaotic",
       "name": "Round 8 board renders a jittery flock",
       "path": "/?round=8",

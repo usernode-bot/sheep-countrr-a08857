@@ -590,6 +590,21 @@
       </div>
     </div>
 
+    <!-- Get ready: the pre-round briefing, shown before the first round of a
+         run starts counting. Same card as the game-over panel. -->
+    <div id="round-intro" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+        <p class="bedtime-eyebrow">Get ready</p>
+        <p class="celebration-title">Tap every sheep.</p>
+        <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
+        <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
+        <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
+        <button id="start-counting-btn" type="button" class="big-btn">
+          Start counting
+        </button>
+      </div>
+    </div>
+
     <!-- Grown-ups panel: sound toggle, progress, start a fresh run. -->
     <div id="grownups-panel" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-6 flex flex-col gap-4">
