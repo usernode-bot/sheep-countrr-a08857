@@ -566,11 +566,13 @@
       </button>
     </div>
 
-    <!-- Round passed: a short message, then on to a bigger, faster flock. -->
-    <div id="round-complete" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+    <!-- Round passed: the success state. Praise first, then the round just
+         counted and a preview of the next, bigger flock. -->
+    <div id="round-complete" hidden role="status" class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
         <p class="celebration-sheep" aria-hidden="true"><span>&#128017;</span><span>&#128017;</span><span>&#128017;</span></p>
-        <p id="round-complete-title" class="celebration-title">Round 1 counted.</p>
+        <p id="success-title" class="celebration-title">Great job! You found all the sheep.</p>
+        <p id="round-complete-title" class="bedtime-message">Round 1 counted.</p>
         <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
         <button id="next-round-btn" type="button" class="big-btn">
           Next round
