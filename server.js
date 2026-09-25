@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
+const https = require('https');
 
 // The platform's address, injected by the platform at deploy (#2047). Never
 // written out here: a hardcoded hostname is what broke this app when the
@@ -31,6 +32,47 @@ const APP_AUDIENCE = process.env.USERNODE_APP_ID
 // with `app.get`/`app.post` below) if you deliberately want it public.
 // Everything else requires a valid platform-issued JWT.
 const PUBLIC_API_PATHS = new Set(['/health']);
+// The platform's bridge script is injected into the app shell on every app
+// and is centrally served from the app's own hostname — never vendored.
+// Normally the platform's edge answers it before this container sees the
+// request; a plain boot (the in-loop browser, the repo's own run-checks
+// harness, or any environment where the edge isn't in front of the app)
+// reaches Express directly, so this app must answer the path itself or the
+// shell's required bridge tag fails and the page loads with a 401 on the
+// console (or a blank frame when the load is hard enough to break the
+// bootstrap). The route stays open, and the script is proxied from the
+// platform's canonical copy rather than copied into this repo, so
+// fleet-wide bridge fixes keep reaching this app on the next page load.
+const PUBLIC_PREFIXES = ['/usernode-bridge/'];
+const BRIDGE_BASE_URL = (process.env.USERNODE_PLATFORM_ORIGIN || '')
+  .replace(/\/+$/, '') + '/usernode-bridge/v1/bridge.js';
+app.use('/usernode-bridge', (req, res) => {
+  let upstream;
+  try {
+    upstream = https.request(BRIDGE_BASE_URL, {
+      method: 'GET',
+      headers: { 'if-none-match': req.headers['if-none-match'] || '' },
+    }, (up) => {
+      const out = {
+        'content-type': 'application/javascript; charset=utf-8',
+        'cache-control': 'no-cache, must-revalidate',
+      };
+      for (const h of ['etag', 'last-modified']) {
+        if (up.headers[h]) out[h] = up.headers[h];
+      }
+      res.writeHead(up.statusCode || 502, out);
+      if (up.statusCode === 304) return up.resume();
+      up.pipe(res);
+    });
+  } catch {
+    return res.status(502).type('text').end('bridge unavailable');
+  }
+  upstream.on('error', () => {
+    if (!res.headersSent) res.status(502).type('text').end('bridge unavailable');
+    else res.end();
+  });
+  upstream.end();
+});
 
 // The highest round a client may report, and the most sheep one sync can
 // claim to have tapped. The per-round sheep count lives in
@@ -69,6 +111,7 @@ app.use((req, res, next) => {
   // leak app data to the public internet.
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(req.path)) return next();
+    if (PUBLIC_PREFIXES.some((p) => req.path.startsWith(p))) return next();
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
   }
   next();
@@ -233,12 +276,13 @@ app.get('*', (req, res) => {
     if (req.get('sec-fetch-dest') === 'document') {
       return res.redirect(302, (PLATFORM_ORIGIN + '/app/sheep-countrr-a08857/full') + deepPath);
     }
-    return res.status(401).send(`<!doctype html><meta charset=utf-8><title>Open in Usernode</title>
-<body style="font-family:system-ui;background:#09090b;color:#e4e4e7;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
+    return res.status(401).send(`<!doctype html><meta charset=utf-8><title>Sheep countrr</title>
+<body style="font-family:system-ui;background:#283448;color:#f0e9de;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
   <div style="max-width:24rem;padding:2rem;text-align:center">
-    <h1 style="font-size:1.25rem;margin:0 0 0.5rem">Open this app inside Usernode</h1>
-    <p style="color:#a1a1aa;font-size:0.9rem;margin:0 0 1.25rem">This page is served via the platform; direct visits aren't authenticated.</p>
-    <a href="${PLATFORM_ORIGIN}/app/sheep-countrr-a08857/full${deepPath}" style="display:inline-block;padding:0.5rem 1rem;background:#7c3aed;color:white;border-radius:0.5rem;text-decoration:none;font-size:0.9rem">Open in Usernode</a>
+    <h1 style="font-size:1.5rem;font-weight:800;margin:0 0 0.75rem">Sheep countrr</h1>
+    <p style="color:#b7bdc7;font-size:0.95rem;margin:0 0 1.75rem">This page needs to open inside Usernode. Open the app from the Usernode app list to play.</p>
+    <p id="open-in-usernode-redirect" hidden data-redirect="${PLATFORM_ORIGIN}/app/sheep-countrr-a08857/full${deepPath}"></p>
+    <a href="${PLATFORM_ORIGIN}/app/sheep-countrr-a08857/full${deepPath}" style="display:inline-block;padding:0.8rem 2rem;border-radius:9999px;background:#b7afc5;color:#2c3545;font-weight:700;font-size:1.05rem;text-decoration:none">Open in Usernode</a>
   </div>
 </body>`);
   }

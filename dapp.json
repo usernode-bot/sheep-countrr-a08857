@@ -6,6 +6,11 @@
   "secrets": [],
   "tests": [
     {
+      "name": "Bridge script loads with the app shell",
+      "path": "/usernode-bridge/v1/bridge.js",
+      "expectText": "usernode-bridge.js"
+    },
+    {
       "id": "round.one",
       "name": "Round 1 shows one still sheep",
       "path": "/?round=1",
