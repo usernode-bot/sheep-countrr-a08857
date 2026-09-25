@@ -72,3 +72,28 @@ export function roundSeed(round) {
 export function roundLabel(round) {
   return 'Round ' + normalizeRound(round);
 }
+
+// Copy helpers live here beside the difficulty curve so the exact wording a
+// player reads can be asserted in tests/game.test.mjs without a browser.
+// Both renderers and the round-complete panel share these words.
+export function sheepPhrase(n) {
+  return n === 1 ? '1 sheep' : `${n} sheep`;
+}
+
+// A short, honest warning about what the flock will do.
+export function paceLine(round) {
+  const m = motionForRound(round);
+  if (m.jitterAmp > 0.12) return 'They are jumpy now.';
+  if (m.bounceMix > 0.5) return 'They bounce off in all directions.';
+  if (m.speed > 1.1) return 'They are quicker.';
+  if (m.speed > 0) return 'They start to wander.';
+  return 'This one stands still.';
+}
+
+// The pre-round briefing's first line: what this round asks for. Reads
+// "Round 1 has 1 sheep. This one stands still." for a fresh run and names a
+// bigger, faster flock for a run that starts on a later round.
+export function roundIntroText(round) {
+  const r = normalizeRound(round);
+  return `Round ${r} has ${sheepPhrase(sheepForRound(r))}. ${paceLine(r)}`;
+}

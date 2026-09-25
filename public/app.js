@@ -6,7 +6,14 @@ import {
   RUN_OVER,
   ENDED_DOUBLE_TAP,
 } from './state.js';
-import { motionForRound, normalizeRound, roundSeed, sheepForRound } from './rounds.js';
+import {
+  normalizeRound,
+  paceLine,
+  roundIntroText,
+  roundSeed,
+  sheepForRound,
+  sheepPhrase,
+} from './rounds.js';
 import { playTapChime, playCelebration } from './sound.js';
 
 const params = new URLSearchParams(window.location.search);
@@ -39,6 +46,9 @@ const els = {
   actionBar: document.getElementById('action-bar'),
   playHint: document.getElementById('play-hint'),
   submitBtn: document.getElementById('submit-count'),
+  roundIntro: document.getElementById('round-intro'),
+  roundIntroSize: document.getElementById('round-intro-size'),
+  startCountingBtn: document.getElementById('start-counting-btn'),
   roundComplete: document.getElementById('round-complete'),
   roundCompleteTitle: document.getElementById('round-complete-title'),
   roundCompleteNext: document.getElementById('round-complete-next'),
@@ -89,6 +99,9 @@ const store = new StateStore({
 let renderer = null;
 let advanceTimer = null;
 let autoSubmitTimer = null;
+// True while the pre-round briefing covers the board, so no tap or
+// submit can register before the player taps Start counting.
+let introOpen = false;
 
 // Fixed fixtures for the proposal-check deep links, per dapp.json's
 // `tests` array — deliberately not read from any network state.
@@ -138,6 +151,11 @@ async function boot() {
   updateChrome(store.state);
   renderA11yList(store.state);
 
+  // The briefing covers the board before the first round of a run starts
+  // counting. Frozen ?scene= fixtures stay card-free, and a player resuming
+  // mid-run at a later round has already played.
+  if (!staticMode && store.state.round === 1) showRoundIntro(store.state);
+
   if (sceneParam === 'grownups') openGrownups(store.state);
 
   document.addEventListener('visibilitychange', () => {
@@ -178,6 +196,8 @@ async function mountFallback() {
 }
 
 function handleTap(index) {
+  // The briefing is open: no count registers until the player starts.
+  if (introOpen) return;
   const result = store.tapSheep(index);
   if (result.outcome === 'counted') {
     renderer.countSheep(index, result.number);
@@ -199,8 +219,22 @@ function handleTap(index) {
 }
 
 function submitCount() {
+  if (introOpen) return;
   clearTimeout(autoSubmitTimer);
   store.submitCount();
+}
+
+// The pre-round briefing. Shown before the first round of a run; the one
+// button starts counting.
+function showRoundIntro(state) {
+  els.roundIntroSize.textContent = roundIntroText(state.round);
+  els.roundIntro.hidden = false;
+  introOpen = true;
+}
+
+function dismissRoundIntro() {
+  introOpen = false;
+  els.roundIntro.hidden = true;
 }
 
 function advanceRound() {
@@ -217,20 +251,9 @@ function restartRun() {
   store.restartRun();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
-}
-
-function sheepPhrase(n) {
-  return n === 1 ? '1 sheep' : `${n} sheep`;
-}
-
-// A short, honest warning about what the next flock will do.
-function paceLine(round) {
-  const m = motionForRound(round);
-  if (m.jitterAmp > 0.12) return 'They are jumpy now.';
-  if (m.bounceMix > 0.5) return 'They bounce off in all directions.';
-  if (m.speed > 1.1) return 'They are quicker.';
-  if (m.speed > 0) return 'They start to wander.';
-  return 'This one stands still.';
+  // A restart is the start of a fresh run, so the briefing comes back.
+  // Frozen ?scene= fixtures stay card-free.
+  if (!staticMode) showRoundIntro(store.state);
 }
 
 function hintFor(state) {
@@ -315,6 +338,7 @@ function renderA11yList(state) {
 }
 
 els.submitBtn.addEventListener('click', submitCount);
+els.startCountingBtn.addEventListener('click', dismissRoundIntro);
 els.nextRoundBtn.addEventListener('click', advanceRound);
 els.restartBtn.addEventListener('click', restartRun);
 
