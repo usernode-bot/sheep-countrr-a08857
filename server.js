@@ -31,6 +31,21 @@ const APP_AUDIENCE = process.env.USERNODE_APP_ID
 // with `app.get`/`app.post` below) if you deliberately want it public.
 // Everything else requires a valid platform-issued JWT.
 const PUBLIC_API_PATHS = new Set(['/health']);
+// The platform's bridge script is injected into the shell on every app and
+// is centrally served from the app's own hostname. Staging's edge answers
+// it before this container sees the request; a plain local boot (the
+// in-loop browser, the repo's own run-checks harness) reaches Express
+// directly, where the script must be open or the page logs a 401 for a
+// resource the app itself did not fetch.
+const PUBLIC_PREFIXES = ['/usernode-bridge/'];
+// `next()` through the gate above only skips authentication; something
+// must actually answer the request, so the bridge path is mounted right
+// after the gate. Staging's edge serves the real centrally-hosted script;
+// locally this answers 204 instead of leaking a 401 into every check and
+// screenshot. Do not copy the bridge into this repo.
+app.use('/usernode-bridge', (_req, res) => {
+  res.status(204).type('application/javascript').end();
+});
 
 // The highest round a client may report, and the most sheep one sync can
 // claim to have tapped. The per-round sheep count lives in
@@ -69,6 +84,7 @@ app.use((req, res, next) => {
   // leak app data to the public internet.
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(req.path)) return next();
+    if (PUBLIC_PREFIXES.some((p) => req.path.startsWith(p))) return next();
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
   }
   next();
