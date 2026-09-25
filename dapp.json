@@ -70,6 +70,18 @@
       "expectText": "Round 4 counted."
     },
     {
+      "name": "Round complete shows the success message",
+      "id": "round.success",
+      "visual": true,
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#success-title",
+      "expectText": "You found all the sheep.",
+      "impact": [
+        "public/**",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Game over shows the round reached and a restart",
       "path": "/?scene=gameover",
       "expectSelector": "#restart-btn",

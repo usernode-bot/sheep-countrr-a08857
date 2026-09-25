@@ -13,6 +13,7 @@ import {
   roundSeed,
   sheepForRound,
   sheepPhrase,
+  successMessage,
 } from './rounds.js';
 import { playTapChime, playCelebration } from './sound.js';
 
@@ -32,8 +33,9 @@ const deepLink = staticMode || roundParam !== null;
 
 const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// How long the round-complete message sits before the next round starts.
-const ADVANCE_DELAY_MS = 1900;
+// How long the success message sits before the next round starts. Long
+// enough for the praise line to be read; the Next round button skips it.
+const ADVANCE_DELAY_MS = 2600;
 // A beat after the last sheep is tapped, so the tap reads before the round
 // settles itself.
 const AUTO_SUBMIT_MS = 650;
@@ -50,6 +52,7 @@ const els = {
   roundIntroSize: document.getElementById('round-intro-size'),
   startCountingBtn: document.getElementById('start-counting-btn'),
   roundComplete: document.getElementById('round-complete'),
+  successTitle: document.getElementById('success-title'),
   roundCompleteTitle: document.getElementById('round-complete-title'),
   roundCompleteNext: document.getElementById('round-complete-next'),
   nextRoundBtn: document.getElementById('next-round-btn'),
@@ -296,6 +299,7 @@ function syncPanels(state) {
   const over = state.phase === RUN_OVER;
 
   if (passed) {
+    els.successTitle.textContent = successMessage();
     els.roundCompleteTitle.textContent = `Round ${state.round} counted.`;
     els.roundCompleteNext.textContent =
       `Next up: ${sheepPhrase(sheepForRound(state.round + 1))}. ${paceLine(state.round + 1)}`;
