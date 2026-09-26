@@ -726,6 +726,11 @@
 
     <!-- Hidden accessible mirror of every sheep, for keyboard/screen-reader use. -->
     <div id="a11y-sheep-list" class="visually-hidden"></div>
+    <!-- The round ladder's length, mirrored for screen readers (visually
+         the round pill carries it). A static line, not an aria-live one:
+         it says where the run is, not what just happened, so it must not
+         interrupt the sheep taps the list announces. -->
+    <p id="a11y-round-progress" class="visually-hidden">Round 1 of 9.</p>
 
     <!-- Bottom action bar: the hint, and the button that ends the round. -->
     <div id="action-bar" class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2">

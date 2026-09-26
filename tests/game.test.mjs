@@ -16,6 +16,7 @@ import {
   roamRadius,
   roundCompleteTitle,
   roundIntroText,
+  roundBadgeText,
   roundSeed,
   SPEED_ROUND_SECONDS,
   speedRoundClock,
@@ -65,6 +66,20 @@ test('each round adds one or two sheep up to a bounded flock', () => {
     prev = n;
   }
   assert.equal(sheepForRound(9), MAX_SHEEP);
+});
+
+test('the round badge names the round and the ladder length', () => {
+  // The ladder has nine rungs, and the badge says so until the top.
+  assert.equal(roundBadgeText(1), 'Round 1 of 9');
+  assert.equal(roundBadgeText(8), 'Round 8 of 9');
+  // At the top there is no further rung to name, so the suffix drops.
+  assert.equal(roundBadgeText(9), 'Round 9');
+  assert.equal(roundBadgeText(10), 'Round 10');
+  // A Speed Round keeps its mode prefix on every rung.
+  assert.equal(roundBadgeText(1, true), 'Speed round 1 of 9');
+  assert.equal(roundBadgeText(9, true), 'Speed round 9');
+  // Deep-link normalization: a bogus round reads as round 1.
+  assert.equal(roundBadgeText('bogus'), 'Round 1 of 9');
 });
 
 test('rounds get faster and more erratic, and never tame down', () => {

@@ -12,6 +12,12 @@ export const MAX_SHEEP = 12;
 // Round at which the movement ramp reaches full chaos.
 export const DEFAULT_DIFFICULTY = 'normal';
 
+// The ladder's length. The round pill reads "Round 5 of 9" so a player
+// always knows how far the run goes; the flock keeps its shape past the
+// top (see sheepForRound's cap) and the suffix drops off there, so the
+// pill never claims a round the flock does not have.
+export const TOTAL_ROUNDS = 9;
+
 // The difficulty dials. Normal is today's curve exactly; Easy stretches the
 // same character arc out and calms it down, Hard and Expert compress it and
 // push it further. growth is the sheep-per-round multiplier, rampRounds how
@@ -142,6 +148,18 @@ export function roundSeed(round) {
 
 export function roundLabel(round) {
   return 'Round ' + normalizeRound(round);
+}
+
+// The on-screen round text: "Round 5 of 9" while the ladder has more
+// rungs above it, and plain "Round 9" once the flock has reached its cap
+// and the ladder has no further rung to name. The Speed Round keeps its
+// mode prefix so the badge stays honest about what is being played.
+export function roundBadgeText(round, speedOn = false) {
+  const r = normalizeRound(round);
+  const prefix = speedOn ? 'Speed round ' : 'Round ';
+  return r < TOTAL_ROUNDS
+    ? `${prefix}${r} of ${TOTAL_ROUNDS}`
+    : `${prefix}${r}`;
 }
 
 // Copy helpers live here beside the difficulty curve so the exact wording a

@@ -21,6 +21,7 @@ import {
   sheepPhrase,
   speedRoundClock,
   successMessage,
+  roundBadgeText,
   weeklyScoreLabel,
 } from './rounds.js';
 import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
@@ -131,6 +132,7 @@ const els = {
   difficultyValue: document.getElementById('difficulty-value'),
   difficultyPicker: document.getElementById('difficulty-picker'),
   a11yList: document.getElementById('a11y-sheep-list'),
+  a11yRoundProgress: document.getElementById('a11y-round-progress'),
   leaderboardBtn: document.getElementById('leaderboard-btn'),
   countBadge: document.getElementById('count-badge'),
   leaderboard: document.getElementById('leaderboard'),
@@ -555,11 +557,15 @@ function syncSpeedToggle(state) {
   els.speedToggle.checked = !!state.speedOn;
 }
 
-// The round badge names the mode while a Speed Round is live, so the
-// result reads differently from a normal round in screenshots too.
+// The round badge names the round and how far the ladder goes, and keeps
+// the Speed Round prefix while that mode is live, so the result reads
+// differently from a normal round in screenshots too. The renderers never
+// touch it: it sits above the canvas and the DOM grid, so both frame the
+// flock exactly as before.
 function syncRoundBadge(state) {
-  els.roundBadge.textContent = state.speedOn && state.phase !== RUN_OVER
-    ? `Speed round ${state.round}` : `Round ${state.round}`;
+  const badge = roundBadgeText(state.round, state.speedOn && state.phase !== RUN_OVER);
+  els.roundBadge.textContent = badge;
+  els.a11yRoundProgress.textContent = `${badge}.`;
 }
 
 function showRoundIntro(state) {
