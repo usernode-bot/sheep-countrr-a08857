@@ -114,7 +114,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       for (const [name, value] of Object.entries(FLEECES[i % FLEECES.length])) {
         btn.style.setProperty(`--${name}`, value);
       }
-      btn.innerHTML = SHEEP_SVG + '<span class="sheep-card-badge" hidden></span>';
+      btn.innerHTML = SHEEP_SVG + '<span class="sheep-card-badge" hidden></span>' + '<span class="sheep-tap-ripple" hidden></span>';
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
       cards.push(btn);
@@ -190,6 +190,25 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     );
   }
 
+  // Soft expanding ring where the card was tapped. One span per card,
+  // restarted on every tap so back-to-back taps re-animate it. Purely
+  // visual: the same ripple shows for a first tap and a double tap.
+  function tapRipple(index) {
+    const btn = cards[index];
+    const ripple = btn && btn.querySelector('.sheep-tap-ripple');
+    if (!ripple) return;
+    if (reducedMotion || !btn.animate) {
+      // Reduced motion (or no Web Animations) skips the ripple entirely.
+      ripple.hidden = true;
+      return;
+    }
+    ripple.hidden = false;
+    // Restart the animation even when two taps land back to back.
+    ripple.classList.remove('is-rippling');
+    void ripple.offsetWidth;
+    ripple.classList.add('is-rippling');
+  }
+
   function celebrate() {}
 
   // Night Meadow: the field's ground gradients are CSS variables on the
@@ -210,6 +229,9 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     },
     wiggleSheep(index) {
       wiggle(index);
+    },
+    tapRipple(index) {
+      tapRipple(index);
     },
     celebrate() {
       celebrate();

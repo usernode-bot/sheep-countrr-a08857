@@ -246,6 +246,25 @@ function buildDotTexture() {
   return makeTexture(canvas);
 }
 
+// Soft expanding ground ring shown where a sheep is tapped. A fading ring
+// texture on a flat disc reads as a ripple in the grass at any tier.
+function buildRippleTexture() {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, size * 0.18, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(255, 248, 237, 0.85)');
+  gradient.addColorStop(0.55, 'rgba(255, 248, 237, 0.35)');
+  gradient.addColorStop(1, 'rgba(255, 248, 237, 0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  return makeTexture(canvas);
+}
+
 // ---------------------------------------------------------------------------
 // Sheep geometry. Built once per variant, then shared by every sheep.
 
@@ -467,6 +486,64 @@ function createConfettiPool(scene, size, texture) {
   return { start, update };
 }
 
+function createRipplePool(scene, size, texture) {
+  const geo = new THREE.CircleGeometry(1, 24);
+  const meshes = Array.from({ length: size }, () => {
+    const mat = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.visible = false;
+    scene.add(mesh);
+    return { mesh, mat, age: 0 };
+  });
+  let next = 0;
+  const DURATION = 0.6;
+  // The pool keeps its own frame clock: update() runs once per rendered
+  // frame, so the age of each ripple is the accumulated frame delta.
+  let lastUpdate = null;
+
+  function burst(x, z, scale) {
+    const r = meshes[next];
+    next = (next + 1) % size;
+    r.age = 0;
+    r.mesh.position.set(x, 0.02, z);
+    r.mesh.scale.setScalar(scale);
+    r.mesh.visible = true;
+  }
+
+  function update() {
+    const now = performance.now();
+    if (lastUpdate === null) lastUpdate = now;
+    const dt = Math.min((now - lastUpdate) / 1000, 0.1);
+    lastUpdate = now;
+    for (const r of meshes) {
+      if (!r.mesh.visible) continue;
+      r.age += dt;
+      const p = r.age / DURATION;
+      if (p >= 1) {
+        r.mesh.visible = false;
+        r.mat.opacity = 0;
+        continue;
+      }
+      const ease = 1 - Math.pow(1 - p, 2);
+      r.mat.opacity = 0.65 * (1 - p);
+      r.mesh.scale.setScalar(r.mesh.scale.x + ease * 0.02);
+    }
+  }
+
+  function dispose() {
+    geo.dispose();
+    meshes.forEach((r) => r.mat.dispose());
+  }
+
+  return { burst, update, dispose };
+}
+
 // ---------------------------------------------------------------------------
 
 function detectTier() {
@@ -633,6 +710,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   let flockSpread = 3;
   const sparklePool = createSparklePool(scene, tier === 'low' ? 14 : 26, starTexture);
   const confettiPool = createConfettiPool(scene, tier === 'low' ? 40 : 90, dotTexture);
+  const ripplePool = createRipplePool(scene, tier === 'low' ? 4 : 6, buildRippleTexture());
 
   let lastState = null;
   // How this round's flock moves. Round 1 is perfectly still; later
@@ -1057,6 +1135,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
     sparklePool.update(stepDt);
     confettiPool.update(stepDt, t);
+    ripplePool.update();
     renderer.render(scene, camera);
   }
 
@@ -1089,6 +1168,20 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     countSheep(index, number) {
       markCounted(index, number, true);
     },
+    // Live ground position of a sheep, for the tap ripple. The ripple
+    // scale divides by the sheep's own scale so the ring footprint is
+    // constant across flock sizes.
+    sheepPosition(index) {
+      const s = sheep[index];
+      if (!s) return null;
+      return { x: s.group.position.x, z: s.group.position.z, scale: 1 / s.group.scale.x };
+    },
+    // Purely visual: a soft ring where the tap landed. The caller supplies
+    // ground coordinates so the effect follows the sheep's live position.
+    tapRipple(x, z, scale = 1) {
+      if (reducedMotion) return;
+      ripplePool.burst(x, z, scale);
+    },
     wiggleSheep(index) {
       wiggleSheep(index);
     },
@@ -1112,6 +1205,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
+      ripplePool.dispose();
       renderer.dispose();
       canvas.remove();
     },
