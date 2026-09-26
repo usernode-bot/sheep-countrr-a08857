@@ -236,6 +236,30 @@
       text-align: center;
     }
     .speed-timer[hidden] { display: none; }
+
+    /* ---- Pass-and-play Duel ---- */
+    /* The turn clock is the Speed Round pill's shape in the dusk palette,
+       so the two modes never fight over the count plate. */
+    .duel-timer {
+      font-variant-numeric: tabular-nums;
+      min-width: 4.5rem;
+      text-align: center;
+    }
+    .duel-timer[hidden] { display: none; }
+    .duel-score-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-height: 3rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 1.25rem;
+      background: #ffffff08;
+      border: 2px solid #ffffff20;
+      font-weight: 800;
+    }
+    .duel-score-name { color: #c0c7cf; text-align: left; }
+    .duel-score-value { font-weight: 900; color: #ecdbc0; font-variant-numeric: tabular-nums; }
     .setting-row.speed-toggle-row {
       width: 100%;
       border: 2px solid #9da6af;
@@ -697,6 +721,7 @@
     <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex flex-col items-center gap-2">
       <div id="round-badge" class="round-pill">Round 1</div>
       <div id="speed-timer" class="round-pill speed-timer" hidden aria-live="off">30</div>
+      <div id="duel-turn-clock" class="round-pill duel-timer" hidden aria-live="off">45</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
         <span id="count-display">0</span>
         <span id="count-word">of 1 sheep</span>
@@ -765,6 +790,21 @@
       </div>
     </div>
 
+    <!-- Pass-and-play Duel: the handoff and results card. Same panel
+         grammar as the game-over and briefing cards. -->
+    <div id="duel-panel" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+        <p class="bedtime-eyebrow">Pass and play</p>
+        <p id="duel-panel-title" class="celebration-title">Pass the device</p>
+        <p id="duel-panel-body" class="bedtime-message"></p>
+        <div id="duel-panel-scores" class="flex flex-col gap-2 w-full"></div>
+        <p id="duel-panel-hint" class="bedtime-message"></p>
+        <button id="duel-panel-btn" type="button" class="big-btn">
+          Start counting
+        </button>
+      </div>
+    </div>
+
     <!-- Get ready: the pre-round briefing, shown before the first round of a
          run starts counting. Same card as the game-over panel. -->
     <div id="round-intro" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
@@ -778,6 +818,10 @@
         <label id="speed-toggle-row" class="setting-row speed-toggle-row" for="speed-toggle">
           <span>Speed Round</span>
           <input id="speed-toggle" type="checkbox">
+        </label>
+        <label id="duel-toggle-row" class="setting-row speed-toggle-row" for="duel-toggle">
+          <span>Pass-and-play Duel</span>
+          <input id="duel-toggle" type="checkbox">
         </label>
 
         <div id="difficulty-picker" role="radiogroup" aria-label="Difficulty" class="flex flex-wrap justify-center gap-2">
