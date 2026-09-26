@@ -74,7 +74,16 @@ const inviteHref = PLATFORM_ORIGIN
 // localStorage or the server, in any environment. ?round=N is playable but
 // carries the same promise, so a capture run cannot clobber real progress.
 const staticMode = !!sceneParam;
-const deepLink = staticMode || roundParam !== null;
+// ?round=N stays a playable deep link (fixed seed), but its taps persist
+// like any round: a player can start from it, leave, and resume.
+const deepLink = staticMode;
+// The save/resume demo: a real, persistent (localStorage) run under a
+// fixed demo user, so the platform checks can exercise save -> reload ->
+// restore end to end without touching a real player's progress. The
+// snapshot is seeded from `?snapshot=`, and the load path is exactly the
+// one a real player's browser takes.
+const resumeParam = params.get('resume') === '1';
+const RESUME_USER_ID = 'resume-demo';
 
 const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -184,12 +193,26 @@ function supportsWebGL() {
 }
 
 const store = new StateStore({
-  userId: userIdFromToken(token),
+  userId: resumeParam ? RESUME_USER_ID : userIdFromToken(token),
   token,
   ephemeral: deepLink,
   deterministic: deepLink,
   onChange: (state) => updateChrome(state),
 });
+
+// The demo namespace seeds its snapshot from the URL: the checker writes
+// a board with ?snapshot=..., reloads with ?resume=1, and the restore
+// path answers from localStorage exactly as it does for a real player.
+if (resumeParam) {
+  const seedParam = params.get('snapshot');
+  if (seedParam !== null && !sceneParam) {
+    try {
+      localStorage.setItem(store.storageKey, seedParam);
+    } catch {
+      /* storage unavailable; resume then reads nothing and starts fresh */
+    }
+  }
+}
 
 // The signed-in handle, from the same verified token the server trusts.
 // Used to highlight the player's own leaderboard row and to stop a
@@ -228,6 +251,22 @@ function buildStaticState() {
   if (sceneParam === 'portrait') return at(1);
   if (sceneParam === 'empty') return at(3);
   if (sceneParam === 'midcount') return at(5, { count: 3, counted: [0, 1, 2] });
+  if (sceneParam === 'resumed') {
+    // A mid-round board restored from storage, frozen for its dapp.json
+    // check: three sheep counted in tap order at fixed clock stamps, the
+    // rest of the flock still wandering. Hardcoded only, like every
+    // other fixture here.
+    return at(5, {
+      count: 3,
+      counted: [0, 1, 2],
+      countedAt: [
+        { index: 0, elapsed: 2.5 },
+        { index: 1, elapsed: 5 },
+        { index: 2, elapsed: 9.5 },
+      ],
+      roundElapsed: 12,
+    });
+  }
   if (sceneParam === 'speed') {
     // The Speed Round board mid-count, clock visibly running: the dapp.json
     // check reads the countdown pill from this route.
@@ -287,6 +326,12 @@ async function boot() {
   }
   if (staticMode) {
     store.state = buildStaticState();
+  } else if (resumeParam) {
+    // The save/resume demo: load the demo namespace's snapshot through the
+    // exact load path a real player takes, then hand the store the live
+    // renderer clock so further taps stamp with it. No server sync: the
+    // demo identity has no token and the check needs no network.
+    store.loadLocal();
   } else if (roundParam !== null) {
     // /?round=N starts a real, playable run at that round, with the round's
     // fixed seed so the same URL always frames the same pasture. An optional
@@ -302,6 +347,9 @@ async function boot() {
   const wantsDom = rendererParam === 'dom' || !supportsWebGL();
   renderer = wantsDom ? await mountFallback() : await mountScene();
 
+  // Resume first (pin the renderer to the saved clock), then hand the
+  // store the live clock so taps from here on stamp with it.
+  syncRoundClock({ resume: store.state.roundElapsed > 0 });
   renderer.setState(store.state);
   updateChrome(store.state);
   renderA11yList(store.state);
@@ -309,7 +357,7 @@ async function boot() {
   // The briefing covers the board before the first round of a run starts
   // counting. Frozen ?scene= fixtures stay card-free, and a player resuming
   // mid-run at a later round has already played.
-  if (!staticMode && store.state.round === 1) showRoundIntro(store.state);
+  if (!staticMode && !resumeParam && store.state.round === 1) showRoundIntro(store.state);
   // The frozen intro fixture shows the card with the Best Round chip filled
   // from hardcoded data, so the chip's check has a deterministic route.
   if (staticMode && sceneParam === 'intro') showRoundIntro(store.state);
@@ -323,7 +371,7 @@ async function boot() {
   // card starts it when the player taps Start counting. Frozen ?scene=
   // fixtures hold the clock still (the same rule that parks their
   // round-complete auto-advance), so a screenshot can catch the countdown.
-  if (!staticMode && store.state.speedOn && store.state.phase === COUNTING && !introOpen) startSpeedClock();
+  if (!staticMode && !resumeParam && store.state.speedOn && store.state.phase === COUNTING && !introOpen) startSpeedClock();
 
   if (sceneParam === 'grownups') openGrownups(store.state);
 
@@ -349,9 +397,10 @@ async function boot() {
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) store.flush();
+    // The resume demo has no token and syncs nowhere.
+    if (document.hidden && !resumeParam) store.flush();
   });
-  window.addEventListener('pagehide', () => store.flush());
+  window.addEventListener('pagehide', () => { if (!resumeParam) store.flush(); });
 }
 
 function bootInviteFixture() {
@@ -485,6 +534,20 @@ async function mountScene() {
 async function mountFallback() {
   const { createFallbackRenderer } = await import('./fallback.js');
   return createFallbackRenderer({ container: els.sceneRoot, onTap: handleTap, reducedMotion });
+}
+
+// One clock contract for both renderers. After mount, the store stamps
+// taps with the renderer's animation time, so a resumed board shows each
+// counted sheep where the tap left it; after a resume the renderer is
+// pinned to the saved clock first, so the flock is standing exactly where
+// the player left it. Every round start re-runs this with the new board.
+function syncRoundClock({ resume } = {}) {
+  if (!renderer || typeof renderer.elapsedSeconds !== 'function') return;
+  const saved = store.state.roundElapsed || 0;
+  if (resume) {
+    renderer.setRoundClock?.(saved);
+  }
+  store.roundClock = () => Math.max(saved, renderer.elapsedSeconds());
 }
 
 function handleTap(index) {
@@ -621,6 +684,7 @@ function advanceRound() {
   stopSpeedClock();
   if (store.state.phase !== ROUND_PASSED) return;
   store.nextRound();
+  syncRoundClock();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
   playBaa();
@@ -634,6 +698,7 @@ function restartRun() {
   clearTimeout(autoSubmitTimer);
   stopSpeedClock();
   store.restartRun();
+  syncRoundClock();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
   playBaa();
@@ -817,6 +882,7 @@ for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
   btn.addEventListener('click', () => {
     if (staticMode) return;
     store.setDifficulty(btn.dataset.difficulty);
+    syncRoundClock();
     syncDifficultyPicker(store.state);
     syncBestRoundChip(store.state);
     els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty);
@@ -833,6 +899,7 @@ for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
 els.speedToggle.addEventListener('change', (e) => {
   if (staticMode) return;
   store.setSpeedOn(e.target.checked);
+  syncRoundClock();
   syncSpeedToggle(store.state);
   els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty, store.state.speedOn);
   renderer?.resetRound(store.state);

@@ -323,6 +323,28 @@
       "expectSelector": "#friend-add",
       "expectText": "Add friend",
       "allowConsoleErrors": true
+    },
+    {
+      "id": "round.resume",
+      "name": "A saved mid-round board restores on return",
+      "path": "/?resume=1&snapshot=%7B%22round%22%3A5%2C%22difficulty%22%3A%22normal%22%2C%22bestRounds%22%3A%7B%22easy%22%3A1%2C%22normal%22%3A5%2C%22hard%22%3A1%2C%22expert%22%3A1%7D%2C%22totalCounted%22%3A3%2C%22soundOn%22%3Afalse%2C%22nightOn%22%3Afalse%2C%22speedOn%22%3Afalse%2C%22midCountdown%22%3A%7B%22round%22%3A5%2C%22difficulty%22%3A%22normal%22%2C%22sheepCount%22%3A7%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22countedAt%22%3A%5B%7B%22index%22%3A0%2C%22elapsed%22%3A2.5%7D%2C%7B%22index%22%3A1%2C%22elapsed%22%3A5%7D%2C%7B%22index%22%3A2%2C%22elapsed%22%3A9.5%7D%5D%2C%22roundElapsed%22%3A12%2C%22phase%22%3A%22counting%22%2C%22speedOn%22%3Afalse%2C%22secondsLeft%22%3Anull%7D%7D",
+      "expectSelector": "#a11y-sheep-list button:nth-child(4)",
+      "expectText": "of 7 sheep",
+      "visual": true,
+      "impact": [
+        "public/state.js",
+        "public/app.js",
+        "public/scene.js",
+        "public/fallback.js",
+        "server.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Resumed board restores on the no-WebGL fallback too",
+      "path": "/?resume=1&renderer=dom&snapshot=%7B%22round%22%3A5%2C%22difficulty%22%3A%22normal%22%2C%22bestRounds%22%3A%7B%22easy%22%3A1%2C%22normal%22%3A5%2C%22hard%22%3A1%2C%22expert%22%3A1%7D%2C%22totalCounted%22%3A3%2C%22soundOn%22%3Afalse%2C%22nightOn%22%3Afalse%2C%22speedOn%22%3Afalse%2C%22midCountdown%22%3A%7B%22round%22%3A5%2C%22difficulty%22%3A%22normal%22%2C%22sheepCount%22%3A7%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22countedAt%22%3A%5B%7B%22index%22%3A0%2C%22elapsed%22%3A2.5%7D%2C%7B%22index%22%3A1%2C%22elapsed%22%3A5%7D%2C%7B%22index%22%3A2%2C%22elapsed%22%3A9.5%7D%5D%2C%22roundElapsed%22%3A12%2C%22phase%22%3A%22counting%22%2C%22speedOn%22%3Afalse%2C%22secondsLeft%22%3Anull%7D%7D",
+      "expectSelector": ".sheep-fallback-grid .sheep-card.is-counted:nth-child(3)",
+      "expectText": "of 7 sheep"
     }
   ]
 }
