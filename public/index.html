@@ -799,8 +799,13 @@
   </div>
 
   <style>
-    /* Difficulty pills on the Get ready card: the app's own pill look,
-       filled pink for the selected level, soft lavender otherwise. */
+    /* Difficulty pills on the Get ready card, in the dusk chrome's palette.
+       Explicit colours rather than --plum/--pink: the Bedtime tuning block
+       redefines those as cream and grey-lavender, which on a light pill
+       left the labels unreadable (1.05:1). Unselected pills match the soft
+       buttons (cream label on the dark card, about 7:1); the selected
+       level flips to a cream fill with a deep plum label (about 10:1), so
+       it stays distinct from the dark Start counting button. */
     .difficulty-pill {
       min-height: 2.75rem;
       padding: 0 1.4rem;
@@ -808,18 +813,18 @@
       font-size: 1.1rem;
       font-weight: 800;
       letter-spacing: 0.01em;
-      color: var(--plum);
-      background: #f4ecfa;
-      box-shadow: 0 5px 0 #dccbe9;
+      color: #f0e9de;
+      background: #ffffff12;
+      border: 2px solid #9da6af;
+      box-shadow: none;
       touch-action: manipulation;
     }
-    .difficulty-pill:active { transform: translateY(4px); box-shadow: 0 1px 0 #dccbe9; }
+    .difficulty-pill:active { transform: translateY(2px); }
     .difficulty-pill[aria-checked="true"] {
-      color: #fff;
-      background: var(--pink);
-      box-shadow: 0 5px 0 #e35d8a;
+      color: #283448;
+      background: #f0e9de;
+      border-color: #f0e9de;
     }
-    .difficulty-pill[aria-checked="true"]:active { box-shadow: 0 1px 0 #e35d8a; }
   </style>
   <script type="module" src="/app.js"></script>
 </body>
