@@ -665,6 +665,21 @@
     .big-btn { background: #283448; color: #f0e9de; box-shadow: none; border: 2px solid #34435a; font-weight: 600; }
     .big-btn:hover { background: #34435a; border-color: #9da6af; }
     .soft-btn, #grownups-close { background: #ffffff12; color: #f0e9de; box-shadow: none; border: 2px solid #9da6af; }
+    /* 3-2-1 countdown card: one quiet number at a time, sized like the
+       count plate's big digits so the eye is already warmed up. A gentle
+       fade replaces each number; prefers-reduced-motion stops it. */
+    .countdown-card { cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+    .countdown-number {
+      margin: 0.25rem 0;
+      font-size: 4.6rem;
+      line-height: 1;
+      font-weight: 600;
+      color: var(--plum);
+      font-variant-numeric: tabular-nums;
+      animation: countdown-rest 0.7s ease-in-out;
+    }
+    @keyframes countdown-rest { from { opacity: 0.25; } to { opacity: 1; } }
+    .countdown-card .soft-btn { pointer-events: auto; }
     .setting-row, .stats-card { background: #ffffff08; border-color: #ffffff20; }
     .setting-row select { color: #f0e9de; background: #283448; border-color: #9da6af; }
     .setting-row input[type="checkbox"] { accent-color: #a18cb8; }
@@ -733,6 +748,19 @@
       <button id="submit-count" type="button" class="submit-btn">
         Done counting
       </button>
+    </div>
+
+    <!-- 3-2-1 countdown: a large, quiet breath before a round starts, so
+         young players can ready their eyes. One tap anywhere (or on the
+         button) skips the rest. Plain DOM, so the card fallback shows it
+         exactly the same as the canvas path. -->
+    <div id="countdown-overlay" hidden class="panel-backdrop absolute inset-0 flex items-center justify-center">
+      <div class="panel-card countdown-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-3">
+        <p class="bedtime-eyebrow">Get ready</p>
+        <p id="countdown-number" class="countdown-number">3</p>
+        <p id="countdown-status" class="visually-hidden" role="status"></p>
+        <button id="countdown-skip-btn" type="button" class="soft-btn">Start now</button>
+      </div>
     </div>
 
     <!-- Round passed: the success state. Praise first, then the round just

@@ -498,7 +498,7 @@ app.post('/api/state', async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      `SELECT best_round, best_rounds FROM sheep_progress WHERE user_id = $1`,
+      `SELECT best_round, best_rounds, total_counted FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
     const prev = rows[0];
