@@ -12,6 +12,19 @@ export const MAX_SHEEP = 12;
 // Round at which the movement ramp reaches full chaos.
 export const DEFAULT_DIFFICULTY = 'normal';
 
+// Flock-size selector. Medium is today's curve exactly; Small runs roughly
+// half the flock, Large roughly double, every one capped at the shared
+// MAX_SHEEP board limit so taps stay physically landable. The difficulty
+// curve is unchanged by the size: size scales how many sheep a round holds,
+// difficulty scales how fast they move.
+export const DEFAULT_FLOCK_SIZE = 'medium';
+
+export const FLOCK_SIZES = {
+  small: { maxSheep: 6, factor: 0.5 },
+  medium: { maxSheep: MAX_SHEEP, factor: 1 },
+  large: { maxSheep: MAX_SHEEP, factor: 2 },
+};
+
 // The difficulty dials. Normal is today's curve exactly; Easy stretches the
 // same character arc out and calms it down, Hard and Expert compress it and
 // push it further. growth is the sheep-per-round multiplier, rampRounds how
@@ -61,6 +74,13 @@ export function normalizeDifficulty(difficulty) {
     : DEFAULT_DIFFICULTY;
 }
 
+// Same contract for the flock-size picker: an unknown value reads as Medium.
+export function normalizeFlockSize(flockSize) {
+  return Object.prototype.hasOwnProperty.call(FLOCK_SIZES, flockSize)
+    ? flockSize
+    : DEFAULT_FLOCK_SIZE;
+}
+
 export function normalizeRound(round) {
   const r = Math.floor(Number(round));
   return Number.isFinite(r) && r >= 1 ? r : 1;
@@ -69,10 +89,15 @@ export function normalizeRound(round) {
 // 1, 2, 4, 5, 7, 8, 10, 11, 12 ... on Normal (one or two more sheep each
 // round); slower growth on Easy, faster on Hard and Expert, each capped at
 // its own flock limit so taps stay physically landable.
-export function sheepForRound(round, difficulty = DEFAULT_DIFFICULTY) {
+export function sheepForRound(round, difficulty = DEFAULT_DIFFICULTY, flockSize = DEFAULT_FLOCK_SIZE) {
   const r = normalizeRound(round);
   const d = DIFFICULTIES[normalizeDifficulty(difficulty)];
-  return Math.min(d.maxSheep, 1 + Math.floor((r - 1) * d.growth));
+  const f = FLOCK_SIZES[normalizeFlockSize(flockSize)];
+  // Medium reproduces the pre-size curve byte for byte; Small and Large
+  // scale that same ladder (roughly half / double) under their own cap, and
+  // round 1 always stays one motionless sheep to teach the tap.
+  const scaled = 1 + Math.floor((r - 1) * d.growth * f.factor);
+  return Math.min(d.maxSheep, f.maxSheep, Math.max(1, scaled));
 }
 
 // How the flock moves at a given round. Round 1 is completely still: a
@@ -148,10 +173,10 @@ export function paceLine(round, difficulty = DEFAULT_DIFFICULTY) {
 // The pre-round briefing's first line: what this round asks for. Reads
 // "Round 1 has 1 sheep. This one stands still." for a fresh run and names a
 // bigger, faster flock for a run that starts on a later round.
-export function roundIntroText(round, difficulty = DEFAULT_DIFFICULTY) {
+export function roundIntroText(round, difficulty = DEFAULT_DIFFICULTY, flockSize = DEFAULT_FLOCK_SIZE) {
   const r = normalizeRound(round);
   const d = normalizeDifficulty(difficulty);
-  return `Round ${r} has ${sheepPhrase(sheepForRound(r, d))}. ${paceLine(r, d)}`;
+  return `Round ${r} has ${sheepPhrase(sheepForRound(r, d, flockSize))}. ${paceLine(r, d)}`;
 }
 
 // The praise line at the top of the round-complete card. Leads the card so

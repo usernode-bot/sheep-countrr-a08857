@@ -9,11 +9,13 @@ import {
   ENDED_MISSED,
 } from '../public/state.js';
 import {
+  FLOCK_SIZES,
   MAX_SHEEP,
   motionForRound,
   paceLine,
   roamRadius,
   roundIntroText,
+  normalizeFlockSize,
   roundSeed,
   sheepForRound,
   sheepPhrase,
@@ -538,4 +540,75 @@ test('a finished run records once; a new run re-arms the record', () => {
   store.endRun('doubleTap');
   assert.equal(recordedRuns.length, 2);
   assert.equal(recordedRuns[1], 5);
+});
+
+test('the flock-size picker scales the ladder: medium is today, small half, large double', () => {
+  // Medium is the pre-picker game, byte for byte.
+  for (const round of [1, 2, 3, 5, 8, 9, 20]) {
+    assert.equal(sheepForRound(round, 'normal', 'medium'), sheepForRound(round, 'normal'), `round ${round}`);
+  }
+  // Named fixtures from the dapp.json deep links. Large round 5 reads as
+  // double until the shared 12-sheep board cap binds.
+  assert.equal(sheepForRound(5, 'normal', 'small'), 4);
+  assert.equal(sheepForRound(5, 'normal', 'medium'), 7);
+  assert.equal(sheepForRound(5, 'normal', 'large'), 12);
+  // Small's own cap keeps young flocks tap-landable.
+  assert.equal(sheepForRound(30, 'normal', 'small'), 6);
+  assert.equal(sheepForRound(30, 'normal', 'large'), MAX_SHEEP);
+  // Round 1 teaches the tap: one still sheep at every size.
+  for (const size of ['small', 'medium', 'large']) {
+    assert.equal(sheepForRound(1, 'normal', size), 1, `round 1 at ${size}`);
+  }
+  // An unknown size reads as Medium, like an unknown difficulty reads Normal.
+  assert.equal(normalizeFlockSize('bogus'), 'medium');
+  assert.equal(sheepForRound(5, 'normal', 'bogus'), sheepForRound(5, 'normal', 'medium'));
+  // The picker never shrinks a flock to zero and never exceeds its cap.
+  for (const size of ['small', 'medium', 'large']) {
+    let prev = sheepForRound(1, 'normal', size);
+    for (let round = 2; round <= 20; round++) {
+      const n = sheepForRound(round, 'normal', size);
+      assert.ok(n >= prev, `${size} round ${round} shrank`);
+      assert.ok(n >= 1 && n <= FLOCK_SIZES[size].maxSheep, `${size} round ${round}: ${n}`);
+      prev = n;
+    }
+  }
+  // The intro copy and the round-complete preview track the size.
+  assert.ok(roundIntroText(5, 'normal', 'small').includes('4 sheep'));
+  assert.ok(roundIntroText(5, 'normal', 'large').includes('12 sheep'));
+  assert.ok(roundIntroText(1, 'normal', 'large').includes('1 sheep'));
+  for (const size of ['small', 'medium', 'large']) {
+    for (const round of [1, 5, 12]) {
+      assert.ok(!roundIntroText(round, 'normal', size).includes('\u2014'), `em dash at ${size} round ${round}`);
+    }
+  }
+});
+
+test('picking a flock size rescales the round and rides alongside difficulty', () => {
+  const { store } = newStore();
+  store.setDifficulty('hard');
+  store.startRound(5, { silent: true });
+  assert.equal(store.state.sheepCount, sheepForRound(5, 'hard', 'medium'));
+  store.setFlockSize('small');
+  assert.equal(store.state.flockSize, 'small');
+  assert.equal(store.state.sheepCount, sheepForRound(5, 'hard', 'small'));
+  // The same round is rescaled, not restarted from 1, and the difficulty is
+  // untouched.
+  assert.equal(store.state.round, 5);
+  assert.equal(store.state.difficulty, 'hard');
+  // The save/restore shape carries the size, so a returning player keeps it.
+  const saved = {
+    round: 3,
+    difficulty: 'hard',
+    flockSize: 'large',
+    totalCounted: 6,
+    soundOn: false,
+  };
+  const { store: restored } = newStore();
+  restored.loadLocalFrom(saved);
+  assert.equal(restored.state.flockSize, 'large');
+  assert.equal(restored.state.sheepCount, sheepForRound(3, 'hard', 'large'));
+  // An unknown size in saved data reads as Medium, never a crash.
+  const { store: fallback } = newStore();
+  fallback.loadLocalFrom({ round: 2, flockSize: 'bogus', totalCounted: 1, soundOn: false });
+  assert.equal(fallback.state.flockSize, 'medium');
 });

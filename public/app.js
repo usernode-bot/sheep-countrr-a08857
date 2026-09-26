@@ -7,8 +7,8 @@ import {
   ENDED_DOUBLE_TAP,
 } from './state.js';
 import {
-  DEFAULT_DIFFICULTY,
   normalizeDifficulty,
+  normalizeFlockSize,
   normalizeRound,
   paceLine,
   roundIntroText,
@@ -32,6 +32,12 @@ const roundParam = params.get('round');
 // persisted from a deep link.
 const difficultyParam = normalizeDifficulty(params.get('difficulty'));
 const hasDifficultyParam = params.get('difficulty') !== null;
+// A deep link may name a flock size; an unknown value falls back to Medium.
+// It composes with /?round=N, /?scene=X and /?difficulty= and, like them,
+// is never persisted from a deep link.
+const flockParam = params.get('flock');
+const flockSizeParam = normalizeFlockSize(flockParam);
+const hasFlockParam = flockParam !== null;
 // The grown-ups fixture can force the sound toggle on (the shipped default
 // for the frozen ?scene=grownups card) without touching localStorage.
 const soundParam = params.get('sound');
@@ -97,6 +103,9 @@ const els = {
   communityValue: document.getElementById('community-value'),
   difficultyValue: document.getElementById('difficulty-value'),
   difficultyPicker: document.getElementById('difficulty-picker'),
+  flockSizeValue: document.getElementById('flock-size-value'),
+  flockPicker: document.getElementById('flock-picker'),
+  roundIntroLabel: document.getElementById('round-intro-label'),
   a11yList: document.getElementById('a11y-sheep-list'),
   leaderboardBtn: document.getElementById('leaderboard-btn'),
   leaderboard: document.getElementById('leaderboard'),
@@ -170,7 +179,8 @@ function buildStaticState() {
     ...base,
     round,
     difficulty: difficultyParam,
-    sheepCount: sheepForRound(round, difficultyParam),
+    flockSize: flockSizeParam,
+    sheepCount: sheepForRound(round, difficultyParam, flockSizeParam),
     seed: roundSeed(round),
     bestRounds: { ...base.bestRounds, [difficultyParam]: Math.max(round, base.bestRounds[difficultyParam]) },
     ...extra,
@@ -224,6 +234,7 @@ async function boot() {
     // fixed seed so the same URL always frames the same pasture. An optional
     // difficulty= picks the curve; it stays ephemeral like the round itself.
     if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
+    if (hasFlockParam) store.state = { ...store.state, flockSize: flockSizeParam };
     store.startRound(normalizeRound(roundParam), { silent: true });
   } else {
     store.loadLocal();
@@ -245,7 +256,6 @@ async function boot() {
   // already played), but the difficulty fixtures need the picker to be
   // visible for their dapp.json check. Render it without opening the card.
   if (staticMode && roundParam !== null) syncDifficultyPicker(store.state);
-
   if (sceneParam === 'grownups') openGrownups(store.state);
 
   if (sceneParam === 'leaderboard') {
@@ -328,17 +338,37 @@ function submitCount() {
 // level means before committing to Start counting.
 const DIFFICULTY_LABELS = { easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert' };
 
+// Flock-size picker labels. The intro line names what each size changes so
+// a grown-up setting it up reads the effect, not a bare size word.
+const FLOCK_SIZE_LABELS = { small: 'Small', medium: 'Medium', large: 'Large' };
+const FLOCK_INTRO_LABELS = {
+  small: 'A small flock, about half the usual.',
+  medium: 'The usual flock.',
+  large: 'A big flock, about twice as many.',
+};
+
 function syncDifficultyPicker(state) {
   for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
     const level = normalizeDifficulty(btn.dataset.difficulty);
     btn.setAttribute('aria-checked', String(level === state.difficulty));
   }
   els.difficultyValue.textContent = DIFFICULTY_LABELS[state.difficulty] || 'Normal';
+  els.flockSizeValue.textContent = FLOCK_SIZE_LABELS[state.flockSize] || 'Medium';
+  syncFlockPicker(state);
   els.bestValue.textContent = String(store.bestRound);
 }
 
+function syncFlockPicker(state) {
+  for (const btn of els.flockPicker.querySelectorAll('.flock-pill')) {
+    const size = normalizeFlockSize(btn.dataset.flock);
+    btn.setAttribute('aria-checked', String(size === state.flockSize));
+  }
+  els.flockSizeValue.textContent = FLOCK_SIZE_LABELS[state.flockSize] || 'Medium';
+  els.roundIntroLabel.textContent = FLOCK_INTRO_LABELS[state.flockSize] || FLOCK_INTRO_LABELS.medium;
+}
+
 function showRoundIntro(state) {
-  els.roundIntroSize.textContent = roundIntroText(state.round, state.difficulty);
+  els.roundIntroSize.textContent = roundIntroText(state.round, state.difficulty, state.flockSize);
   syncDifficultyPicker(state);
   els.roundIntro.hidden = false;
   introOpen = true;
@@ -422,7 +452,7 @@ function syncPanels(state) {
     els.successTitle.textContent = successMessage();
     els.roundCompleteTitle.textContent = `Round ${state.round} counted.`;
     els.roundCompleteNext.textContent =
-      `Next up: ${sheepPhrase(sheepForRound(state.round + 1, state.difficulty))}. ${paceLine(state.round + 1, state.difficulty)}`;
+      `Next up: ${sheepPhrase(sheepForRound(state.round + 1, state.difficulty, state.flockSize))}. ${paceLine(state.round + 1, state.difficulty)}`;
   }
   if (over) {
     els.gameOverRound.textContent = String(state.round);
@@ -485,6 +515,8 @@ els.grownupsBtn.addEventListener('keydown', (e) => {
 });
 
 function openGrownups(state) {
+  els.difficultyValue.textContent = DIFFICULTY_LABELS[state.difficulty] || 'Normal';
+  els.flockSizeValue.textContent = FLOCK_SIZE_LABELS[state.flockSize] || 'Medium';
   els.roundValue.textContent = String(state.round);
   els.bestValue.textContent = String(store.bestRound);
   els.totalValue.textContent = String(state.totalCounted);
@@ -518,6 +550,21 @@ for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
     syncDifficultyPicker(store.state);
     els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty);
     // The board behind the card shows the new level's round 1 flock.
+    renderer?.resetRound(store.state);
+    renderA11yList(store.state);
+  });
+}
+
+// Picking a flock size on the briefing card rescales the current round's
+// flock and rewrites the briefing line. In staticMode the pills render from
+// the fixture but taps are ignored, exactly like the difficulty pills.
+for (const btn of els.flockPicker.querySelectorAll('.flock-pill')) {
+  btn.addEventListener('click', () => {
+    if (staticMode) return;
+    store.setFlockSize(btn.dataset.flock);
+    syncFlockPicker(store.state);
+    els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty, store.state.flockSize);
+    // The board behind the card shows the new size's flock right away.
     renderer?.resetRound(store.state);
     renderA11yList(store.state);
   });
