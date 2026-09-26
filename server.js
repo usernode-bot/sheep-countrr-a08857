@@ -367,6 +367,46 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
+// The grown-ups CSV export: the signed-in player's own best round at every
+// difficulty and every finished run inside the current ISO week (the same
+// rows the weekly leaderboard ranks). Only fields the app already shows in
+// the grown-ups panel and the leaderboard leave the database; the route is
+// authenticated like every other /api read.
+app.get('/api/export', async (req, res) => {
+  try {
+    const { rows: progressRows } = await pool.query(
+      `SELECT best_rounds FROM sheep_progress WHERE user_id = $1`,
+      [req.user.id]
+    );
+    const stored = (progressRows[0] && progressRows[0].best_rounds) || {};
+    const bestRounds = {
+      easy: stored.easy || 1,
+      normal: stored.normal || 1,
+      hard: stored.hard || 1,
+      expert: stored.expert || 1,
+    };
+
+    const { rows: runRows } = await pool.query(
+      `SELECT round_reached AS "roundReached", speed_round AS "speedRound", ended_at AS "endedAt"
+       FROM sheep_runs
+       WHERE user_id = $1 AND ended_at >= date_trunc('week', NOW())
+       ORDER BY ended_at DESC, id DESC`,
+      [req.user.id]
+    );
+
+    res.json({
+      bestRounds,
+      weeklyRuns: runRows.map((r) => ({
+        roundReached: r.roundReached,
+        speedRound: r.speedRound,
+        endedAt: r.endedAt,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // The caller's own friend list.
 app.get('/api/friends', async (req, res) => {
   try {

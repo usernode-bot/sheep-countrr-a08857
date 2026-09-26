@@ -29,6 +29,7 @@ import { wanderOffset } from '../public/movement.js';
 import { weekStartUtc, sortScoreRows } from '../public/leaderboard.js';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
 import { isSoundEnabled, setSoundEnabled } from '../public/sound.js';
+import { bestRoundsCsv, weeklyHistoryCsv } from '../public/export.js';
 
 // A store that behaves exactly like a /?round=N deep link: fixed seeds, and
 // no localStorage or network to reach for from a test process.
@@ -633,4 +634,33 @@ test('a fresh run resets the Speed Round mode and reads a stale clock as off', (
   assert.equal(roundCompleteTitle(4, false), 'Round 4 counted.');
   assert.equal(weeklyScoreLabel(8, true), 'Speed 8');
   assert.equal(weeklyScoreLabel(8, false), 'Round 8');
+});
+
+// The grown-ups export: the CSV builders are pure, so the browser button and
+// these assertions share one source of truth for the file's exact shape.
+test('the best-rounds export names every difficulty and folds legacy data', () => {
+  const csv = bestRoundsCsv({ bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2 } });
+  assert.equal(
+    csv,
+    'difficulty,best_round\r\neasy,3\r\nnormal,7\r\nhard,5\r\nexpert,2\r\n',
+    'one header and one row per level, CRLF-terminated'
+  );
+  const legacy = bestRoundsCsv({});
+  assert.match(legacy, /normal,1/, 'a store with no bestRounds yet exports defaults');
+});
+
+test('the weekly history export carries the clock tag and quotes commas', () => {
+  const csv = weeklyHistoryCsv([
+    { endedAt: '2026-09-21T10:00:00.000Z', roundReached: 8, speedRound: true },
+    { endedAt: '2026-09-22T10:00:00.000Z', roundReached: 5, speedRound: false },
+  ]);
+  const lines = csv.split('\r\n');
+  assert.equal(lines[0], 'ended_at,round_reached,speed_round');
+  assert.equal(lines[1], '2026-09-21T10:00:00.000Z,8,yes');
+  assert.equal(lines[2], '2026-09-22T10:00:00.000Z,5,no');
+  // A username-style free-text cell would never shift a column; the
+  // quoting rule is what keeps a stray comma inside one cell.
+  const quoted = weeklyHistoryCsv([{ endedAt: 'a,b', roundReached: 2 }]);
+  assert.match(quoted, /"a,b",2,no/);
+  assert.equal(weeklyHistoryCsv(null).endsWith('\r\n'), true, 'an empty week still emits the header');
 });
