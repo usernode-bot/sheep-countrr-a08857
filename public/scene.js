@@ -916,10 +916,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     s.numberSprite.material.needsUpdate = true;
     s.numberSprite.visible = true;
     if (animate && !reducedMotion) {
-      s.bounceStart = clock.elapsedTime;
+      s.bounceStart = elapsedSeconds();
       s.bounceDur = 0.9;
       s.wiggle = false;
-      s.ribbonPop = clock.elapsedTime;
+      s.ribbonPop = elapsedSeconds();
       const p = s.group.position;
       // A sleepy nod is enough feedback; no burst of sparkles.
     }
@@ -928,7 +928,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   function wiggleSheep(index) {
     const s = sheep[index];
     if (!s || reducedMotion) return;
-    s.bounceStart = clock.elapsedTime;
+    s.bounceStart = elapsedSeconds();
     s.bounceDur = 0.34;
     s.wiggle = true;
   }
@@ -1014,6 +1014,24 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   canvas.addEventListener('webglcontextrestored', onContextRestored, false);
 
   const clock = new THREE.Clock();
+  // The round's animation clock. setRoundClock resumes a saved board at
+  // the exact time it was left, so wandering sheep are standing where
+  // they were when the player came back. THREE.Clock only exposes
+  // elapsedTime through getDelta(), so the frame loop stays the writer.
+  let clockOffset = 0;
+  let lastElapsed = 0;
+  let clockBase = 0;
+  function elapsedSeconds() {
+    return clockOffset + (lastElapsed - clockBase);
+  }
+  function setRoundClock(seconds) {
+    clockOffset = Number.isFinite(Number(seconds)) && Number(seconds) >= 0 ? Number(seconds) : 0;
+    // getDelta() also resyncs the clock, so no hidden-tab gap leaks into
+    // the next frame after a resume.
+    clockBase = clock.getDelta() >= 0 ? clock.elapsedTime : 0;
+    lastElapsed = clockBase;
+    clock.getDelta();
+  }
   let frameAvg = 16;
   let animId = null;
   let lowTierAccum = 0;
@@ -1040,7 +1058,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     const stepDt = tier === 'low' ? lowTierAccum : dt;
     lowTierAccum = 0;
 
-    const t = clock.elapsedTime;
+    // The whole frame runs on the round's clock: after a resume it sits
+    // at the saved position, so the flock is exactly where it was left.
+    const rt = elapsedSeconds();
+    const t = rt;
     sheep.forEach((s) => {
       // Breathing.
       const breathe = reducedMotion ? 0 : Math.sin(t * 0.9 + s.phase) * 0.012;
@@ -1088,13 +1109,13 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       // Counted sheep close their eyes, including in reduced motion.
       if (s.counted) s.eyes.forEach((e) => e.scale.set(1, 0.14, 1));
       if (!reducedMotion && !s.counted) {
-        if (s.blinkStart < 0 && t > s.nextBlink) s.blinkStart = t;
+        if (s.blinkStart < 0 && rt > s.nextBlink) s.blinkStart = rt;
         let eyeY = 1;
         if (s.blinkStart >= 0) {
           const p = (t - s.blinkStart) / 0.18;
           if (p >= 1) {
             s.blinkStart = -1;
-            s.nextBlink = t + 2 + Math.random() * 5;
+            s.nextBlink = rt + 2 + Math.random() * 5;
           } else {
             eyeY = 1 - Math.sin(p * Math.PI) * 0.92;
           }
@@ -1161,6 +1182,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   return {
     kind: 'three',
+    elapsedSeconds,
+    setRoundClock,
     setState(state) {
       buildFlock(state);
       applyNight(!!state.nightOn);

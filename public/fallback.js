@@ -95,7 +95,13 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   let current = null;
   let motion = motionForRound(1);
   let rafId = null;
-  const startedAt = performance.now();
+  // The round's animation clock. setRoundClock resumes a saved board at
+  // the exact time it was left, so the flock is standing where it was.
+  let startedAt = performance.now();
+  let clockOffset = 0;
+  function elapsedSeconds() {
+    return clockOffset + (performance.now() - startedAt) / 1000;
+  }
 
   function render(state) {
     grid.innerHTML = '';
@@ -135,7 +141,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     }
     const step = () => {
       rafId = requestAnimationFrame(step);
-      const t = (performance.now() - startedAt) / 1000;
+      const t = elapsedSeconds();
       for (let i = 0; i < cards.length; i++) {
         const btn = cards[i];
         if (btn.classList.contains('is-counted')) continue;
@@ -220,6 +226,12 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
 
   return {
     kind: 'dom',
+    elapsedSeconds,
+    // Resume support: pin the drift clock at the board's saved position.
+    setRoundClock(seconds) {
+      clockOffset = Number.isFinite(Number(seconds)) && Number(seconds) >= 0 ? Number(seconds) : 0;
+      startedAt = performance.now();
+    },
     setState(state) {
       render(state);
       setNight(!!state.nightOn);

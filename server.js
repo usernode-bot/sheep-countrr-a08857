@@ -556,10 +556,12 @@ app.use((req, res, next) => {
 // of a redirect, so the platform shell is never loaded INSIDE its own
 // app iframe and stray visits still don't reveal the app.
 //
-// The screenshot-state deep links are the one exception: `?scene=`
-// fixtures render hardcoded demo data, and `?round=N` starts a playable
-// run from a fixed seed. Both branches in app.js are ephemeral, so they
-// never touch localStorage or the server and carry nothing worth gating.
+  // The screenshot-state deep links are the one exception: `?scene=`
+  // fixtures render hardcoded demo data, `?round=N` starts a playable
+  // run from a fixed seed, and `?resume=1` plays the save/resume loop
+  // under a fixed demo namespace. All three branches are deliberately
+  // isolated (ephemeral or namespaced), so they never touch a real
+  // player's progress and carry nothing worth auth-gating.
 // They stay reachable with no token so the platform's checks/screenshots
 // (and this repo's own usernode-run-checks) can navigate straight to them,
 // since neither can mint a real platform-signed token.
@@ -569,7 +571,7 @@ app.get('*', (req, res) => {
   // public data endpoints, so they must not depend on the chromeless shell
   // minting a token for them. Skipping the chromeless redirect here also
   // removes any redirect-loop risk if it ever fired on the same path.
-  if (!req.user && !req.query.scene && !req.query.round) {
+  if (!req.user && !req.query.scene && !req.query.round && !req.query.resume) {
     if (req.path.startsWith('/s/') || req.path.startsWith('/invite/')) {
       return res.sendFile(path.join(__dirname, 'public', 'index.html'));
     }
