@@ -69,6 +69,26 @@
       "expectText": "of 1 sheep"
     },
     {
+      "name": "Round badge shows the ladder length",
+      "id": "round.progress",
+      "visual": true,
+      "path": "/?round=5",
+      "expectSelector": "#round-badge",
+      "expectText": "Round 5 of 9",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Round ladder is mirrored in the accessibility layer",
+      "path": "/?round=5&renderer=dom",
+      "expectSelector": "#a11y-round-progress",
+      "expectText": "Round 5 of 9"
+    },
+    {
       "name": "Round 5 counts in with no sheep tapped",
       "path": "/?round=5",
       "expectSelector": "#count-display",
