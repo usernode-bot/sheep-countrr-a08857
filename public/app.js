@@ -17,7 +17,7 @@ import {
   sheepPhrase,
   successMessage,
 } from './rounds.js';
-import { playTapChime, playBaa, playCelebration, setMuted } from './sound.js';
+import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
 
 const params = new URLSearchParams(window.location.search);
@@ -333,6 +333,9 @@ function showRoundIntro(state) {
 function dismissRoundIntro() {
   introOpen = false;
   els.roundIntro.hidden = true;
+  // A soft baa announces the new flock. playBaa checks the sound
+  // setting itself, so no extra gate is needed here.
+  playBaa();
 }
 
 function advanceRound() {
@@ -341,6 +344,7 @@ function advanceRound() {
   store.nextRound();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
+  playBaa();
 }
 
 function restartRun() {
@@ -349,6 +353,7 @@ function restartRun() {
   store.restartRun();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
+  playBaa();
   // A restart is the start of a fresh run, so the briefing comes back.
   // Frozen ?scene= fixtures stay card-free.
   if (!staticMode) showRoundIntro(store.state);
@@ -365,9 +370,9 @@ function hintFor(state) {
 let lastShownCount = null;
 let lastPhase = null;
 function updateChrome(state) {
-  // Keep the audio module's mute flag in lockstep with the toggle, so
+  // Keep the audio module's enabled flag in lockstep with the toggle, so
   // every sound path (chime, baa, celebration) reads one source of truth.
-  setMuted(!state.soundOn);
+  setSoundEnabled(!!state.soundOn);
 
   if (lastShownCount !== null && state.count > lastShownCount) {
     const plate = els.countDisplay.parentElement;
@@ -408,6 +413,7 @@ function syncPanels(state) {
     els.gameOverReason.textContent = state.endedBy === ENDED_DOUBLE_TAP
       ? 'You counted the same sheep twice.'
       : `You said done with ${state.count} of ${sheepPhrase(state.sheepCount)} counted.`;
+    playBaa();
   }
   els.roundComplete.hidden = !passed;
   els.gameOver.hidden = !over;
@@ -417,7 +423,7 @@ function syncPanels(state) {
   clearTimeout(advanceTimer);
   if (passed) {
     renderer?.celebrate?.();
-    if (state.soundOn) playCelebration();
+    playCelebration();
     // Frozen fixtures stay put so a screenshot catches the message.
     if (!staticMode) advanceTimer = setTimeout(advanceRound, ADVANCE_DELAY_MS);
   }

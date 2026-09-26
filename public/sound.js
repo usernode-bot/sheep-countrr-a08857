@@ -4,13 +4,17 @@
 // autoplay policy.
 
 let ctx = null;
-let muted = false;
+let enabled = false;
 
-// The mute flag is app state: callers pass the current toggle value with
+// The enabled flag is app state: callers pass the current toggle value with
 // each call rather than this module owning persistence. Everything checks
 // it first, so a muted session never even creates an AudioContext.
-export function setMuted(value) {
-  muted = !!value;
+export function setSoundEnabled(on) {
+  enabled = !!on;
+}
+
+export function isSoundEnabled() {
+  return enabled;
 }
 
 function getCtx() {
@@ -22,7 +26,7 @@ function getCtx() {
 }
 
 export function playTapChime(step) {
-  if (muted) return;
+  if (!enabled) return;
   const c = getCtx();
   if (!c) return;
   const freq = 220 + Math.min(step, 12) * 12;
@@ -39,7 +43,7 @@ export function playTapChime(step) {
 }
 
 export function playCelebration() {
-  if (muted) return;
+  if (!enabled) return;
   const c = getCtx();
   if (!c) return;
   const notes = [261.63, 329.63];
@@ -69,7 +73,7 @@ export function vibrateTap() {
 // A soft "baa" for the sound a newly counted sheep makes: a gentle
 // two-note glide on a triangle wave, quiet enough to sit under a nap.
 export function playBaa() {
-  if (muted) return;
+  if (!enabled) return;
   const c = getCtx();
   if (!c) return;
   const osc = c.createOscillator();
