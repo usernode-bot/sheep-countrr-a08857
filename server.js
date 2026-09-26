@@ -1,4 +1,11 @@
 const express = require('express');
+const https = require('https');
+const http = require('http');
+
+// The platform is http inside the cluster and https outside; pick the
+// client module the bridge URL's own scheme names.
+const bridgeFetch = (url, opts, cb) =>
+  (url.startsWith('https:') ? https : http).request(url, opts, cb);
 const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
@@ -30,7 +37,48 @@ const APP_AUDIENCE = process.env.USERNODE_APP_ID
 // Paths that stay open without authentication. Add a path here (and add it
 // with `app.get`/`app.post` below) if you deliberately want it public.
 // Everything else requires a valid platform-issued JWT.
-const PUBLIC_API_PATHS = new Set(['/health']);
+// The platform's bridge script is injected into the app shell on every app
+// and is centrally served from the app's own hostname — never vendored.
+// Normally the platform's edge answers it before this container sees the
+// request; a plain boot (the in-loop browser, the repo's own run-checks
+// harness, or any environment where the edge isn't in front of the app)
+// reaches Express directly, so this app must answer the path itself or the
+// shell's required bridge tag fails and the page loads with a 401 on the
+// console (or a blank frame when the load is hard enough to break the
+// bootstrap). The route stays open, and the script is proxied from the
+// platform's canonical copy rather than copied into this repo, so
+// fleet-wide bridge fixes keep reaching this app on the next page load.
+const PUBLIC_PREFIXES = ['/usernode-bridge/'];
+const BRIDGE_BASE_URL = ((process.env.USERNODE_PLATFORM_ORIGIN || process.env.PLATFORM_URL || '')
+  .replace(/\/+$/, '')) + '/usernode-bridge/v1/bridge.js';
+app.use('/usernode-bridge', (req, res) => {
+  let upstream;
+  try {
+    upstream = bridgeFetch(BRIDGE_BASE_URL, {
+      method: 'GET',
+      headers: { 'if-none-match': req.headers['if-none-match'] || '' },
+    }, (up) => {
+      const out = {
+        'content-type': 'application/javascript; charset=utf-8',
+        'cache-control': 'no-cache, must-revalidate',
+      };
+      for (const h of ['etag', 'last-modified']) {
+        if (up.headers[h]) out[h] = up.headers[h];
+      }
+      res.writeHead(up.statusCode || 502, out);
+      if (up.statusCode === 304) return up.resume();
+      up.pipe(res);
+    });
+  } catch {
+    return res.status(502).type('text').end('bridge unavailable');
+  }
+  upstream.on('error', () => {
+    if (!res.headersSent) res.status(502).type('text').end('bridge unavailable');
+    else res.end();
+  });
+  upstream.end();
+});
+
 
 // The highest round a client may report, and the most sheep one sync can
 // claim to have tapped. The per-round sheep count lives in
@@ -39,6 +87,10 @@ const PUBLIC_API_PATHS = new Set(['/health']);
 // request can add to the shared community total.
 const MAX_ROUND = 999;
 const MAX_TAPS_PER_SYNC = 12;
+
+// The difficulty levels the client may report. Anything else falls back to
+// 'normal', matching public/rounds.js's normalizeDifficulty.
+const DIFFICULTIES = new Set(['easy', 'normal', 'hard', 'expert']);
 
 app.use(express.json());
 
@@ -69,6 +121,7 @@ app.use((req, res, next) => {
   // leak app data to the public internet.
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(req.path)) return next();
+    if (PUBLIC_PREFIXES.some((p) => req.path.startsWith(p))) return next();
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
   }
   next();
@@ -125,7 +178,7 @@ app.get('/api/state', async (req, res) => {
          ON CONFLICT (user_id) DO NOTHING`,
         [req.user.id, req.user.username, randomSeed()]
       );
-      row = { round: 1, best_round: 1, total_counted: 0, sound_on: false };
+      row = { round: 1, best_round: 1, total_counted: 0, sound_on: false, difficulty: 'normal', best_rounds: {} };
     }
 
     const { rows: totalRows } = await pool.query(
@@ -134,8 +187,14 @@ app.get('/api/state', async (req, res) => {
     );
     const communityTotal = parseInt(totalRows[0].sum, 10) + row.total_counted;
 
+    // bestRounds holds one best round per difficulty; the legacy best_round
+    // column stays the all-time best and still folds in for old clients.
+    const bestRounds = { easy: 1, normal: 1, hard: 1, expert: 1, ...(row.best_rounds || {}) };
+
     res.json({
       round: row.round,
+      difficulty: row.difficulty,
+      bestRounds,
       bestRound: row.best_round,
       totalCounted: row.total_counted,
       soundOn: row.sound_on,
@@ -159,31 +218,41 @@ app.post('/api/state', async (req, res) => {
   // single request can inflate the shared community total.
   const newTaps = clamp(parseInt(body.newTaps, 10) || 0, 0, MAX_TAPS_PER_SYNC);
   const soundOn = !!body.soundOn;
+  // An unrecognised difficulty is never stored; it reads back as Normal.
+  const difficulty = DIFFICULTIES.has(body.difficulty) ? body.difficulty : 'normal';
 
   try {
     const { rows } = await pool.query(
-      `SELECT best_round, total_counted FROM sheep_progress WHERE user_id = $1`,
+      `SELECT best_round, best_rounds FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
     const prev = rows[0];
 
     // A run restarts at round 1, so the round may move backward freely;
-    // only the best round ever reached is monotonic.
+    // only the best rounds are monotonic: the all-time best across every
+    // difficulty, and the reporting difficulty's own best.
     const bestRound = Math.max(prev ? prev.best_round : 1, claimedBest, round);
+    const prevBestRounds = (prev && prev.best_rounds) || {};
+    const bestRounds = {
+      ...prevBestRounds,
+      [difficulty]: Math.max(prevBestRounds[difficulty] || 1, claimedBest, round),
+    };
     const totalCounted = (prev ? prev.total_counted : 0) + newTaps;
 
     await pool.query(
       `INSERT INTO sheep_progress
-         (user_id, username, round, best_round, total_counted, sound_on, seed)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (user_id, username, round, best_round, best_rounds, difficulty, total_counted, sound_on, seed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (user_id) DO UPDATE SET
          username = EXCLUDED.username,
          round = EXCLUDED.round,
          best_round = EXCLUDED.best_round,
+         best_rounds = EXCLUDED.best_rounds,
+         difficulty = EXCLUDED.difficulty,
          total_counted = EXCLUDED.total_counted,
          sound_on = EXCLUDED.sound_on,
          updated_at = NOW()`,
-      [req.user.id, req.user.username, round, bestRound, totalCounted, soundOn, randomSeed()]
+      [req.user.id, req.user.username, round, bestRound, JSON.stringify(bestRounds), difficulty, totalCounted, soundOn, randomSeed()]
     );
 
     res.json({ ok: true });
@@ -293,6 +362,11 @@ async function start() {
   // per-count columns stay for rows written before rounds existed; nothing
   // reads them now, so they simply keep their defaults.
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS best_round INTEGER NOT NULL DEFAULT 1`);
+  // Per-difficulty progress: which level the player last played, and one
+  // best round per level. Rows written before difficulties existed read as
+  // Normal via the column default; best_rounds starts empty and folds in.
+  await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS difficulty VARCHAR(255) NOT NULL DEFAULT 'normal'`);
+  await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS best_rounds JSONB NOT NULL DEFAULT '{}'`);
   await pool.query(`ALTER TABLE sheep_progress ALTER COLUMN seed SET DEFAULT 0`);
 
   if (IS_STAGING) await seedStagingData();

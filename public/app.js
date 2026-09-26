@@ -7,6 +7,8 @@ import {
   ENDED_DOUBLE_TAP,
 } from './state.js';
 import {
+  DEFAULT_DIFFICULTY,
+  normalizeDifficulty,
   normalizeRound,
   paceLine,
   roundIntroText,
@@ -24,6 +26,11 @@ if (params.get('token')) sessionStorage.setItem('sheep-countrr:token', token);
 const sceneParam = params.get('scene');
 const rendererParam = params.get('renderer');
 const roundParam = params.get('round');
+// A deep link may name a difficulty; an unknown value falls back to Normal.
+// It composes with /?round=N and /?scene=X and, like them, is never
+// persisted from a deep link.
+const difficultyParam = normalizeDifficulty(params.get('difficulty'));
+const hasDifficultyParam = params.get('difficulty') !== null;
 
 // Screenshot-state deep links are pure UI fixtures: they must never touch
 // localStorage or the server, in any environment. ?round=N is playable but
@@ -69,6 +76,8 @@ const els = {
   bestValue: document.getElementById('best-value'),
   totalValue: document.getElementById('total-value'),
   communityValue: document.getElementById('community-value'),
+  difficultyValue: document.getElementById('difficulty-value'),
+  difficultyPicker: document.getElementById('difficulty-picker'),
   a11yList: document.getElementById('a11y-sheep-list'),
 };
 
@@ -113,9 +122,10 @@ function buildStaticState() {
   const at = (round, extra = {}) => ({
     ...base,
     round,
-    sheepCount: sheepForRound(round),
+    difficulty: difficultyParam,
+    sheepCount: sheepForRound(round, difficultyParam),
     seed: roundSeed(round),
-    bestRound: Math.max(round, base.bestRound),
+    bestRounds: { ...base.bestRounds, [difficultyParam]: Math.max(round, base.bestRounds[difficultyParam]) },
     ...extra,
   });
   if (sceneParam === 'flock') return at(9);
@@ -123,14 +133,18 @@ function buildStaticState() {
   if (sceneParam === 'empty') return at(3);
   if (sceneParam === 'midcount') return at(5, { count: 3, counted: [0, 1, 2] });
   if (sceneParam === 'roundcomplete') {
-    const n = sheepForRound(4);
+    const n = sheepForRound(4, difficultyParam);
     return at(4, { count: n, counted: [...Array(n).keys()], phase: ROUND_PASSED });
   }
   if (sceneParam === 'gameover') {
     return at(6, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
   }
   if (sceneParam === 'grownups') {
-    return at(5, { bestRound: 7, totalCounted: 18, communityTotal: 39 });
+    return at(5, {
+      bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2 },
+      totalCounted: 18,
+      communityTotal: 39,
+    });
   }
   return at(1);
 }
@@ -140,7 +154,9 @@ async function boot() {
     store.state = buildStaticState();
   } else if (roundParam !== null) {
     // /?round=N starts a real, playable run at that round, with the round's
-    // fixed seed so the same URL always frames the same pasture.
+    // fixed seed so the same URL always frames the same pasture. An optional
+    // difficulty= picks the curve; it stays ephemeral like the round itself.
+    if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
     store.startRound(normalizeRound(roundParam), { silent: true });
   } else {
     store.loadLocal();
@@ -158,6 +174,10 @@ async function boot() {
   // counting. Frozen ?scene= fixtures stay card-free, and a player resuming
   // mid-run at a later round has already played.
   if (!staticMode && store.state.round === 1) showRoundIntro(store.state);
+  // On a /?round=N deep link the intro is suppressed (the player has
+  // already played), but the difficulty fixtures need the picker to be
+  // visible for their dapp.json check. Render it without opening the card.
+  if (staticMode && roundParam !== null) syncDifficultyPicker(store.state);
 
   if (sceneParam === 'grownups') openGrownups(store.state);
 
@@ -228,9 +248,23 @@ function submitCount() {
 }
 
 // The pre-round briefing. Shown before the first round of a run; the one
-// button starts counting.
+// button starts counting. The difficulty picker lives on the card. Selecting a level
+// immediately rewrites the briefing line, so the player can see what each
+// level means before committing to Start counting.
+const DIFFICULTY_LABELS = { easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert' };
+
+function syncDifficultyPicker(state) {
+  for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
+    const level = normalizeDifficulty(btn.dataset.difficulty);
+    btn.setAttribute('aria-checked', String(level === state.difficulty));
+  }
+  els.difficultyValue.textContent = DIFFICULTY_LABELS[state.difficulty] || 'Normal';
+  els.bestValue.textContent = String(store.bestRound);
+}
+
 function showRoundIntro(state) {
-  els.roundIntroSize.textContent = roundIntroText(state.round);
+  els.roundIntroSize.textContent = roundIntroText(state.round, state.difficulty);
+  syncDifficultyPicker(state);
   els.roundIntro.hidden = false;
   introOpen = true;
 }
@@ -286,7 +320,7 @@ function updateChrome(state) {
   els.submitBtn.disabled = state.phase !== COUNTING;
 
   els.roundValue.textContent = String(state.round);
-  els.bestValue.textContent = String(state.bestRound);
+  els.bestValue.textContent = String(store.bestRound);
   els.totalValue.textContent = String(state.totalCounted);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
@@ -302,7 +336,7 @@ function syncPanels(state) {
     els.successTitle.textContent = successMessage();
     els.roundCompleteTitle.textContent = `Round ${state.round} counted.`;
     els.roundCompleteNext.textContent =
-      `Next up: ${sheepPhrase(sheepForRound(state.round + 1))}. ${paceLine(state.round + 1)}`;
+      `Next up: ${sheepPhrase(sheepForRound(state.round + 1, state.difficulty))}. ${paceLine(state.round + 1, state.difficulty)}`;
   }
   if (over) {
     els.gameOverRound.textContent = String(state.round);
@@ -365,7 +399,7 @@ els.grownupsBtn.addEventListener('keydown', (e) => {
 
 function openGrownups(state) {
   els.roundValue.textContent = String(state.round);
-  els.bestValue.textContent = String(state.bestRound);
+  els.bestValue.textContent = String(store.bestRound);
   els.totalValue.textContent = String(state.totalCounted);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
@@ -380,6 +414,21 @@ els.soundToggle.addEventListener('change', (e) => {
   if (staticMode) return;
   store.setSoundOn(e.target.checked);
 });
+
+// Picking a level on the briefing card switches the run to that level at
+// round 1. In staticMode the pills render from the fixture but taps are
+// ignored, exactly like the sound toggle above.
+for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
+  btn.addEventListener('click', () => {
+    if (staticMode) return;
+    store.setDifficulty(btn.dataset.difficulty);
+    syncDifficultyPicker(store.state);
+    els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty);
+    // The board behind the card shows the new level's round 1 flock.
+    renderer?.resetRound(store.state);
+    renderA11yList(store.state);
+  });
+}
 
 els.startOverBtn.addEventListener('click', () => {
   if (staticMode) return;

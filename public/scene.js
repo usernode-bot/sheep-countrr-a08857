@@ -612,7 +612,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   let lastState = null;
   // How this round's flock moves. Round 1 is perfectly still; later
   // rounds are faster, bouncier and eventually jittery.
-  let motion = motionForRound(1);
+  let motion = motionForRound(1, lastState && lastState.difficulty);
   let isPortrait = true;
 
   function layoutRegion(n) {
@@ -627,7 +627,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function buildFlock(state) {
     lastState = state;
-    motion = motionForRound(state.round);
+    motion = motionForRound(state.round, state.difficulty);
     sheep.forEach((s) => { s.ribbonMat.dispose(); s.numberSprite.material.dispose(); });
     scene.remove(sheepGroup);
     sheepGroup = new THREE.Group();
@@ -738,7 +738,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     if (!Number.isFinite(minX)) return;
     // Pad by the round's roam radius so a wandering sheep can never leave
     // the frame, however chaotic the round gets.
-    const pad = 1.0 + roamRadius(lastState ? lastState.round : 1);
+    const pad = 1.0 + roamRadius(lastState ? lastState.round : 1, lastState && lastState.difficulty);
     const top = 1.9;
     const xs = [minX - pad, maxX + pad];
     const zs = [minZ - pad, maxZ + pad];

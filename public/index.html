@@ -601,6 +601,12 @@
         <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
         <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
+        <div id="difficulty-picker" role="radiogroup" aria-label="Difficulty" class="flex flex-wrap justify-center gap-2">
+          <button type="button" class="difficulty-pill" data-difficulty="easy" role="radio" aria-checked="false">Easy</button>
+          <button type="button" class="difficulty-pill" data-difficulty="normal" role="radio" aria-checked="true">Normal</button>
+          <button type="button" class="difficulty-pill" data-difficulty="hard" role="radio" aria-checked="false">Hard</button>
+          <button type="button" class="difficulty-pill" data-difficulty="expert" role="radio" aria-checked="false">Expert</button>
+        </div>
         <button id="start-counting-btn" type="button" class="big-btn">
           Start counting
         </button>
@@ -622,6 +628,7 @@
 
         <div class="stats-card">
           <div class="flex justify-between"><span>This round</span><span id="round-value" class="stat-value">1</span></div>
+          <div class="flex justify-between"><span>Difficulty</span><span id="difficulty-value" class="stat-value">Normal</span></div>
           <div class="flex justify-between"><span>Best round</span><span id="best-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="stat-value">0</span></div>
           <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="stat-value">0</span></div>
@@ -634,6 +641,29 @@
     </div>
   </div>
 
+  <style>
+    /* Difficulty pills on the Get ready card: the app's own pill look,
+       filled pink for the selected level, soft lavender otherwise. */
+    .difficulty-pill {
+      min-height: 2.75rem;
+      padding: 0 1.4rem;
+      border-radius: 9999px;
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      color: var(--plum);
+      background: #f4ecfa;
+      box-shadow: 0 5px 0 #dccbe9;
+      touch-action: manipulation;
+    }
+    .difficulty-pill:active { transform: translateY(4px); box-shadow: 0 1px 0 #dccbe9; }
+    .difficulty-pill[aria-checked="true"] {
+      color: #fff;
+      background: var(--pink);
+      box-shadow: 0 5px 0 #e35d8a;
+    }
+    .difficulty-pill[aria-checked="true"]:active { box-shadow: 0 1px 0 #e35d8a; }
+  </style>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

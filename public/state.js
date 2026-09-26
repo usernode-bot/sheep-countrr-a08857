@@ -7,7 +7,14 @@
 // round is passed; miss one and submit, or tap a sheep you already
 // counted, and the run ends.
 
-import { MAX_SHEEP, normalizeRound, roundSeed, sheepForRound } from './rounds.js';
+import {
+  DEFAULT_DIFFICULTY,
+  MAX_SHEEP,
+  normalizeDifficulty,
+  normalizeRound,
+  roundSeed,
+  sheepForRound,
+} from './rounds.js';
 
 const STORAGE_PREFIX = 'sheep-countrr:';
 const SYNC_DEBOUNCE_MS = 1500;
@@ -20,6 +27,24 @@ export const RUN_OVER = 'runOver';
 // Why a run ended, for the game-over copy.
 export const ENDED_DOUBLE_TAP = 'doubleTap';
 export const ENDED_MISSED = 'missed';
+
+// One best round per difficulty, kept in a map so a best on Easy can never
+// masquerade as one on Hard.
+export const DIFFICULTY_KEYS = ['easy', 'normal', 'hard', 'expert'];
+
+function normalizeBestRounds(raw, fallback) {
+  const out = { easy: 1, normal: 1, hard: 1, expert: 1 };
+  const source = raw && typeof raw === 'object' ? raw : {};
+  for (const key of DIFFICULTY_KEYS) {
+    out[key] = normalizeRound(source[key] || 1);
+  }
+  // Fold a legacy single best round in when no per-difficulty data exists,
+  // so a pre-difficulty player keeps their best round on Normal.
+  if (!source || !Object.keys(source).length) {
+    out.normal = Math.max(out.normal, normalizeRound(fallback || 1));
+  }
+  return out;
+}
 
 function randomSeed() {
   return Math.floor(Math.random() * 2 ** 31);
@@ -34,10 +59,11 @@ export function createDefaultState() {
     counted: [],
     phase: COUNTING,
     endedBy: null,
-    bestRound: 1,
+    bestRounds: { easy: 1, normal: 1, hard: 1, expert: 1 },
     totalCounted: 0,
     communityTotal: 0,
     soundOn: false,
+    difficulty: DEFAULT_DIFFICULTY,
   };
 }
 
@@ -63,6 +89,12 @@ export class StateStore {
     return STORAGE_PREFIX + this.userId;
   }
 
+  // The best round reached at the difficulty currently selected. The
+  // grown-ups panel reads this; the per-level map keeps every level's own.
+  get bestRound() {
+    return this.state.bestRounds[this.state.difficulty] || 1;
+  }
+
   seedFor(round) {
     return this.deterministic ? roundSeed(round) : randomSeed();
   }
@@ -79,9 +111,10 @@ export class StateStore {
       this.state = {
         ...this.state,
         round: normalizeRound(saved.round),
-        bestRound: normalizeRound(saved.bestRound || saved.round),
+        bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
         totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
         soundOn: !!saved.soundOn,
+        difficulty: normalizeDifficulty(saved.difficulty),
       };
       this.startRound(this.state.round, { silent: true });
     } catch {
@@ -95,7 +128,8 @@ export class StateStore {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify({
         round: this.state.round,
-        bestRound: this.state.bestRound,
+        difficulty: this.state.difficulty,
+        bestRounds: this.state.bestRounds,
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
       }));
@@ -113,10 +147,11 @@ export class StateStore {
       this.state = {
         ...this.state,
         round: normalizeRound(data.round),
-        bestRound: normalizeRound(data.bestRound),
+        bestRounds: normalizeBestRounds(data.bestRounds, data.bestRound),
         totalCounted: Math.max(0, Number(data.totalCounted) || 0),
         communityTotal: Math.max(0, Number(data.communityTotal) || 0),
         soundOn: !!data.soundOn,
+        difficulty: normalizeDifficulty(data.difficulty),
       };
       this.startRound(this.state.round, { silent: true });
       this.saveLocal();
@@ -144,7 +179,8 @@ export class StateStore {
         keepalive: true,
         body: JSON.stringify({
           round: this.state.round,
-          bestRound: this.state.bestRound,
+          difficulty: this.state.difficulty,
+          bestRound: this.bestRound,
           newTaps: taps,
           soundOn: this.state.soundOn,
         }),
@@ -157,22 +193,58 @@ export class StateStore {
   // Start (or restart) a round: fresh flock, nothing counted, run alive.
   startRound(round, { silent } = {}) {
     const next = normalizeRound(round);
+    const bestRound = Math.max(this.state.bestRounds[this.state.difficulty] || 1, next);
     this.state = {
       ...this.state,
       round: next,
-      sheepCount: sheepForRound(next),
+      sheepCount: sheepForRound(next, this.state.difficulty),
       seed: this.seedFor(next),
       count: 0,
       counted: [],
       phase: COUNTING,
       endedBy: null,
-      bestRound: Math.max(this.state.bestRound, next),
+      bestRounds: {
+        ...this.state.bestRounds,
+        [this.state.difficulty]: bestRound,
+      },
     };
     if (!silent) {
       this.saveLocal();
       this.flush();
       this.onChange(this.state);
     }
+    return this.state;
+  }
+
+  // A pure save/restore shape used by the tests to exercise the same
+  // normalization loadLocal applies, without touching localStorage.
+  loadLocalFrom(saved) {
+    this.state = {
+      ...this.state,
+      round: normalizeRound(saved.round),
+      bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
+      totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
+      soundOn: !!saved.soundOn,
+      difficulty: normalizeDifficulty(saved.difficulty),
+    };
+    this.startRound(this.state.round, { silent: true });
+    return this.state;
+  }
+
+  // Switching difficulty starts that level's run at round 1. Every other
+  // level's best round is untouched, and lifetime taps keep accumulating
+  // across the switch.
+  setDifficulty(level) {
+    const difficulty = normalizeDifficulty(level);
+    if (difficulty === this.state.difficulty) return this.state;
+    this.state = {
+      ...this.state,
+      difficulty,
+    };
+    this.state = this.startRound(1, { silent: true });
+    this.saveLocal();
+    this.flush();
+    this.onChange(this.state);
     return this.state;
   }
 
@@ -234,7 +306,7 @@ export class StateStore {
     return this.startRound(this.state.round + 1);
   }
 
-  // After a run ends: back to round 1 with a fresh flock. bestRound is
+  // After a run ends: back to round 1 with a fresh flock. bestRounds are
   // kept, so the grown-ups panel still shows how far the player got.
   restartRun() {
     const state = this.startRound(1);

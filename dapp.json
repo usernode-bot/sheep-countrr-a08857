@@ -6,6 +6,11 @@
   "secrets": [],
   "tests": [
     {
+      "name": "Bridge script loads with the app shell",
+      "path": "/usernode-bridge/v1/bridge.js",
+      "expectText": "usernode-bridge.js"
+    },
+    {
       "id": "round.one",
       "name": "Round 1 shows one still sheep",
       "path": "/?round=1",
@@ -100,10 +105,30 @@
       "expectText": "Round 8"
     },
     {
+      "id": "difficulty.expert",
+      "name": "Expert difficulty marks Expert on the briefing card",
+      "path": "/?round=3&difficulty=expert",
+      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=expert][aria-checked=true]",
+      "visual": true,
+      "impact": [
+        "public/rounds.js",
+        "public/state.js",
+        "public/app.js",
+        "public/index.html",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Largest flock still fits the board",
       "path": "/?scene=flock",
       "expectSelector": "#a11y-sheep-list button:nth-child(12)",
       "expectText": "Round 9"
+    },
+    {
+      "name": "Easy difficulty shrinks the round 5 flock",
+      "path": "/?round=5&difficulty=easy",
+      "expectSelector": "#count-display",
+      "expectText": "of 5 sheep"
     }
   ]
 }
