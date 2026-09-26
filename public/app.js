@@ -452,6 +452,14 @@ async function mountFallback() {
 function handleTap(index) {
   // The briefing is open: no count registers until the player starts.
   if (introOpen) return;
+  // Purely visual: a soft ripple where the sheep was tapped, before any
+  // counting state changes. Skipped under prefers-reduced-motion.
+  if (renderer && renderer.kind === 'three') {
+    const pos = renderer.sheepPosition(index);
+    if (pos) renderer.tapRipple(pos.x, pos.z, pos.scale);
+  } else {
+    renderer?.tapRipple?.(index);
+  }
   const result = store.tapSheep(index);
   if (result.outcome === 'counted') {
     renderer.countSheep(index, result.number);
