@@ -241,6 +241,27 @@
       touch-action: none;
     }
 
+    /* ---- Music toggle: opposite corner from the grown-ups gear ---- */
+    #music-btn {
+      top: calc(var(--safe-top) + 10px);
+      left: calc(var(--safe-left) + 10px);
+      width: 3.5rem;
+      height: 3.5rem;
+      border-radius: 9999px;
+      background: var(--plum);
+      color: var(--cream);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(90, 60, 120, 0.12);
+      touch-action: manipulation;
+      /* Stays reachable over the briefing and result cards. */
+      z-index: 10;
+    }
+    #music-btn svg { width: 1.6rem; height: 1.6rem; }
+    #music-btn[aria-pressed="false"] .music-waves { display: none; }
+    #music-btn[aria-pressed="true"] .music-mute { display: none; }
+
     /* ---- Panels ---- */
     .panel-backdrop {
       background: radial-gradient(120% 90% at 50% 100%, rgba(255, 214, 227, 0.55), rgba(120, 90, 160, 0.45));
@@ -557,6 +578,7 @@
       #action-bar { padding-bottom: calc(var(--safe-bottom) + 6px); gap: 0.25rem; }
       #play-hint { font-size: 0.85rem; }
       .submit-btn { min-height: 3rem; min-width: 11rem; font-size: 1.1rem; padding: 0.55rem 1.6rem; }
+      #music-btn { left: auto; right: calc(var(--safe-right) + 76px); }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -582,7 +604,7 @@
     .count-plate::before, .count-plate::after { display: none; }
     #count-display { font-size: 3.5rem; font-weight: 600; text-shadow: none; }
     #count-word { font-weight: 500; letter-spacing: .02em; text-transform: none; color: #565f6a; }
-    #grownups-btn { color: #e3e3e9; background: #3c4a59; box-shadow: none; }
+    #grownups-btn, #music-btn { color: #e3e3e9; background: #3c4a59; box-shadow: none; }
     #play-hint { margin: 0 .5rem; padding: .35rem 1rem; border-radius: 9999px; background: #283448f5; color: #f5f0e6; font-weight: 500; text-shadow: none; }
     .round-pill { background: #303d4b; border: 2px solid #9da6af; color: #f0e9de; font-weight: 600; letter-spacing: .04em; text-transform: none; box-shadow: none; }
     .submit-btn { background: #283448; color: #f0e9de; font-weight: 600; box-shadow: 0 6px 0 #f0e9de, 0 12px 22px rgba(255, 127, 167, 0.3); border: 2px solid #9da6af; }
@@ -640,6 +662,16 @@
     <button id="grownups-btn" type="button" class="absolute"
       aria-label="Grown-ups: press and hold to open settings">
       &#9881;
+    </button>
+
+    <!-- Background music on/off. Any tap starts the music (autoplay rules
+         need a gesture); this button mutes or unmutes it. -->
+    <button id="music-btn" type="button" class="absolute" aria-pressed="true" aria-label="Music">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>
+        <path class="music-waves" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>
+        <path class="music-mute" d="M17 9l5 6M22 9l-5 6"/>
+      </svg>
     </button>
 
     <!-- Hidden accessible mirror of every sheep, for keyboard/screen-reader use. -->
