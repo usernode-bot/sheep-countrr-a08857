@@ -451,6 +451,90 @@
       box-shadow: 0 4px 0 rgba(74, 59, 92, 0.15);
     }
 
+    /* ---- Leaderboard card ---- */
+    #leaderboard-tabs {
+      display: flex;
+      gap: 0.5rem;
+    }
+    #leaderboard-tabs button {
+      flex: 1;
+      min-height: 3rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: 1.25rem;
+      border: 3px solid var(--pink-soft);
+      background: var(--cream);
+      color: var(--plum);
+      font-weight: 900;
+      font-size: 1.05rem;
+      letter-spacing: 0.03em;
+    }
+    #leaderboard-tabs button[aria-selected="true"] {
+      background: var(--pink-soft);
+    }
+    .lb-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-height: 3rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 1.25rem;
+      background: #fff;
+      box-shadow: 0 3px 0 #f0e2f7;
+      font-weight: 800;
+      color: var(--plum-soft);
+    }
+    .lb-row.is-me { background: #fff0f4; }
+    .lb-row .lb-rank { min-width: 1.6rem; font-weight: 900; color: var(--plum); }
+    .lb-row .lb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+    .lb-row .lb-score { font-weight: 900; color: var(--plum); }
+    .lb-row .lb-remove {
+      width: 2.25rem; height: 2.25rem;
+      border-radius: 9999px;
+      background: transparent;
+      border: none;
+      color: var(--plum-soft);
+      font-size: 1.2rem;
+      font-weight: 900;
+      line-height: 1;
+      flex: none;
+    }
+    .lb-note { margin: 0; text-align: center; font-weight: 800; color: var(--plum-soft); }
+    #friend-add { display: flex; flex-direction: column; gap: 0.5rem; }
+    #friend-add .friend-input-row { display: flex; align-items: center; gap: 0.5rem; }
+    .friend-label { font-weight: 900; color: var(--plum); flex: none; }
+    #friend-input {
+      flex: 1;
+      min-height: 3rem;
+      border-radius: 1.25rem;
+      border: 3px solid var(--pink-soft);
+      background: var(--cream);
+      color: var(--plum);
+      font-weight: 800;
+      font-size: 1.05rem;
+      padding: 0 1rem;
+    }
+    #friend-error { margin: 0; color: #e35d8a; font-weight: 800; }
+    #friend-results {
+      display: none;
+      flex-direction: column;
+      border-radius: 1.25rem;
+      background: var(--cream);
+      border: 3px solid var(--pink-soft);
+      overflow: hidden;
+    }
+    #friend-results.open { display: flex; }
+    #friend-results button {
+      min-height: 2.75rem;
+      padding: 0.4rem 1rem;
+      border: none;
+      background: transparent;
+      color: var(--plum);
+      font-weight: 800;
+      text-align: left;
+    }
+    #friend-results button:hover { background: var(--pink-soft); }
+
     .visually-hidden {
       position: absolute;
       width: 1px; height: 1px;
@@ -627,9 +711,41 @@
           <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="stat-value">0</span></div>
         </div>
 
+        <button id="leaderboard-btn" type="button" class="soft-btn">
+          Leaderboard
+        </button>
+
         <button id="start-over-btn" type="button" class="soft-btn">
           Start over at round 1
         </button>
+      </div>
+    </div>
+
+    <!-- Leaderboard: Global, Friends and This week, behind the same
+         grown-ups gate as the rest of the panel. -->
+    <div id="leaderboard" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-6 flex flex-col gap-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-2xl font-black">Leaderboard</h2>
+          <button id="leaderboard-close" type="button" class="w-12 h-12 rounded-full bg-white shadow-sm text-xl font-black flex items-center justify-center" aria-label="Close">&#10005;</button>
+        </div>
+
+        <div id="leaderboard-tabs" role="tablist">
+          <button id="tab-global" type="button" role="tab" aria-selected="true">Global</button>
+          <button id="tab-friends" type="button" role="tab" aria-selected="false">Friends</button>
+          <button id="tab-weekly" type="button" role="tab" aria-selected="false">This week</button>
+        </div>
+
+        <div id="friend-add" hidden>
+          <div class="friend-input-row">
+            <label class="friend-label" for="friend-input">Add friend</label>
+            <input id="friend-input" type="text" autocomplete="off" spellcheck="false" placeholder="Type a handle" aria-label="Add friend">
+          </div>
+          <div id="friend-results"></div>
+          <p id="friend-error" hidden></p>
+        </div>
+
+        <div id="leaderboard-list" class="stats-card" aria-live="polite"></div>
       </div>
     </div>
   </div>

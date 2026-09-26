@@ -34,6 +34,7 @@ export function createDefaultState() {
     counted: [],
     phase: COUNTING,
     endedBy: null,
+    runRecorded: false,
     bestRound: 1,
     totalCounted: 0,
     communityTotal: 0,
@@ -42,7 +43,7 @@ export function createDefaultState() {
 }
 
 export class StateStore {
-  constructor({ userId, token, onChange, ephemeral, deterministic } = {}) {
+  constructor({ userId, token, onChange, ephemeral, deterministic, onRecordRun } = {}) {
     this.userId = userId || 'anon';
     this.token = token || '';
     this.onChange = onChange || (() => {});
@@ -57,6 +58,13 @@ export class StateStore {
     this.state = createDefaultState();
     this.unsyncedTaps = 0;
     this._syncTimer = null;
+    // One finished run is recorded at most once per run; a fresh run
+    // re-arms the guard (see startRound).
+    this.runRecorded = false;
+    // Test seam: called with the round reached instead of POSTing, so the
+    // guard can be asserted without a network. Real play leaves it unset
+    // and records through /api/runs.
+    this.onRecordRun = onRecordRun || null;
   }
 
   get storageKey() {
@@ -166,14 +174,43 @@ export class StateStore {
       counted: [],
       phase: COUNTING,
       endedBy: null,
+      runRecorded: false,
       bestRound: Math.max(this.state.bestRound, next),
     };
+    this.runRecorded = false;
     if (!silent) {
       this.saveLocal();
       this.flush();
       this.onChange(this.state);
     }
     return this.state;
+  }
+
+  // Record a finished run for the weekly leaderboard. Runs are short and
+  // a run end can be the last thing the session ever syncs (page closed
+  // on the game-over card), so this posts immediately, not through the
+  // debounced flush. Best effort: a failed post never blocks play.
+  recordRun() {
+    // The test seam answers even for an ephemeral deep-link store: the
+    // unit suite runs with no token, like the fixtures do.
+    if (this.onRecordRun) {
+      if (this.runRecorded) return;
+      this.runRecorded = true;
+      this.onRecordRun(this.state.round);
+      return;
+    }
+    if (this.ephemeral || !this.token || this.runRecorded) return;
+    this.runRecorded = true;
+    try {
+      fetch('/api/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-usernode-token': this.token },
+        keepalive: true,
+        body: JSON.stringify({ roundReached: this.state.round }),
+      }).catch(() => {});
+    } catch {
+      /* best effort */
+    }
   }
 
   // A tap on a sheep. Returns what it did:
@@ -224,6 +261,7 @@ export class StateStore {
 
   endRun(reason) {
     this.state = { ...this.state, phase: RUN_OVER, endedBy: reason };
+    this.recordRun();
     this.saveLocal();
     this.flush();
     this.onChange(this.state);
