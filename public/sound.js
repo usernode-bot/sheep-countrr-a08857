@@ -1,13 +1,14 @@
-// Sound effects are off by default and live behind the Grown-ups panel
-// toggle. Everything here is generated with the Web Audio API, so there
-// are no audio asset files to ship. Every play function checks the shared
-// enabled flag itself, so callers never need to gate on the setting, and
-// the AudioContext is only ever created/resumed from inside a real tap
-// handler, per autoplay policy.
+// Sound is off by default. Everything here is generated with the Web
+// Audio API, so there are no audio asset files to ship. The AudioContext
+// is only ever created/resumed from inside a real tap handler, per
+// autoplay policy.
 
 let ctx = null;
 let enabled = false;
 
+// The enabled flag is app state: callers pass the current toggle value with
+// each call rather than this module owning persistence. Everything checks
+// it first, so a muted session never even creates an AudioContext.
 export function setSoundEnabled(on) {
   enabled = !!on;
 }
@@ -24,62 +25,21 @@ function getCtx() {
   return ctx;
 }
 
-// A soft, short tick per counted sheep. Filtered noise, not a beep, so a
-// round of quick taps reads as gentle clicks rather than an alarm.
 export function playTapChime(step) {
   if (!enabled) return;
   const c = getCtx();
   if (!c) return;
-  const dur = 0.09;
-  const buffer = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate * dur)), c.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < data.length; i++) {
-    data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-  }
-  const src = c.createBufferSource();
-  src.buffer = buffer;
-  const filter = c.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.value = 1500 + Math.min(step, 12) * 40;
-  filter.Q.value = 1.4;
-  const gain = c.createGain();
-  gain.gain.setValueAtTime(0.06, c.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
-  src.connect(filter).connect(gain).connect(c.destination);
-  src.start();
-}
-
-// A soft, low "baa": a wobbly low tone through a narrow bandpass, kept
-// quiet so it sits under the game instead of over it.
-export function playBaa() {
-  if (!enabled) return;
-  const c = getCtx();
-  if (!c) return;
-  const t0 = c.currentTime;
+  const freq = 220 + Math.min(step, 12) * 12;
   const osc = c.createOscillator();
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(185, t0);
-  osc.frequency.linearRampToValueAtTime(150, t0 + 0.4);
-  // A slow vibrato gives the tone its bleat.
-  const lfo = c.createOscillator();
-  lfo.frequency.value = 6;
-  const lfoGain = c.createGain();
-  lfoGain.gain.value = 9;
-  lfo.connect(lfoGain).connect(osc.frequency);
-  const filter = c.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.value = 560;
-  filter.Q.value = 2.2;
   const gain = c.createGain();
-  gain.gain.setValueAtTime(0.0001, t0);
-  gain.gain.exponentialRampToValueAtTime(0.045, t0 + 0.06);
-  gain.gain.exponentialRampToValueAtTime(0.03, t0 + 0.22);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
-  osc.connect(filter).connect(gain).connect(c.destination);
-  osc.start(t0);
-  lfo.start(t0);
-  osc.stop(t0 + 0.55);
-  lfo.stop(t0 + 0.55);
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, c.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.045, c.currentTime + 0.06);
+  gain.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.25);
+  osc.connect(gain).connect(c.destination);
+  osc.start();
+  osc.stop(c.currentTime + 0.3);
 }
 
 export function playCelebration() {
@@ -108,4 +68,33 @@ export function vibrateTap() {
   } catch {
     /* not every device supports haptics */
   }
+}
+
+// A soft "baa" for the sound a newly counted sheep makes: a gentle
+// two-note glide on a triangle wave, quiet enough to sit under a nap.
+export function playBaa() {
+  if (!enabled) return;
+  const c = getCtx();
+  if (!c) return;
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  const t = c.currentTime;
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(390, t);
+  // A sheep's call drifts downward; wobble it slightly so it reads as a
+  // voice rather than a test tone.
+  osc.frequency.linearRampToValueAtTime(320, t + 0.22);
+  const wobble = c.createOscillator();
+  const wobbleGain = c.createGain();
+  wobble.frequency.value = 18;
+  wobbleGain.gain.value = 14;
+  wobble.connect(wobbleGain).connect(osc.frequency);
+  osc.connect(gain).connect(c.destination);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.05, t + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+  osc.start(t);
+  wobble.start(t);
+  osc.stop(t + 0.35);
+  wobble.stop(t + 0.35);
 }

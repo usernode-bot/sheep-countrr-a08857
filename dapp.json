@@ -110,9 +110,9 @@
       "expectText": "Best round"
     },
     {
-      "name": "Grown-ups panel lists the sound effects toggle",
-      "path": "/?scene=grownups",
-      "expectSelector": "#sound-toggle",
+      "name": "Grown-ups panel shows the sound effects toggle, on by default in the fixture",
+      "path": "/?scene=grownups&sound=1",
+      "expectSelector": "#sound-toggle:checked",
       "expectText": "Sound effects"
     },
     {

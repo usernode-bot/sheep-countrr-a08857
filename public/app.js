@@ -32,6 +32,9 @@ const roundParam = params.get('round');
 // persisted from a deep link.
 const difficultyParam = normalizeDifficulty(params.get('difficulty'));
 const hasDifficultyParam = params.get('difficulty') !== null;
+// The grown-ups fixture can force the sound toggle on (the shipped default
+// for the frozen ?scene=grownups card) without touching localStorage.
+const soundParam = params.get('sound');
 // Optional landing tab for the leaderboard fixture (?scene=leaderboard&tab=weekly).
 const tabParam = params.get('tab');
 
@@ -175,6 +178,7 @@ function buildStaticState() {
       bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2 },
       totalCounted: 18,
       communityTotal: 39,
+      soundOn: soundParam === null || soundParam === '1',
     });
   }
   return at(1);
@@ -217,7 +221,6 @@ async function boot() {
 
   renderer.setState(store.state);
   updateChrome(store.state);
-  setSoundEnabled(!!store.state.soundOn);
   renderA11yList(store.state);
 
   // The briefing covers the board before the first round of a run starts
@@ -279,7 +282,10 @@ function handleTap(index) {
   const result = store.tapSheep(index);
   if (result.outcome === 'counted') {
     renderer.countSheep(index, result.number);
-    playTapChime(result.number);
+    if (store.state.soundOn) {
+      playBaa();
+      playTapChime(result.number);
+    }
     renderA11yList(store.state);
     if (store.isComplete()) {
       // Auto-complete: every sheep is marked, so the round closes itself.
@@ -364,6 +370,10 @@ function hintFor(state) {
 let lastShownCount = null;
 let lastPhase = null;
 function updateChrome(state) {
+  // Keep the audio module's enabled flag in lockstep with the toggle, so
+  // every sound path (chime, baa, celebration) reads one source of truth.
+  setSoundEnabled(!!state.soundOn);
+
   if (lastShownCount !== null && state.count > lastShownCount) {
     const plate = els.countDisplay.parentElement;
     plate.classList.remove('count-pop');
@@ -464,7 +474,6 @@ function openGrownups(state) {
   els.totalValue.textContent = String(state.totalCounted);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
-  setSoundEnabled(!!state.soundOn);
   els.grownupsPanel.hidden = false;
 }
 function closeGrownups() {
@@ -474,7 +483,6 @@ els.grownupsClose.addEventListener('click', closeGrownups);
 
 els.soundToggle.addEventListener('change', (e) => {
   if (staticMode) return;
-  setSoundEnabled(e.target.checked);
   store.setSoundOn(e.target.checked);
 });
 
@@ -775,4 +783,3 @@ for (const [name, btn] of Object.entries(els.tabButtons)) {
 }
 
 boot();
-
