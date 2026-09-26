@@ -66,6 +66,22 @@ export function normalizeRound(round) {
   return Number.isFinite(r) && r >= 1 ? r : 1;
 }
 
+// How long a Speed Round lasts, in whole seconds.
+export const SPEED_ROUND_SECONDS = 30;
+
+// A speed flag survives a localStorage save, a server sync and a deep
+// link only when it is exactly true; anything else reads as a normal
+// round.
+export function normalizeSpeedRound(on) {
+  return on === true;
+}
+
+// The on-screen clock text. Whole seconds only, so "30" and "9" rather
+// than "30s" and "9s": children read bare numerals more easily.
+export function speedRoundClock(secondsLeft) {
+  return String(Math.max(0, Math.ceil(Number(secondsLeft) || 0)));
+}
+
 // 1, 2, 4, 5, 7, 8, 10, 11, 12 ... on Normal (one or two more sheep each
 // round); slower growth on Easy, faster on Hard and Expert, each capped at
 // its own flock limit so taps stay physically landable.
@@ -148,10 +164,24 @@ export function paceLine(round, difficulty = DEFAULT_DIFFICULTY) {
 // The pre-round briefing's first line: what this round asks for. Reads
 // "Round 1 has 1 sheep. This one stands still." for a fresh run and names a
 // bigger, faster flock for a run that starts on a later round.
-export function roundIntroText(round, difficulty = DEFAULT_DIFFICULTY) {
+export function roundIntroText(round, difficulty = DEFAULT_DIFFICULTY, speedOn = false) {
   const r = normalizeRound(round);
   const d = normalizeDifficulty(difficulty);
-  return `Round ${r} has ${sheepPhrase(sheepForRound(r, d))}. ${paceLine(r, d)}`;
+  return speedOn
+    ? `Round ${r} has ${sheepPhrase(sheepForRound(r, d))}. ${paceLine(r, d)} Count them all before the clock runs out.`
+    : `Round ${r} has ${sheepPhrase(sheepForRound(r, d))}. ${paceLine(r, d)}`;
+}
+
+// The round-complete card line for the just-played round: a Speed Round
+// names its mode so the result reads differently from a normal round.
+export function roundCompleteTitle(round, speedOn = false) {
+  return speedOn ? `Speed Round ${normalizeRound(round)} counted.` : `Round ${normalizeRound(round)} counted.`;
+}
+
+// The weekly leaderboard's score text: a Speed Round keeps its own tag so
+// it is distinguishable from a normal round at the same number.
+export function weeklyScoreLabel(roundReached, speedOn = false) {
+  return speedOn ? `Speed ${normalizeRound(roundReached)}` : `Round ${normalizeRound(roundReached)}`;
 }
 
 // The praise line at the top of the round-complete card. Leads the card so

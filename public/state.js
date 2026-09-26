@@ -10,8 +10,10 @@
 import {
   DEFAULT_DIFFICULTY,
   MAX_SHEEP,
+  SPEED_ROUND_SECONDS,
   normalizeDifficulty,
   normalizeRound,
+  normalizeSpeedRound,
   roundSeed,
   sheepForRound,
 } from './rounds.js';
@@ -24,9 +26,12 @@ export const COUNTING = 'counting';
 export const ROUND_PASSED = 'roundPassed';
 export const RUN_OVER = 'runOver';
 
-// Why a run ended, for the game-over copy.
+// Why a run ended, for the game-over copy. A Speed Round can also end on
+// its own clock; the reason is stored with the run so a shared card shows
+// the same line the player saw.
 export const ENDED_DOUBLE_TAP = 'doubleTap';
 export const ENDED_MISSED = 'missed';
+export const ENDED_TIME_UP = 'timeUp';
 
 // One best round per difficulty, kept in a map so a best on Easy can never
 // masquerade as one on Hard.
@@ -65,6 +70,8 @@ export function createDefaultState() {
     soundOn: false,
     nightOn: false,
     difficulty: DEFAULT_DIFFICULTY,
+    speedOn: false,
+    secondsLeft: null,
   };
 }
 
@@ -128,6 +135,7 @@ export class StateStore {
         soundOn: !!saved.soundOn,
         nightOn: !!saved.nightOn,
         difficulty: normalizeDifficulty(saved.difficulty),
+        speedOn: normalizeSpeedRound(saved.speedOn),
       };
       this.startRound(this.state.round, { silent: true });
     } catch {
@@ -146,6 +154,7 @@ export class StateStore {
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
         nightOn: this.state.nightOn,
+        speedOn: this.state.speedOn,
       }));
     } catch {
       /* storage full or unavailable; the run still works this session */
@@ -219,6 +228,12 @@ export class StateStore {
       counted: [],
       phase: COUNTING,
       endedBy: null,
+      // Speed Round is a run-level mode set on the briefing card: every
+      // round of the run plays the same flock under its own fresh 30
+      // second clock. The clock state is reset with the round so a
+      // resumed round can never read a stale countdown.
+      speedOn: normalizeSpeedRound(this.state.speedOn),
+      secondsLeft: normalizeSpeedRound(this.state.speedOn) ? SPEED_ROUND_SECONDS : null,
       bestRounds: {
         ...this.state.bestRounds,
         [this.state.difficulty]: bestRound,
@@ -244,6 +259,7 @@ export class StateStore {
           soundOn: !!saved.soundOn,
           nightOn: !!saved.nightOn,
           difficulty: normalizeDifficulty(saved.difficulty),
+          speedOn: normalizeSpeedRound(saved.speedOn),
     };
     this.startRound(this.state.round, { silent: true });
     return this.state;
@@ -258,6 +274,8 @@ export class StateStore {
     this.state = {
       ...this.state,
       difficulty,
+      speedOn: false,
+      secondsLeft: null,
     };
     this.state = this.startRound(1, { silent: true });
     this.saveLocal();
@@ -288,7 +306,11 @@ export class StateStore {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-usernode-token': this.token },
         keepalive: true,
-        body: JSON.stringify({ roundReached: this.state.round, endedBy: this.state.endedBy }),
+        body: JSON.stringify({
+          roundReached: this.state.round,
+          endedBy: this.state.endedBy,
+          speedRound: this.state.speedOn,
+        }),
       }).then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (data && data.id) this.lastRunId = data.id;
@@ -359,10 +381,36 @@ export class StateStore {
   }
 
   // After a run ends: back to round 1 with a fresh flock. bestRounds are
-  // kept, so the grown-ups panel still shows how far the player got.
+  // kept, so the grown-ups panel still shows how far the player got. The
+  // Speed Round mode is a per-run choice, so it resets with the run and
+  // the briefing card asks again.
   restartRun() {
+    this.state = { ...this.state, speedOn: false, secondsLeft: null };
     const state = this.startRound(1);
     return state;
+  }
+
+  // One clock step for a Speed Round: every whole second the store's
+  // onChange fires and all surfaces (count pill, DOM fallback, a11y list)
+  // read the same secondsLeft. Returns false on the step that hits zero;
+  // app.js owns what that does.
+  tickClock() {
+    if (this.state.phase !== COUNTING || !this.state.speedOn) return true;
+    const left = Math.max(0, (this.state.secondsLeft ?? SPEED_ROUND_SECONDS) - 1);
+    this.state = { ...this.state, secondsLeft: left };
+    this.onChange(this.state);
+    return left > 0;
+  }
+
+  // Speed Round toggle for the briefing card. Applies to the round that
+  // is about to start; it never flips mid-round (the briefing is modal,
+  // so this runs before Start counting in real play).
+  setSpeedOn(on) {
+    const speedOn = normalizeSpeedRound(on);
+    this.state = { ...this.state, speedOn, secondsLeft: speedOn ? SPEED_ROUND_SECONDS : null };
+    this.saveLocal();
+    this.scheduleSync();
+    this.onChange(this.state);
   }
 
   setSoundOn(on) {

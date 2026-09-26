@@ -1,7 +1,7 @@
 {
   "name": "Sheep countrr",
   "icon": {
-    "emoji": "🐑"
+    "emoji": "\ud83d\udc11"
   },
   "secrets": [],
   "tests": [
@@ -81,6 +81,56 @@
       "expectText": "Round 5"
     },
     {
+      "name": "Speed Round intro offers the Speed Round toggle",
+      "id": "speed.intro",
+      "visual": true,
+      "path": "/?scene=intro",
+      "expectSelector": "#speed-toggle",
+      "expectText": "Speed Round",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Speed Round board shows the countdown and the same flock",
+      "id": "speed.board",
+      "visual": true,
+      "path": "/?scene=speed",
+      "expectSelector": "#speed-timer:not([hidden])",
+      "expectText": "30",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "public/fallback.js",
+        "public/scene.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Speed Round countdown is accessible in the a11y list",
+      "path": "/?scene=speed&renderer=dom",
+      "expectSelector": "#a11y-speed-clock",
+      "expectText": "Speed Round, 30 seconds left"
+    },
+    {
+      "name": "Speed Round play screen keeps the same count plate",
+      "path": "/?round=2&speed=1",
+      "expectSelector": "#count-display",
+      "expectText": "of 2 sheep"
+    },
+    {
+      "name": "Speed Round game over names the clock",
+      "path": "/?scene=speedgameover",
+      "expectSelector": "#game-over-reason",
+      "expectText": "The clock ran out."
+    },
+    {
       "name": "Round complete shows the Next round action",
       "path": "/?scene=roundcomplete",
       "expectSelector": "#next-round-btn",
@@ -130,6 +180,20 @@
       "impact": [
         "public/app.js",
         "public/index.html",
+        "server.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "This week tab marks Speed Round runs",
+      "id": "speed.leaderboard",
+      "visual": true,
+      "path": "/?scene=leaderboard&tab=weekly",
+      "expectSelector": "#leaderboard-list",
+      "expectText": "Speed 8",
+      "impact": [
+        "public/app.js",
+        "public/rounds.js",
         "server.js",
         "dapp.json"
       ]
