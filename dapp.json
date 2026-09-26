@@ -1,7 +1,7 @@
 {
   "name": "Sheep countrr",
   "icon": {
-    "emoji": "🐑"
+    "emoji": "\ud83d\udc11"
   },
   "secrets": [],
   "tests": [
@@ -129,6 +129,36 @@
       "path": "/?round=5&difficulty=easy",
       "expectSelector": "#count-display",
       "expectText": "of 5 sheep"
+    },
+    {
+      "id": "leaderboard.tabs",
+      "name": "Leaderboard card shows the three tabs",
+      "path": "/?scene=leaderboard",
+      "expectSelector": "#leaderboard-tabs",
+      "expectText": "This week",
+      "visual": true,
+      "impact": [
+        "public/**",
+        "server.js",
+        "dapp.json"
+      ],
+      "allowConsoleErrors": true
+    },
+    {
+      "id": "leaderboard.weekly",
+      "name": "This week tab lists weekly best rounds",
+      "path": "/?scene=leaderboard&tab=weekly",
+      "expectSelector": "#leaderboard-list",
+      "expectText": "Staging demo: Mabel",
+      "allowConsoleErrors": true
+    },
+    {
+      "id": "leaderboard.friends",
+      "name": "Friends tab shows the add-friend field",
+      "path": "/?scene=leaderboard&tab=friends",
+      "expectSelector": "#friend-add",
+      "expectText": "Add friend",
+      "allowConsoleErrors": true
     }
   ]
 }

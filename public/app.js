@@ -18,6 +18,7 @@ import {
   successMessage,
 } from './rounds.js';
 import { playTapChime, playCelebration } from './sound.js';
+import { sortScoreRows } from './leaderboard.js';
 
 const params = new URLSearchParams(window.location.search);
 const token = params.get('token') || sessionStorage.getItem('sheep-countrr:token') || '';
@@ -31,6 +32,8 @@ const roundParam = params.get('round');
 // persisted from a deep link.
 const difficultyParam = normalizeDifficulty(params.get('difficulty'));
 const hasDifficultyParam = params.get('difficulty') !== null;
+// Optional landing tab for the leaderboard fixture (?scene=leaderboard&tab=weekly).
+const tabParam = params.get('tab');
 
 // Screenshot-state deep links are pure UI fixtures: they must never touch
 // localStorage or the server, in any environment. ?round=N is playable but
@@ -79,16 +82,39 @@ const els = {
   difficultyValue: document.getElementById('difficulty-value'),
   difficultyPicker: document.getElementById('difficulty-picker'),
   a11yList: document.getElementById('a11y-sheep-list'),
+  leaderboardBtn: document.getElementById('leaderboard-btn'),
+  leaderboard: document.getElementById('leaderboard'),
+  leaderboardClose: document.getElementById('leaderboard-close'),
+  leaderboardTabs: document.getElementById('leaderboard-tabs'),
+  tabButtons: {
+    global: document.getElementById('tab-global'),
+    friends: document.getElementById('tab-friends'),
+    weekly: document.getElementById('tab-weekly'),
+  },
+  leaderboardList: document.getElementById('leaderboard-list'),
+  friendAdd: document.getElementById('friend-add'),
+  friendInput: document.getElementById('friend-input'),
+  friendResults: document.getElementById('friend-results'),
+  friendError: document.getElementById('friend-error'),
 };
 
-function userIdFromToken(t) {
-  if (!t) return 'anon';
+function claimsFromToken(t) {
+  if (!t) return null;
   try {
-    const payload = JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return payload.id ? String(payload.id) : 'anon';
+    return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
   } catch {
-    return 'anon';
+    return null;
   }
+}
+
+function userIdFromToken(t) {
+  const claims = claimsFromToken(t);
+  return claims && claims.id ? String(claims.id) : 'anon';
+}
+
+function usernameFromToken(t) {
+  const claims = claimsFromToken(t);
+  return claims && claims.username ? String(claims.username) : null;
 }
 
 function supportsWebGL() {
@@ -107,6 +133,11 @@ const store = new StateStore({
   deterministic: deepLink,
   onChange: (state) => updateChrome(state),
 });
+
+// The signed-in handle, from the same verified token the server trusts.
+// Used to highlight the player's own leaderboard row and to stop a
+// self-add before it hits the server.
+store.state.meUsername = usernameFromToken(token);
 
 let renderer = null;
 let advanceTimer = null;
@@ -149,6 +180,24 @@ function buildStaticState() {
   return at(1);
 }
 
+// Hardcoded demo data for the leaderboard fixture. The three names match
+// the staging seed rows so check text and preview data agree; staticMode
+// must never fetch, so the rows live here.
+const LEADERBOARD_FIXTURE = {
+  global: [
+    { username: 'Staging demo: Bess', bestRound: 12, totalCounted: 40 },
+    { username: 'Staging demo: Mabel', bestRound: 9, totalCounted: 23 },
+    { username: 'Staging demo: Otto', bestRound: 6, totalCounted: 11 },
+    { username: 'Staging demo: Pip', bestRound: 3, totalCounted: 5 },
+  ],
+  weekly: [
+    { username: 'Staging demo: Mabel', roundReached: 8 },
+    { username: 'Staging demo: Otto', roundReached: 7 },
+    { username: 'Staging demo: Pip', roundReached: 4 },
+  ],
+  friends: [],
+};
+
 async function boot() {
   if (staticMode) {
     store.state = buildStaticState();
@@ -180,6 +229,11 @@ async function boot() {
   if (staticMode && roundParam !== null) syncDifficultyPicker(store.state);
 
   if (sceneParam === 'grownups') openGrownups(store.state);
+
+  if (sceneParam === 'leaderboard') {
+    const tab = tabParam === 'weekly' || tabParam === 'friends' ? tabParam : 'global';
+    openLeaderboard(LEADERBOARD_FIXTURE, tab);
+  }
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) store.flush();
@@ -436,4 +490,280 @@ els.startOverBtn.addEventListener('click', () => {
   closeGrownups();
 });
 
+// ---- Leaderboard card ----
+// Tab state is memory-only: the card always opens on Global, matching the
+// panel's transient nature. All text is set via textContent; rows are built
+// from plain objects, never HTML strings.
+let activeTab = 'global';
+let leaderboardData = { global: [], weekly: [], friends: [] };
+let friendSearchTimer = null;
+
+function openLeaderboard(data, tab) {
+  if (data) leaderboardData = data;
+  els.leaderboard.hidden = false;
+  selectTab(tab || 'global');
+  if (!staticMode) loadLeaderboard();
+}
+
+function closeLeaderboard() {
+  els.leaderboard.hidden = true;
+}
+
+async function loadLeaderboard() {
+  if (!token) return;
+  renderLoading();
+  try {
+    const res = await fetch('/api/leaderboard', { headers: { 'x-usernode-token': token } });
+    if (!res.ok) throw new Error('bad status');
+    leaderboardData = await res.json();
+    renderTab();
+  } catch {
+    renderNote('Could not load the leaderboard. Try again.');
+  }
+}
+
+function selectTab(tab) {
+  activeTab = tab;
+  for (const [name, btn] of Object.entries(els.tabButtons)) {
+    if (btn) btn.setAttribute('aria-selected', String(name === tab));
+  }
+  if (els.friendAdd) els.friendAdd.hidden = tab !== 'friends';
+  renderTab();
+}
+
+function renderLoading() {
+  els.leaderboardList.replaceChildren();
+  const note = document.createElement('p');
+  note.className = 'lb-note';
+  note.textContent = 'Loading…';
+  els.leaderboardList.appendChild(note);
+}
+
+function renderNote(text) {
+  els.leaderboardList.replaceChildren();
+  const note = document.createElement('p');
+  note.className = 'lb-note';
+  note.textContent = text;
+  els.leaderboardList.appendChild(note);
+}
+
+function scoreRow({ rank, name, score, scoreLabel, isMe, removable }) {
+  const row = document.createElement('div');
+  row.className = 'lb-row' + (isMe ? ' is-me' : '');
+
+  const rankEl = document.createElement('span');
+  rankEl.className = 'lb-rank';
+  rankEl.textContent = String(rank);
+  row.appendChild(rankEl);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'lb-name';
+  nameEl.textContent = name;
+  row.appendChild(nameEl);
+
+  const scoreEl = document.createElement('span');
+  scoreEl.className = 'lb-score';
+  scoreEl.textContent = scoreLabel;
+  row.appendChild(scoreEl);
+
+  if (removable) {
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'lb-remove';
+    remove.setAttribute('aria-label', `Remove ${name}`);
+    remove.textContent = '\u00d7';
+    remove.addEventListener('click', () => removeFriend(name));
+    row.appendChild(remove);
+  }
+  return row;
+}
+
+function renderTab() {
+  if (!els.leaderboardList) return;
+  els.leaderboardList.replaceChildren();
+
+  if (activeTab === 'weekly') {
+    const rows = sortScoreRows(leaderboardData.weekly || [], { getScore: (r) => r.roundReached });
+    if (!rows.length) {
+      renderNote('No scores yet this week.');
+      return;
+    }
+    rows.forEach((r, i) => {
+      els.leaderboardList.appendChild(scoreRow({
+        rank: i + 1,
+        name: r.username,
+        scoreLabel: `Round ${r.roundReached}`,
+        isMe: isMe(r.username),
+      }));
+    });
+    return;
+  }
+
+  if (activeTab === 'friends') {
+    const rows = sortScoreRows(leaderboardData.friends || []);
+    if (!(leaderboardData.friends || []).length) {
+      renderNote('Add a friend to see their best round.');
+      return;
+    }
+    rows.forEach((r, i) => {
+      els.leaderboardList.appendChild(scoreRow({
+        rank: r.bestRound == null ? '-' : i + 1,
+        name: r.username,
+        scoreLabel: r.bestRound == null ? 'No score yet' : `Round ${r.bestRound}`,
+        isMe: false,
+        removable: true,
+      }));
+    });
+    return;
+  }
+
+  const rows = sortScoreRows(leaderboardData.global || [], { getScore2: (r) => r.totalCounted });
+  if (!rows.length) {
+    renderNote('No scores yet.');
+    return;
+  }
+  rows.forEach((r, i) => {
+    els.leaderboardList.appendChild(scoreRow({
+      rank: i + 1,
+      name: r.username,
+      scoreLabel: `Round ${r.bestRound}`,
+      isMe: isMe(r.username),
+    }));
+  });
+}
+
+function isMe(name) {
+  try {
+    return String(name) === String(store.state.meUsername || '');
+  } catch {
+    return false;
+  }
+}
+
+// ---- Friend picker ----
+// Typeahead through the platform shell (usernode.searchUsers); exact adds
+// go through usernode.lookupUser. Both reject outside the shell: catch that
+// and degrade open, accepting the typed handle. Never block adding on a
+// lookup we could not perform.
+function cleanHandle(raw) {
+  return String(raw || '').trim().replace(/^@+/, '');
+}
+
+function validHandleLocal(handle) {
+  return /^[A-Za-z0-9._-]{1,64}$/.test(handle);
+}
+
+function showFriendError(text) {
+  els.friendError.hidden = !text;
+  els.friendError.textContent = text || '';
+}
+
+function renderResults(users) {
+  els.friendResults.replaceChildren();
+  if (!users.length) {
+    els.friendResults.classList.remove('open');
+    return;
+  }
+  els.friendResults.classList.add('open');
+  for (const u of users) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = u.username;
+    btn.addEventListener('click', () => {
+      els.friendResults.classList.remove('open');
+      addFriend(u.username, u.id);
+    });
+    els.friendResults.appendChild(btn);
+  }
+}
+
+async function searchFriends(prefix) {
+  const handle = cleanHandle(prefix);
+  if (!validHandleLocal(handle)) {
+    renderResults([]);
+    return;
+  }
+  try {
+    const { users = [] } = await window.usernode.searchUsers(handle, { limit: 10 });
+    renderResults(users.filter((u) => cleanHandle(u.username) !== store.state.meUsername));
+  } catch {
+    renderResults([]);
+  }
+}
+
+async function addFriend(rawHandle, friendUserId) {
+  const handle = cleanHandle(rawHandle);
+  if (!validHandleLocal(handle)) {
+    showFriendError('Use letters, numbers, dots, dashes or underscores.');
+    return;
+  }
+  if (handle === store.state.meUsername) {
+    showFriendError('That is your own handle.');
+    return;
+  }
+  els.friendInput.value = '';
+  renderResults([]);
+  showFriendError('');
+
+  // Exact-entry add: confirm existence when the shell is present. Outside
+  // it (or on any lookup failure) accept the handle as typed.
+  try {
+    const { found, user } = await window.usernode.lookupUser(handle);
+    if (found === false) {
+      showFriendError('No user with that handle.');
+      return;
+    }
+    if (user && user.username) {
+      return persistFriend(user.username, user.id);
+    }
+  } catch {
+    /* no shell: accept as typed */
+  }
+  return persistFriend(handle, friendUserId);
+}
+
+async function persistFriend(username, friendUserId) {
+  try {
+    const res = await fetch('/api/friends', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-usernode-token': token },
+      body: JSON.stringify({ username, friendUserId }),
+    });
+    if (!res.ok) throw new Error('bad status');
+  } catch {
+    showFriendError('Could not add that friend. Try again.');
+    return;
+  }
+  await loadLeaderboard();
+}
+
+async function removeFriend(username) {
+  try {
+    await fetch('/api/friends', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'x-usernode-token': token },
+      body: JSON.stringify({ username }),
+    });
+  } catch {
+    /* best effort; the list reloads below anyway */
+  }
+  await loadLeaderboard();
+}
+
+els.friendInput.addEventListener('input', () => {
+  showFriendError('');
+  clearTimeout(friendSearchTimer);
+  friendSearchTimer = setTimeout(() => searchFriends(els.friendInput.value), 200);
+});
+
+els.leaderboardBtn.addEventListener('click', () => {
+  closeGrownups();
+  openLeaderboard();
+});
+els.leaderboardClose.addEventListener('click', closeLeaderboard);
+for (const [name, btn] of Object.entries(els.tabButtons)) {
+  if (btn) btn.addEventListener('click', () => selectTab(name));
+}
+
 boot();
+
