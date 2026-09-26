@@ -147,7 +147,7 @@
     {
       "id": "difficulty.expert",
       "name": "Expert difficulty marks Expert on the briefing card",
-      "path": "/?round=3&difficulty=expert",
+      "path": "/?round=1&difficulty=expert",
       "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=expert][aria-checked=true]",
       "visual": true,
       "impact": [
