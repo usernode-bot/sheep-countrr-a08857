@@ -18,6 +18,7 @@ import {
   sheepForRound,
   sheepPhrase,
   normalizeRound,
+  successMessage,
 } from '../public/rounds.js';
 import { wanderOffset } from '../public/movement.js';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
@@ -223,6 +224,14 @@ test('the pre-round briefing names the round, its flock, and how it moves', () =
   }
   assert.equal(roundIntroText('3'), 'Round 3 has ' + sheepPhrase(sheepForRound(3)) + '. ' + paceLine(3));
   assert.equal(roundIntroText(0), 'Round 1 has 1 sheep. This one stands still.');
+});
+
+test('the success message praises the player and names no em dash', () => {
+  assert.equal(successMessage(), 'Great job! You found all the sheep.');
+  assert.ok(!successMessage().includes('\u2014'), 'em dash in success message');
+  // Same wording the round-complete card renders, so the copy helper and the
+  // visible headline cannot drift apart.
+  assert.ok(successMessage().startsWith('Great job!'), successMessage());
 });
 
 test('sheep phrases and pace lines read naturally at their edges', () => {

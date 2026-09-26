@@ -97,3 +97,10 @@ export function roundIntroText(round) {
   const r = normalizeRound(round);
   return `Round ${r} has ${sheepPhrase(sheepForRound(r))}. ${paceLine(r)}`;
 }
+
+// The praise line at the top of the round-complete card. Leads the card so
+// finishing a round reads as a reward, not a status readout. The round line
+// and next-up line below it carry the specifics.
+export function successMessage() {
+  return 'Great job! You found all the sheep.';
+}
