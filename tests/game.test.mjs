@@ -21,12 +21,19 @@ import {
   successMessage,
 } from '../public/rounds.js';
 import { wanderOffset } from '../public/movement.js';
+import { weekStartUtc, sortScoreRows } from '../public/leaderboard.js';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
 
 // A store that behaves exactly like a /?round=N deep link: fixed seeds, and
 // no localStorage or network to reach for from a test process.
-function newStore() {
-  return new StateStore({ ephemeral: true, deterministic: true });
+function newStore(recorded) {
+  const recordedRuns = [];
+  const store = new StateStore({
+    ephemeral: true,
+    deterministic: true,
+    onRecordRun: recorded ? (round) => recordedRuns.push(round) : undefined,
+  });
+  return { store, recordedRuns };
 }
 
 test('round 1 is a single sheep and it stands perfectly still', () => {
@@ -108,8 +115,8 @@ test('a deep-link round is reproducible and never grows past the cap', () => {
   assert.equal(normalizeRound('nope'), 1);
   assert.equal(normalizeRound(-3), 1);
 
-  const a = newStore();
-  const b = newStore();
+  const a = newStore().store;
+  const b = newStore().store;
   a.startRound(5, { silent: true });
   b.startRound('5', { silent: true });
   assert.equal(a.state.seed, b.state.seed);
@@ -118,7 +125,7 @@ test('a deep-link round is reproducible and never grows past the cap', () => {
 });
 
 test('counting every sheep passes the round and advances', () => {
-  const store = newStore();
+  const { store } = newStore();
   store.startRound(3, { silent: true });
   const n = store.state.sheepCount;
   for (let i = 0; i < n; i++) {
@@ -138,7 +145,7 @@ test('counting every sheep passes the round and advances', () => {
 });
 
 test('tapping an already-counted sheep ends the run', () => {
-  const store = newStore();
+  const { store } = newStore();
   store.startRound(4, { silent: true });
   store.tapSheep(2);
   assert.deepEqual(store.tapSheep(2), { outcome: 'doubleTap' });
@@ -151,7 +158,7 @@ test('tapping an already-counted sheep ends the run', () => {
 });
 
 test('submitting a short count ends the run on the round reached', () => {
-  const store = newStore();
+  const { store } = newStore();
   store.startRound(6, { silent: true });
   store.tapSheep(0);
   assert.deepEqual(store.submitCount(), { outcome: 'missed', round: 6 });
@@ -161,7 +168,7 @@ test('submitting a short count ends the run on the round reached', () => {
 });
 
 test('out-of-range taps are ignored rather than ending the run', () => {
-  const store = newStore();
+  const { store } = newStore();
   store.startRound(2, { silent: true });
   assert.deepEqual(store.tapSheep(-1), { outcome: 'ignored' });
   assert.deepEqual(store.tapSheep(store.state.sheepCount), { outcome: 'ignored' });
@@ -171,7 +178,7 @@ test('out-of-range taps are ignored rather than ending the run', () => {
 });
 
 test('restarting returns to round 1 and keeps the best round reached', () => {
-  const store = newStore();
+  const { store } = newStore();
   store.startRound(7, { silent: true });
   store.endRun(ENDED_MISSED);
   store.restartRun();
@@ -183,7 +190,7 @@ test('restarting returns to round 1 and keeps the best round reached', () => {
 });
 
 test('taps counted in any order keep their tap-order numbering', () => {
-  const store = newStore();
+  const { store } = newStore();
   store.startRound(5, { silent: true });
   assert.equal(store.tapSheep(4).number, 1);
   assert.equal(store.tapSheep(0).number, 2);
@@ -244,4 +251,76 @@ test('sheep phrases and pace lines read naturally at their edges', () => {
   for (const line of [paceLine(1), paceLine(2), paceLine(5), paceLine(8), paceLine(12)]) {
     assert.ok(!line.includes('\u2014'), line);
   }
+});
+
+test('the week starts Monday 00:00 UTC', () => {
+  // A Wednesday deep inside its week.
+  const wed = weekStartUtc(new Date('2026-09-23T15:30:00Z'));
+  assert.equal(wed.toISOString(), '2026-09-21T00:00:00.000Z');
+  // Sunday 23:59:59 still belongs to the week that started six days earlier.
+  const sundayNight = weekStartUtc(new Date('2026-09-20T23:59:59Z'));
+  assert.equal(sundayNight.toISOString(), '2026-09-14T00:00:00.000Z');
+  // The boundary itself: Monday 00:00:00 starts the new week.
+  const mondayMorning = weekStartUtc(new Date('2026-09-21T00:00:00Z'));
+  assert.equal(mondayMorning.toISOString(), '2026-09-21T00:00:00.000Z');
+  // A late Sunday belongs to the week that is ending (the boundary
+  // Monday is six days back), exactly like date_trunc('week', ...).
+  const lateSunday = weekStartUtc(new Date('2026-09-27T12:00:00Z'));
+  assert.equal(lateSunday.toISOString(), '2026-09-21T00:00:00.000Z');
+});
+
+test('score rows sort best-first, ties by handle, unscored friends last', () => {
+  const rows = [
+    { username: 'Staging demo: Pip', bestRound: 3, totalCounted: 5 },
+    { username: 'Staging demo: Bess', bestRound: 12, totalCounted: 40 },
+    { username: 'Staging demo: Mabel', bestRound: 9, totalCounted: 23 },
+    { username: 'Staging demo: Otto', bestRound: 6, totalCounted: 11 },
+  ];
+  const sorted = sortScoreRows(rows);
+  assert.deepEqual(
+    sorted.map((r) => r.username),
+    [
+      'Staging demo: Bess',
+      'Staging demo: Mabel',
+      'Staging demo: Otto',
+      'Staging demo: Pip',
+    ]
+  );
+
+  // Friends with no score yet sort after every scored friend, by handle.
+  const friends = sortScoreRows([
+    { username: 'zeta', bestRound: null },
+    { username: 'mabel', bestRound: 9 },
+    { username: 'alix', bestRound: null },
+    { username: 'otto', bestRound: 6 },
+  ]);
+  assert.deepEqual(
+    friends.map((r) => r.username),
+    ['mabel', 'otto', 'alix', 'zeta']
+  );
+
+  // Ties break alphabetically, then the input is never mutated.
+  const tie = sortScoreRows([
+    { username: 'nova', bestRound: 4 },
+    { username: 'alix', bestRound: 4 },
+  ]);
+  assert.deepEqual(tie.map((r) => r.username), ['alix', 'nova']);
+});
+
+test('a finished run records once; a new run re-arms the record', () => {
+  const { store, recordedRuns } = newStore(true);
+  store.startRound(3, { silent: true });
+  store.tapSheep(0);
+  store.endRun('doubleTap');
+  // Double endRun without a new run records at most one run.
+  store.endRun('doubleTap');
+  store.endRun('doubleTap');
+  assert.equal(recordedRuns.length, 1);
+  assert.equal(recordedRuns[0], 3);
+
+  // A fresh run re-arms the guard.
+  store.startRound(5, { silent: true });
+  store.endRun('doubleTap');
+  assert.equal(recordedRuns.length, 2);
+  assert.equal(recordedRuns[1], 5);
 });

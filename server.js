@@ -48,6 +48,13 @@ app.use(express.json());
 // on subsequent fetches.
 app.use((req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
+  // The centrally hosted bridge never exists in a standalone container
+  // (the platform edge serves it in front of real deploys). Answer 204 so
+  // local in-loop checks and previews don't log a console error for a file
+  // no standalone server is expected to carry.
+  if (req.path.startsWith('/usernode-bridge/') && !req.user) {
+    return res.status(204).end();
+  }
   if (token && JWT_PUBLIC_KEY && APP_AUDIENCE) {
     try {
       // Pin the algorithm, issuer and audience. Without `algorithms` a
@@ -96,6 +103,135 @@ app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'th
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
+
+// Friend handles are public platform usernames. A conservative charset
+// keeps junk out of the URL-safe slots without trying to guess the
+// platform's own rules; the frontend's directory lookup is what actually
+// confirms existence inside the shell.
+function normalizeHandle(raw) {
+  const trimmed = String(raw || '').trim().replace(/^@+/, '');
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+// One row per finished run. Identity comes from the verified token, never
+// from the body; the round is clamped to the same bound as /api/state.
+app.post('/api/runs', async (req, res) => {
+  const roundReached = clamp(parseInt((req.body || {}).roundReached, 10) || 1, 1, MAX_ROUND);
+  try {
+    await pool.query(
+      `INSERT INTO sheep_runs (user_id, username, round_reached)
+       VALUES ($1, $2, $3)`,
+      [req.user.id, req.user.username, roundReached]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// All three tabs in one response. Global reads the monotonic best_round
+// from sheep_progress; weekly reads finished runs inside the current ISO
+// week (Postgres date_trunc is Monday 00:00 UTC); friends joins the
+// caller's own list to progress rows by canonical username. Lists cap at
+// 25 rows and re-sort by score after the per-user DISTINCT ON.
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const { rows: globalRows } = await pool.query(
+      `SELECT user_id, username, best_round AS "bestRound", total_counted AS "totalCounted"
+       FROM sheep_progress
+       ORDER BY best_round DESC, total_counted DESC, username ASC
+       LIMIT 25`
+    );
+
+    const { rows: weeklyRows } = await pool.query(
+      `SELECT user_id, username, round_reached AS "roundReached"
+       FROM (
+         SELECT DISTINCT ON (user_id)
+                user_id, username, round_reached, ended_at
+         FROM sheep_runs
+         WHERE ended_at >= date_trunc('week', NOW())
+         ORDER BY user_id, round_reached DESC, ended_at ASC
+       ) per_user
+       ORDER BY round_reached DESC, per_user.username ASC
+       LIMIT 25`
+    );
+
+    const { rows: friendRows } = await pool.query(
+      `SELECT f.friend_username AS username,
+              p.best_round AS "bestRound"
+       FROM sheep_friends f
+       LEFT JOIN sheep_progress p ON p.username = f.friend_username
+       WHERE f.owner_user_id = $1
+       ORDER BY (p.best_round IS NULL), p.best_round DESC, f.friend_username ASC
+       LIMIT 25`,
+      [req.user.id]
+    );
+
+    res.json({
+      global: globalRows.map((r) => ({ username: r.username, bestRound: r.bestRound, totalCounted: r.totalCounted })),
+      weekly: weeklyRows.map((r) => ({ username: r.username, roundReached: r.roundReached })),
+      friends: friendRows.map((r) => ({ username: r.username, bestRound: r.bestRound })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The caller's own friend list.
+app.get('/api/friends', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT friend_username AS username, friend_user_id AS "friendUserId"
+       FROM sheep_friends WHERE owner_user_id = $1
+       ORDER BY friend_username ASC`,
+      [req.user.id]
+    );
+    res.json({ friends: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add a handle. friendUserId arrives only when the frontend's bridge lookup
+// resolved it (the shell owns the directory); the server never re-verifies
+// it and treats an absent id as "added outside the shell". A duplicate or
+// a self-add is a quiet no-op.
+app.post('/api/friends', async (req, res) => {
+  const body = req.body || {};
+  const username = normalizeHandle(body.username);
+  const friendUserId = Number.isInteger(body.friendUserId) && body.friendUserId > 0
+    ? body.friendUserId : null;
+  if (!username) return res.status(400).json({ error: 'Invalid handle' });
+  if (username === req.user.username) return res.status(400).json({ error: 'That is your own handle' });
+  try {
+    await pool.query(
+      `INSERT INTO sheep_friends (owner_user_id, friend_username, friend_user_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (owner_user_id, friend_username) DO NOTHING`,
+      [req.user.id, username, friendUserId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove. Deletes only the caller's own row, so one user can never edit
+// another's list.
+app.delete('/api/friends', async (req, res) => {
+  const username = normalizeHandle((req.body || {}).username);
+  if (!username) return res.status(400).json({ error: 'Invalid handle' });
+  try {
+    await pool.query(
+      `DELETE FROM sheep_friends WHERE owner_user_id = $1 AND friend_username = $2`,
+      [req.user.id, username]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 function randomSeed() {
   return Math.floor(Math.random() * 2 ** 31);
@@ -256,6 +392,7 @@ async function seedStagingData() {
     { user_id: -101, username: 'Staging demo: Mabel', round: 4, best_round: 9, total_counted: 23 },
     { user_id: -102, username: 'Staging demo: Otto', round: 2, best_round: 6, total_counted: 11 },
     { user_id: -103, username: 'Staging demo: Pip', round: 1, best_round: 3, total_counted: 5 },
+    { user_id: -104, username: 'Staging demo: Bess', round: 1, best_round: 12, total_counted: 40 },
   ];
   for (const r of demoRows) {
     await pool.query(
@@ -264,6 +401,25 @@ async function seedStagingData() {
        VALUES ($1, $2, $3, $4, $5, false, $6)
        ON CONFLICT (user_id) DO NOTHING`,
       [r.user_id, r.username, r.round, r.best_round, r.total_counted, 1000 - r.user_id]
+    );
+  }
+
+  // Weekly leaderboard rows. Fixed ids make the insert idempotent; the
+  // timestamps stay inside their week no matter when the container boots.
+  // The last-week row exists to prove the Monday 00:00 UTC boundary hides
+  // it from the This week tab while Mabel's newer run keeps her on it.
+  const weekRuns = [
+    { id: 900101, user_id: -101, username: 'Staging demo: Mabel', round_reached: 8, when: "date_trunc('week', NOW()) + interval '2 hours'" },
+    { id: 900102, user_id: -102, username: 'Staging demo: Otto', round_reached: 7, when: "date_trunc('week', NOW()) + interval '2 hours'" },
+    { id: 900103, user_id: -103, username: 'Staging demo: Pip', round_reached: 4, when: "date_trunc('week', NOW()) + interval '1 hour'" },
+    { id: 900104, user_id: -101, username: 'Staging demo: Mabel', round_reached: 5, when: "date_trunc('week', NOW()) - interval '3 days'" },
+  ];
+  for (const r of weekRuns) {
+    await pool.query(
+      `INSERT INTO sheep_runs (id, user_id, username, round_reached, ended_at)
+       VALUES ($1, $2, $3, $4, ${r.when})
+       ON CONFLICT (id) DO NOTHING`,
+      [r.id, r.user_id, r.username, r.round_reached]
     );
   }
 }
@@ -294,6 +450,38 @@ async function start() {
   // reads them now, so they simply keep their defaults.
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS best_round INTEGER NOT NULL DEFAULT 1`);
   await pool.query(`ALTER TABLE sheep_progress ALTER COLUMN seed SET DEFAULT 0`);
+
+  // Finished runs, one row per run end: what the This week tab ranks. The
+  // table is deliberately separate from sheep_progress so a run's outcome
+  // is timestamped when it happens, which a best-round-only column cannot
+  // express.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sheep_runs (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      username VARCHAR(255) NOT NULL,
+      round_reached INTEGER NOT NULL,
+      ended_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS sheep_runs_week_idx ON sheep_runs (ended_at)`);
+
+  // The following list, one row per (owner, friend). A following graph is
+  // personal information beyond a public username, so the table is marked
+  // staging:private: schema copies into previews, rows never do, and the
+  // seed block below deliberately does not touch it. friend_user_id is
+  // filled only when the platform shell resolved the handle; a friend
+  // added outside the shell keeps NULL.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sheep_friends (
+      owner_user_id INTEGER NOT NULL,
+      friend_username VARCHAR(255) NOT NULL,
+      friend_user_id INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (owner_user_id, friend_username)
+    )
+  `);
+  await pool.query(`COMMENT ON TABLE sheep_friends IS 'staging:private'`);
 
   if (IS_STAGING) await seedStagingData();
 
