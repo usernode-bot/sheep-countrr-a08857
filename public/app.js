@@ -26,6 +26,10 @@ import {
 import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
 
+// Pass-and-play Duel: shared controller state, exported for the unit suite.
+const DUEL_TURN_SECONDS = 45;
+export function duelTurnSeconds() { return DUEL_TURN_SECONDS; }
+
 const params = new URLSearchParams(window.location.search);
 const token = params.get('token') || sessionStorage.getItem('sheep-countrr:token') || '';
 if (params.get('token')) sessionStorage.setItem('sheep-countrr:token', token);
@@ -43,6 +47,10 @@ const hasDifficultyParam = params.get('difficulty') !== null;
 // deep link, so the store stays ephemeral there.
 const hasSpeedParam = params.get('speed') !== null;
 const speedParam = normalizeSpeedRound(params.get('speed') === '1');
+// The Duel flag from a deep link (?duel=1): it applies to the run it opens,
+// never persisted from a deep link, so the store stays ephemeral there.
+const hasDuelParam = params.get('duel') !== null;
+const duelParam = params.get('duel') === '1';
 // The grown-ups fixture can force the sound toggle on (the shipped default
 // for the frozen ?scene=grownups card) without touching localStorage.
 const soundParam = params.get('sound');
@@ -108,6 +116,14 @@ const els = {
   bestRoundValue: document.getElementById('best-round-value'),
   startCountingBtn: document.getElementById('start-counting-btn'),
   speedToggle: document.getElementById('speed-toggle'),
+  duelToggle: document.getElementById('duel-toggle'),
+  duelPanel: document.getElementById('duel-panel'),
+  duelPanelTitle: document.getElementById('duel-panel-title'),
+  duelPanelBody: document.getElementById('duel-panel-body'),
+  duelPanelScores: document.getElementById('duel-panel-scores'),
+  duelPanelHint: document.getElementById('duel-panel-hint'),
+  duelPanelBtn: document.getElementById('duel-panel-btn'),
+  duelTurnClock: document.getElementById('duel-turn-clock'),
   speedTimer: document.getElementById('speed-timer'),
   roundComplete: document.getElementById('round-complete'),
   successTitle: document.getElementById('success-title'),
@@ -183,7 +199,7 @@ function supportsWebGL() {
   }
 }
 
-const store = new StateStore({
+let store = new StateStore({
   userId: userIdFromToken(token),
   token,
   ephemeral: deepLink,
@@ -254,6 +270,35 @@ function buildStaticState() {
       nightOn: nightParam === '1',
     });
   }
+  if (sceneParam === 'duelhandoff') {
+    // The frozen pass-the-device card: player 1 counted a clean flock, the
+    // board behind the card holds the untouched flock for player 2.
+    els.roundBadge.textContent = 'Round 1';
+    showDuelPanel({
+      title: 'Pass the device',
+      body: 'Sheep counter 2, you count the same flock as Sheep counter 1.',
+      scores: [{ label: 'Sheep counter 1', value: '0 missed' }],
+      hint: 'Same flock, fresh eyes. The lower miss count wins.',
+      btn: 'Start counting',
+      onBtn: () => {},
+    });
+  }
+  if (sceneParam === 'duelresult') {
+    // The frozen results card: player 1 found every sheep, player 2 missed
+    // one, so the win line and both miss counts are on the card.
+    els.roundBadge.textContent = 'Round 1';
+    showDuelPanel({
+      title: 'Duel result',
+      body: 'Sheep counter 1 wins.',
+      scores: [
+        { label: 'Sheep counter 1', value: '0 missed' },
+        { label: 'Sheep counter 2', value: '1 missed' },
+      ],
+      hint: null,
+      btn: 'Count again',
+      onBtn: () => {},
+    });
+  }
   if (sceneParam === 'sharegameover') {
     // The public share view for Mabel's seeded demo run: the round-8 flock
     // behind the game-over card, read-only, with the shared-by line.
@@ -293,10 +338,25 @@ async function boot() {
     // difficulty= picks the curve; it stays ephemeral like the round itself.
     if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
     if (hasSpeedParam) store.state = { ...store.state, speedOn: speedParam };
+    if (hasDuelParam && duelParam) {
+      store.state = { ...store.state, duel: true };
+    }
     store.startRound(normalizeRound(roundParam), { silent: true });
   } else {
+    // A /?duel=1 run with no round names a fresh duel at round 1. The flag
+    // rides into the boot hook below; a tokenless store (no /api/state)
+    // keeps it until then.
+    if (hasDuelParam && duelParam) {
+      store.state = { ...store.state, duel: true };
+    }
     store.loadLocal();
+    if (hasDuelParam && duelParam) {
+      store.state = { ...store.state, duel: true };
+    }
     await store.loadRemote();
+    if (hasDuelParam && duelParam) {
+      store.state = { ...store.state, duel: true };
+    }
   }
 
   const wantsDom = rendererParam === 'dom' || !supportsWebGL();
@@ -306,10 +366,27 @@ async function boot() {
   updateChrome(store.state);
   renderA11yList(store.state);
 
+  // A /?duel=1 run boots straight into the pass-and-play flow: its own
+  // shared flock, its own handoff card. The state flag is consumed here so
+  // the rest of boot (and every later run) stays solo.
+  if (!staticMode && store.state.duel) {
+    store.state = { ...store.state, duel: false };
+    els.duelToggle.checked = false;
+    startDuel(store.state.round, { skipIntro: true });
+    showDuelPanel({
+      title: 'Pass and play',
+      body: `${DUEL_PLAYERS[0]} counts first. Pass the device when the card asks.`,
+      scores: [],
+      hint: 'Both players count the same flock. The lower miss count wins.',
+      btn: 'Start counting',
+      onBtn: dismissDuelPanel,
+    });
+  }
+
   // The briefing covers the board before the first round of a run starts
   // counting. Frozen ?scene= fixtures stay card-free, and a player resuming
   // mid-run at a later round has already played.
-  if (!staticMode && store.state.round === 1) showRoundIntro(store.state);
+  if (!staticMode && !duelState && store.state.round === 1) showRoundIntro(store.state);
   // The frozen intro fixture shows the card with the Best Round chip filled
   // from hardcoded data, so the chip's check has a deterministic route.
   if (staticMode && sceneParam === 'intro') showRoundIntro(store.state);
@@ -499,6 +576,7 @@ function handleTap(index) {
     renderer?.tapRipple?.(index);
   }
   const result = store.tapSheep(index);
+  if (store.state.duel && store.state.phase !== COUNTING) stopDuelClock();
   if (result.outcome === 'counted') {
     renderer.countSheep(index, result.number);
     if (store.state.soundOn) {
@@ -525,6 +603,190 @@ function submitCount() {
   if (introOpen) return;
   clearTimeout(autoSubmitTimer);
   store.submitCount();
+  if (store.state.duel && store.state.phase !== COUNTING) stopDuelClock();
+}
+
+// ---- Pass-and-play Duel ----
+// Both players count the SAME flock: one flock seed is drawn when the duel
+// starts, and every turn's store reuses it, so the two counts are directly
+// comparable. Each turn gets a fresh ephemeral store over the existing
+// state shape, so the 3D scene, the DOM fallback and the a11y list keep
+// rendering exactly as they do in a solo round. The turn clock is advisory
+// (the store's own speed-clock logic stays off): it nudges the player to
+// hand over and never ends a turn by itself.
+const DUEL_PLAYERS = ['Sheep counter 1', 'Sheep counter 2'];
+let duelState = null; // { round, seed, difficulty, turn (0-based), misses: [n, n], done }
+let duelResolving = false; // guards the store swap inside onChange
+let duelClockTimer = null;
+let duelSecondsLeft = DUEL_TURN_SECONDS;
+
+function startDuel(round, { skipIntro } = {}) {
+  const start = normalizeRound(round);
+  duelState = {
+    round: start,
+    seed: roundSeed(start) + 900000 + start, // one fixed flock for both turns
+    difficulty: store.state.difficulty,
+    turn: 0,
+    misses: [null, null],
+    done: false,
+  };
+  duelSecondsLeft = DUEL_TURN_SECONDS;
+  beginDuelTurn({ silent: true });
+  if (!skipIntro) showDuelPanel({
+    title: 'Pass and play',
+    body: `${DUEL_PLAYERS[0]} counts first. Pass the device when the card asks.`,
+    scores: [],
+    hint: 'Both players count the same flock. The lower miss count wins.',
+    btn: 'Start counting',
+    onBtn: dismissDuelPanel,
+  });
+}
+
+// Builds a fresh ephemeral store for the current turn. The duel round reads
+// as round 1 in the badges (each turn is a single round), but the flock is
+// the shared seed, so both players frame the same pasture.
+function beginDuelTurn({ silent, startClock = true } = {}) {
+  stopDuelClock();
+  duelSecondsLeft = DUEL_TURN_SECONDS;
+  const turnStore = new StateStore({
+    userId: 'duel',
+    token: '',
+    ephemeral: true,
+    deterministic: false,
+    onChange: (state) => updateChrome(state),
+  });
+  turnStore.state = {
+    ...turnStore.state,
+    duel: true,
+    difficulty: duelState.difficulty,
+  };
+  turnStore.state = turnStore.startRound(duelState.round, { silent: true });
+  turnStore.state = { ...turnStore.state, seed: duelState.seed };
+  renderer?.resetRound(turnStore.state);
+  store = turnStore;
+  updateChrome(store.state);
+  renderA11yList(store.state);
+  if (startClock) startDuelClock();
+}
+
+function startDuelClock() {
+  clearInterval(duelClockTimer);
+  // Paint the full clock before the first tick, so the pill is visible the
+  // moment the turn starts rather than one second later.
+  syncDuelClock(store.state);
+  duelClockTimer = setInterval(() => {
+    if (!store.state.duel || store.state.phase !== COUNTING) {
+      clearInterval(duelClockTimer);
+      return;
+    }
+    duelSecondsLeft = Math.max(0, duelSecondsLeft - 1);
+    syncDuelClock(store.state);
+    if (duelSecondsLeft === 0) {
+      clearInterval(duelClockTimer);
+      syncDuelTurnHint();
+    }
+  }, 1000);
+}
+
+function stopDuelClock() {
+  clearInterval(duelClockTimer);
+}
+
+// The turn-clock pill follows the same round-pill shape as the Speed Round
+// countdown, so the two modes never fight over the count plate.
+function syncDuelClock(state) {
+  const show = !!state.duel && state.phase === COUNTING;
+  els.duelTurnClock.hidden = !show;
+  if (show) {
+    els.duelTurnClock.textContent = String(Math.max(0, duelSecondsLeft));
+  }
+}
+
+function syncDuelTurnHint() {
+  if (duelState && !duelState.done && duelSecondsLeft === 0) {
+    els.playHint.textContent = 'Time to pass the device. Tap Done counting.';
+  }
+}
+
+// Called from the panel sync (below) whenever a duel turn's store reaches
+// RUN_OVER: record the miss count, then either pass the device or show the
+// results card.
+function resolveDuelTurn() {
+  if (!duelState || duelState.done || duelResolving) return;
+  duelResolving = true;
+  stopDuelClock();
+  const misses = duelState.misses;
+  misses[duelState.turn] = store.state.sheepCount - store.state.count;
+  const isLast = duelState.turn === DUEL_PLAYERS.length - 1;
+  if (isLast) {
+    duelState.done = true;
+    showDuelResults();
+  } else {
+    duelState.turn += 1;
+    showDuelPanel({
+      title: 'Pass the device',
+      body: `${DUEL_PLAYERS[duelState.turn]}, you count the same flock as ${DUEL_PLAYERS[duelState.turn - 1]}.`,
+      scores: [{ label: DUEL_PLAYERS[0], value: `${misses[0]} missed` }],
+      hint: 'Same flock, fresh eyes. The lower miss count wins.',
+      btn: 'Start counting',
+      onBtn: () => {
+        dismissDuelPanel();
+        beginDuelTurn({});
+      },
+    });
+  }
+  duelResolving = false;
+}
+
+function duelMissesLine(misses) {
+  const [a, b] = misses;
+  if (a == null || b == null) return '';
+  if (a < b) return `${DUEL_PLAYERS[0]} wins.`;
+  if (b < a) return `${DUEL_PLAYERS[1]} wins.`;
+  return 'A tie. Count another flock.';
+}
+
+function showDuelResults() {
+  const misses = duelState.misses;
+  showDuelPanel({
+    title: 'Duel result',
+    body: duelMissesLine(misses),
+    scores: DUEL_PLAYERS.map((name, i) => ({ label: name, value: `${misses[i]} missed` })),
+    hint: null,
+    btn: 'Count again',
+    onBtn: () => {
+      dismissDuelPanel();
+      startDuel(duelState.round, { skipIntro: true });
+    },
+  });
+}
+
+function showDuelPanel({ title, body, scores, hint, btn, onBtn }) {
+  els.duelPanelTitle.textContent = title;
+  els.duelPanelBody.textContent = body;
+  els.duelPanelScores.replaceChildren();
+  for (const row of scores || []) {
+    const p = document.createElement('p');
+    p.className = 'duel-score-row';
+    const name = document.createElement('span');
+    name.className = 'duel-score-name';
+    name.textContent = row.label;
+    const value = document.createElement('span');
+    value.className = 'duel-score-value';
+    value.textContent = row.value;
+    p.appendChild(name);
+    p.appendChild(value);
+    els.duelPanelScores.appendChild(p);
+  }
+  els.duelPanelHint.hidden = !hint;
+  els.duelPanelHint.textContent = hint || '';
+  els.duelPanelBtn.textContent = btn;
+  els.duelPanelBtn.onclick = onBtn;
+  els.duelPanel.hidden = false;
+}
+
+function dismissDuelPanel() {
+  els.duelPanel.hidden = true;
 }
 
 // The pre-round briefing. Shown before the first round of a run; the one
@@ -555,6 +817,14 @@ function syncSpeedToggle(state) {
   els.speedToggle.checked = !!state.speedOn;
 }
 
+// The Duel toggle flips only before Start counting, exactly like the Speed
+// Round toggle. Turning it on arms the duel for the next Start tap; it
+// never touches the board behind the card, since a duel starts its own
+// shared flock when the player commits.
+function syncDuelToggle(state) {
+  els.duelToggle.checked = !!state.duel;
+}
+
 // The round badge names the mode while a Speed Round is live, so the
 // result reads differently from a normal round in screenshots too.
 function syncRoundBadge(state) {
@@ -574,6 +844,23 @@ function showRoundIntro(state) {
 function dismissRoundIntro() {
   introOpen = false;
   els.roundIntro.hidden = true;
+  // The Duel toggle on the card was on: the duel takes over the run here,
+  // drawing its own shared flock and opening its own handoff card. The
+  // toggle resets so the next solo run does not inherit it.
+  if (store.state.duel && !staticMode) {
+    store.state = { ...store.state, duel: false };
+    els.duelToggle.checked = false;
+    startDuel(store.state.round, { skipIntro: true });
+    showDuelPanel({
+      title: 'Pass and play',
+      body: `${DUEL_PLAYERS[0]} counts first. Pass the device when the card asks.`,
+      scores: [],
+      hint: 'Both players count the same flock. The lower miss count wins.',
+      btn: 'Start counting',
+      onBtn: dismissDuelPanel,
+    });
+    return;
+  }
   // A Speed Round starts when the player does.
   startSpeedClock();
   // A soft baa announces the new flock. playBaa checks the sound
@@ -633,6 +920,8 @@ function restartRun() {
   clearTimeout(advanceTimer);
   clearTimeout(autoSubmitTimer);
   stopSpeedClock();
+  stopDuelClock();
+  duelState = null;
   store.restartRun();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
@@ -693,6 +982,16 @@ function updateChrome(state) {
 function syncPanels(state) {
   const passed = state.phase === ROUND_PASSED;
   const over = state.phase === RUN_OVER;
+
+  if (state.duel && over) {
+    // A duel turn never shows the solo game-over card: the handoff or the
+    // results card replaces it, and this early return keeps every solo
+    // branch (gameOver copy, advance timer, celebration) out of the way.
+    // A frozen duel fixture has no duel controller behind it, so its card
+    // is shown directly at boot and nothing re-syncs it.
+    if (duelState) resolveDuelTurn();
+    return;
+  }
 
   if (passed) {
     els.successTitle.textContent = successMessage();
@@ -837,6 +1136,11 @@ els.speedToggle.addEventListener('change', (e) => {
   els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty, store.state.speedOn);
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
+});
+
+els.duelToggle.addEventListener('change', (e) => {
+  if (staticMode) return;
+  store.state = { ...store.state, duel: e.target.checked };
 });
 
 els.startOverBtn.addEventListener('click', () => {
@@ -1157,4 +1461,4 @@ els.inviteFriendBtn.addEventListener('click', () => {
   copyLink('/api/invites', {}, els.inviteFriendBtn);
 });
 
-boot();
+boot().catch((err) => console.error('Sheep countrr failed to start', err));

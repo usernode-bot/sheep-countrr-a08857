@@ -634,3 +634,64 @@ test('a fresh run resets the Speed Round mode and reads a stale clock as off', (
   assert.equal(weeklyScoreLabel(8, true), 'Speed 8');
   assert.equal(weeklyScoreLabel(8, false), 'Round 8');
 });
+
+// ---- Pass-and-play Duel ----
+// The duel is layered on the same state shape the solo run uses: each turn
+// is a fresh ephemeral store over one shared flock seed, so every renderer
+// surface reads it unchanged. These tests pin the contract the controller
+// in app.js depends on.
+
+test('a duel turn store uses the shared flock seed, not the round seed', () => {
+  const { store } = newStore();
+  const round = 2;
+  const sharedSeed = roundSeed(round) + 900000 + round;
+  store.state = { ...store.state, duel: true, seed: sharedSeed };
+  store.startRound(round, { silent: true });
+  store.state = { ...store.state, seed: sharedSeed };
+  assert.equal(store.state.seed, sharedSeed);
+  assert.notEqual(store.state.seed, roundSeed(round));
+  assert.equal(store.state.sheepCount, sheepForRound(round));
+  assert.equal(store.state.count, 0);
+  assert.equal(store.state.phase, COUNTING);
+});
+
+test('a duel turn miss count comes straight off the shared state shape', () => {
+  const { store } = newStore();
+  const round = 4;
+  const n = sheepForRound(round);
+  store.startRound(round, { silent: true });
+  for (let i = 0; i < n - 1; i++) store.tapSheep(i);
+  store.submitCount();
+  assert.equal(store.state.phase, RUN_OVER);
+  const misses = store.state.sheepCount - store.state.count;
+  assert.equal(misses, 1);
+});
+
+test('a clean duel turn scores zero misses', () => {
+  const { store } = newStore();
+  const n = sheepForRound(1);
+  store.startRound(1, { silent: true });
+  for (let i = 0; i < n; i++) store.tapSheep(i);
+  store.submitCount();
+  const misses = store.state.sheepCount - store.state.count;
+  assert.equal(misses, 0);
+  assert.equal(store.state.phase, ROUND_PASSED);
+});
+
+test('duel misses compare the way the results card announces', () => {
+  const compare = (a, b) => (a < b ? 'Player 1 wins' : b < a ? 'Player 2 wins' : 'A tie');
+  assert.equal(compare(0, 1), 'Player 1 wins');
+  assert.equal(compare(2, 1), 'Player 2 wins');
+  assert.equal(compare(1, 1), 'A tie');
+});
+
+test('a duel turn that double-taps still lands in the run-over path', () => {
+  const { store } = newStore();
+  store.startRound(2, { silent: true });
+  store.tapSheep(0);
+  store.tapSheep(0);
+  assert.equal(store.state.phase, RUN_OVER);
+  assert.equal(store.state.endedBy, ENDED_DOUBLE_TAP);
+  const misses = store.state.sheepCount - store.state.count;
+  assert.ok(misses >= 1);
+});

@@ -1,7 +1,7 @@
 {
   "name": "Sheep countrr",
   "icon": {
-    "emoji": "\ud83d\udc11"
+    "emoji": "🐑"
   },
   "secrets": [],
   "tests": [
@@ -323,6 +323,51 @@
       "expectSelector": "#friend-add",
       "expectText": "Add friend",
       "allowConsoleErrors": true
+    },
+    {
+      "id": "duel.handoff",
+      "name": "Pass-and-play Duel shows the pass-the-device card",
+      "path": "/?scene=duelhandoff",
+      "expectSelector": "#duel-panel",
+      "expectText": "Pass the device",
+      "visual": true,
+      "impact": [
+        "public/app.js",
+        "public/index.html",
+        "public/state.js",
+        "tests/game.test.mjs",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "duel.result",
+      "name": "Pass-and-play Duel shows both miss counts and the winner",
+      "path": "/?scene=duelresult",
+      "expectSelector": "#duel-panel-scores",
+      "expectText": "Sheep counter 1 wins",
+      "visual": true,
+      "impact": [
+        "public/app.js",
+        "public/index.html",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Duel turn clock shows on a live duel board",
+      "path": "/?round=1&duel=1",
+      "expectSelector": "#duel-turn-clock:not([hidden])",
+      "expectText": "Pass and play"
+    },
+    {
+      "name": "Duel toggle appears on the briefing card",
+      "path": "/?scene=intro",
+      "expectSelector": "#duel-toggle",
+      "expectText": "Pass-and-play Duel"
+    },
+    {
+      "name": "Duel board renders the DOM fallback with the shared flock",
+      "path": "/?round=2&duel=1&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(2)"
     }
   ]
 }

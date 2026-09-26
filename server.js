@@ -569,7 +569,7 @@ app.get('*', (req, res) => {
   // public data endpoints, so they must not depend on the chromeless shell
   // minting a token for them. Skipping the chromeless redirect here also
   // removes any redirect-loop risk if it ever fired on the same path.
-  if (!req.user && !req.query.scene && !req.query.round) {
+  if (!req.user && !req.query.scene && !req.query.round && !req.query.duel) {
     if (req.path.startsWith('/s/') || req.path.startsWith('/invite/')) {
       return res.sendFile(path.join(__dirname, 'public', 'index.html'));
     }
