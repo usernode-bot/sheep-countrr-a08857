@@ -110,6 +110,12 @@
       "expectText": "Best round"
     },
     {
+      "name": "Grown-ups panel shows the sound effects toggle, on by default in the fixture",
+      "path": "/?scene=grownups&sound=1",
+      "expectSelector": "#sound-toggle:checked",
+      "expectText": "Sound effects"
+    },
+    {
       "name": "No-WebGL fallback renders the same round",
       "path": "/?round=8&renderer=dom",
       "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(11)",

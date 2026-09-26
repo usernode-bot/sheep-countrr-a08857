@@ -17,7 +17,7 @@ import {
   sheepPhrase,
   successMessage,
 } from './rounds.js';
-import { playTapChime, playCelebration } from './sound.js';
+import { playTapChime, playBaa, playCelebration, setMuted } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
 
 const params = new URLSearchParams(window.location.search);
@@ -32,6 +32,9 @@ const roundParam = params.get('round');
 // persisted from a deep link.
 const difficultyParam = normalizeDifficulty(params.get('difficulty'));
 const hasDifficultyParam = params.get('difficulty') !== null;
+// The grown-ups fixture can force the sound toggle on (the shipped default
+// for the frozen ?scene=grownups card) without touching localStorage.
+const soundParam = params.get('sound');
 // Optional landing tab for the leaderboard fixture (?scene=leaderboard&tab=weekly).
 const tabParam = params.get('tab');
 
@@ -175,6 +178,7 @@ function buildStaticState() {
       bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2 },
       totalCounted: 18,
       communityTotal: 39,
+      soundOn: soundParam === null || soundParam === '1',
     });
   }
   return at(1);
@@ -278,7 +282,10 @@ function handleTap(index) {
   const result = store.tapSheep(index);
   if (result.outcome === 'counted') {
     renderer.countSheep(index, result.number);
-    if (store.state.soundOn) playTapChime(result.number);
+    if (store.state.soundOn) {
+      playBaa();
+      playTapChime(result.number);
+    }
     renderA11yList(store.state);
     if (store.isComplete()) {
       // Auto-complete: every sheep is marked, so the round closes itself.
@@ -358,6 +365,10 @@ function hintFor(state) {
 let lastShownCount = null;
 let lastPhase = null;
 function updateChrome(state) {
+  // Keep the audio module's mute flag in lockstep with the toggle, so
+  // every sound path (chime, baa, celebration) reads one source of truth.
+  setMuted(!state.soundOn);
+
   if (lastShownCount !== null && state.count > lastShownCount) {
     const plate = els.countDisplay.parentElement;
     plate.classList.remove('count-pop');
@@ -766,4 +777,3 @@ for (const [name, btn] of Object.entries(els.tabButtons)) {
 }
 
 boot();
-
