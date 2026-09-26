@@ -69,6 +69,7 @@ export function createDefaultState() {
     communityTotal: 0,
     soundOn: false,
     nightOn: false,
+    namesOn: false,
     difficulty: DEFAULT_DIFFICULTY,
     speedOn: false,
     secondsLeft: null,
@@ -134,6 +135,7 @@ export class StateStore {
         totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
         soundOn: !!saved.soundOn,
         nightOn: !!saved.nightOn,
+        namesOn: !!saved.namesOn,
         difficulty: normalizeDifficulty(saved.difficulty),
         speedOn: normalizeSpeedRound(saved.speedOn),
       };
@@ -154,6 +156,7 @@ export class StateStore {
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
         nightOn: this.state.nightOn,
+        namesOn: this.state.namesOn,
         speedOn: this.state.speedOn,
       }));
     } catch {
@@ -258,6 +261,7 @@ export class StateStore {
           totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
           soundOn: !!saved.soundOn,
           nightOn: !!saved.nightOn,
+          namesOn: !!saved.namesOn,
           difficulty: normalizeDifficulty(saved.difficulty),
           speedOn: normalizeSpeedRound(saved.speedOn),
     };
@@ -424,6 +428,15 @@ export class StateStore {
     this.state = { ...this.state, nightOn: !!on };
     this.saveLocal();
     this.scheduleSync();
+    this.onChange(this.state);
+  }
+
+  // The name-labels toggle is purely cosmetic, so it never rides the
+  // server sync: a deep link or a screenshot run cannot flip it for a
+  // real player, and it stays whatever the device last chose.
+  setNamesOn(on) {
+    this.state = { ...this.state, namesOn: !!on };
+    this.saveLocal();
     this.onChange(this.state);
   }
 }

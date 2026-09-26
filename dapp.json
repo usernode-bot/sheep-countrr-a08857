@@ -263,6 +263,44 @@
       "allowConsoleErrors": true
     },
     {
+      "name": "Grown-ups panel shows the Name labels toggle",
+      "path": "/?scene=grownups",
+      "expectSelector": "#names-toggle",
+      "expectText": "Name labels"
+    },
+    {
+      "id": "names.canvas",
+      "name": "Name labels float above the canvas flock",
+      "path": "/?round=5&names=1",
+      "expectSelector": "canvas.sheep-canvas",
+      "expectText": "is grazing",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/scene.js",
+        "public/layout.js",
+        "public/state.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "names.dom",
+      "name": "Name labels appear on the DOM fallback cards",
+      "path": "/?round=5&renderer=dom&names=1",
+      "expectSelector": ".sheep-name-label:not([hidden])",
+      "expectText": "is grazing",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/fallback.js",
+        "public/layout.js",
+        "public/state.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "No-WebGL fallback renders the same round",
       "path": "/?round=8&renderer=dom",
       "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(11)",
