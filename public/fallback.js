@@ -4,7 +4,7 @@
 // same pastel per number.
 import { NUMBER_COLORS } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { motionForRound } from './rounds.js';
+import { calmMotion, motionForRound } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -93,6 +93,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
 
   let cards = [];
   let current = null;
+  let calm = false;
   let motion = motionForRound(1);
   let rafId = null;
   const startedAt = performance.now();
@@ -101,7 +102,8 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     grid.innerHTML = '';
     cards = [];
     current = state;
-    motion = motionForRound(state.round, state.difficulty);
+    calm = !!state.calmOn;
+    motion = calm ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty);
     grid.dataset.size = String(state.sheepCount);
     for (let i = 0; i < state.sheepCount; i++) {
       const btn = document.createElement('button');
@@ -218,11 +220,19 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     field.classList.toggle('theme-night', !!on);
   }
 
+  // Calm mode: the field already reads its soft palette from the same
+  // body class the CSS uses, so mirroring the flag keeps the ground wash
+  // and the card recolor in step with the 3D scene.
+  function setCalm(on) {
+    field.classList.toggle('theme-calm', !!on);
+  }
+
   return {
     kind: 'dom',
     setState(state) {
       render(state);
       setNight(!!state.nightOn);
+      setCalm(!!state.calmOn);
     },
     countSheep(index, number) {
       markCounted(index, number, true);
@@ -241,6 +251,9 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     },
     setNight(on) {
       setNight(on);
+    },
+    setCalm(on) {
+      setCalm(on);
     },
     destroy() {
       cancelAnimationFrame(rafId);

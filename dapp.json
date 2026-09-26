@@ -1,7 +1,7 @@
 {
   "name": "Sheep countrr",
   "icon": {
-    "emoji": "\ud83d\udc11"
+    "emoji": "🐑"
   },
   "secrets": [],
   "tests": [
@@ -67,6 +67,26 @@
       "path": "/?round=1",
       "expectSelector": "canvas.sheep-canvas",
       "expectText": "of 1 sheep"
+    },
+    {
+      "name": "Round badge shows the ladder length",
+      "id": "round.progress",
+      "visual": true,
+      "path": "/?round=5",
+      "expectSelector": "#round-badge",
+      "expectText": "Round 5 of 9",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Round ladder is mirrored in the accessibility layer",
+      "path": "/?round=5&renderer=dom",
+      "expectSelector": "#a11y-round-progress",
+      "expectText": "Round 5 of 9"
     },
     {
       "name": "Round 5 counts in with no sheep tapped",
@@ -245,6 +265,45 @@
       "expectSelector": "#night-toggle",
       "expectText": "Night Meadow",
       "allowConsoleErrors": true
+    },
+    {
+      "name": "Calm mode toggle appears in the grown-ups panel",
+      "id": "calm.toggle",
+      "visual": true,
+      "path": "/?scene=grownups&calm=1",
+      "expectSelector": "#calm-toggle",
+      "expectText": "Calm mode",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Calm mode softens the board and keeps the same flock",
+      "id": "calm.board",
+      "visual": true,
+      "path": "/?round=5&renderer=dom&calm=1",
+      "expectSelector": "body.theme-calm .sheep-fallback-grid .sheep-card:nth-child(7)",
+      "expectText": "of 7 sheep",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "public/movement.js",
+        "public/fallback.js",
+        "public/scene.js",
+        "server.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Calm mode a11y list keeps the same sheep slots",
+      "path": "/?round=5&renderer=dom&calm=1",
+      "expectSelector": "#a11y-sheep-list button:nth-child(7)",
+      "expectText": "Sheep 7"
     },
     {
       "id": "theme.night-meadow",

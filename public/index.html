@@ -105,6 +105,7 @@
       --meadow-hill-b: #5f7879;
       --meadow-hill-c: #4f686c;
       --meadow-fog: #a1afb8;
+      --calm-motion-speed: 1;
     }
 
     /* The `hidden` attribute and a Tailwind display utility (e.g. `flex`)
@@ -132,6 +133,33 @@
       --meadow-hill-c: #243c30;
       --meadow-fog: #2c3d52;
     }
+    /* Calm mode: the same move as Night Meadow, but for tempo. Only the
+       meadow's colors soften and the sheep's speed dials down; the
+       counter, pills, buttons and all text keep their palette and the
+       flock, seeds and round numbering stay exactly as they are. The DOM
+       fallback's card drift uses the same CSS variable, so both renderers
+       slow down together. */
+    body.theme-calm {
+      --sky-top: #cfe3ff;
+      --sky-mid: #c6ddf2;
+      --sky-low: #e3f0f7;
+      --horizon: #fff4e2;
+      --meadow-ground-1: #cfe6b2;
+      --meadow-ground-2: #a9d48c;
+      --meadow-ground-3: #b6dd99;
+      --meadow-glow: rgba(255,255,255,0.6);
+      --meadow-hill-a: #7f9691;
+      --meadow-hill-b: #6d8484;
+      --meadow-hill-c: #5c7478;
+      --meadow-fog: #aebcc4;
+      --calm-motion-speed: 0.35;
+    }
+    body.theme-calm #scene-root {
+      background:
+        radial-gradient(60% 40% at 78% 8%, rgba(255, 244, 200, 0.4), rgba(255, 244, 200, 0) 70%),
+        linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
+    }
+
     body.theme-night #scene-root {
       background:
         radial-gradient(60% 40% at 78% 8%, rgba(200, 214, 255, 0.5), rgba(200, 214, 255, 0) 70%),
@@ -491,6 +519,10 @@
     }
     .sheep-bow { opacity: 0; transform: scale(0); transform-origin: 60px 80px; transition: transform 0.35s cubic-bezier(.34,1.56,.64,1), opacity 0.2s; }
     .is-counted .sheep-bow { opacity: 1; transform: scale(1); }
+    /* Calm mode: a gentle recolor of the fleece SVG instead of a new
+       drawing. The sheep keeps its shape, its eyes and its badge; only
+       the wash gets softer. */
+    body.theme-calm .sheep-card .sheep-svg { filter: saturate(0.5) opacity(0.92); }
     .sheep-eyes { transform-origin: 60px 58px; animation: blink 4.5s infinite; animation-delay: var(--bob-delay, 0s); }
     @keyframes blink {
       0%, 92%, 100% { transform: scaleY(1); }
@@ -685,6 +717,10 @@
     #a11y-sheep-list button { min-height: 48px; padding: 8px; }
     @media (max-height: 520px) { #play-hint { font-size: .875rem; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+    /* Calm mode: the DOM cards' drift follows the same speed dial the
+       movement module applies in JS, via a CSS lookup the script reads
+       back (getComputedStyle). One number, three surfaces. */
+    body.theme-calm .sheep-card { animation-duration: 7s; }
   </style>
 </head>
 <body class="h-full overflow-hidden">
@@ -726,6 +762,11 @@
 
     <!-- Hidden accessible mirror of every sheep, for keyboard/screen-reader use. -->
     <div id="a11y-sheep-list" class="visually-hidden"></div>
+    <!-- The round ladder's length, mirrored for screen readers (visually
+         the round pill carries it). A static line, not an aria-live one:
+         it says where the run is, not what just happened, so it must not
+         interrupt the sheep taps the list announces. -->
+    <p id="a11y-round-progress" class="visually-hidden">Round 1 of 9.</p>
 
     <!-- Bottom action bar: the hint, and the button that ends the round. -->
     <div id="action-bar" class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2">
@@ -808,6 +849,11 @@
         <label class="setting-row">
           <span>Night Meadow</span>
           <input id="night-toggle" type="checkbox">
+        </label>
+
+        <label class="setting-row">
+          <span>Calm mode</span>
+          <input id="calm-toggle" type="checkbox">
         </label>
 
         <div class="stats-card">

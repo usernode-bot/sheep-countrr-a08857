@@ -10,12 +10,16 @@ import {
   ENDED_TIME_UP,
 } from '../public/state.js';
 import {
+  CALM_SPEED,
   MAX_SHEEP,
+  calmMotion,
   motionForRound,
+  normalizeCalm,
   paceLine,
   roamRadius,
   roundCompleteTitle,
   roundIntroText,
+  roundBadgeText,
   roundSeed,
   SPEED_ROUND_SECONDS,
   speedRoundClock,
@@ -65,6 +69,20 @@ test('each round adds one or two sheep up to a bounded flock', () => {
     prev = n;
   }
   assert.equal(sheepForRound(9), MAX_SHEEP);
+});
+
+test('the round badge names the round and the ladder length', () => {
+  // The ladder has nine rungs, and the badge says so until the top.
+  assert.equal(roundBadgeText(1), 'Round 1 of 9');
+  assert.equal(roundBadgeText(8), 'Round 8 of 9');
+  // At the top there is no further rung to name, so the suffix drops.
+  assert.equal(roundBadgeText(9), 'Round 9');
+  assert.equal(roundBadgeText(10), 'Round 10');
+  // A Speed Round keeps its mode prefix on every rung.
+  assert.equal(roundBadgeText(1, true), 'Speed round 1 of 9');
+  assert.equal(roundBadgeText(9, true), 'Speed round 9');
+  // Deep-link normalization: a bogus round reads as round 1.
+  assert.equal(roundBadgeText('bogus'), 'Round 1 of 9');
 });
 
 test('rounds get faster and more erratic, and never tame down', () => {
@@ -615,6 +633,47 @@ test('a passed Speed Round advances with a fresh clock and keeps the mode', () =
   assert.equal(store.state.speedOn, true, 'the mode is sticky within the run');
   assert.equal(store.state.secondsLeft, SPEED_ROUND_SECONDS, 'the next round gets a fresh clock');
   assert.equal(store.state.phase, COUNTING);
+});
+
+test('calm mode slows the flock without changing what the round asks for', () => {
+  // The motion profile keeps its shape: same roam radius, a slower clock.
+  for (const difficulty of ['easy', 'normal', 'hard', 'expert']) {
+    const raw = motionForRound(6, difficulty);
+    const calm = calmMotion(6, difficulty);
+    assert.ok(calm.speed < raw.speed, `${difficulty} calm speed did not slow`);
+    assert.ok(Math.abs(calm.speed - raw.speed * CALM_SPEED) < 1e-9);
+    assert.equal(calm.radius, raw.radius, `${difficulty} calm radius moved`);
+    assert.equal(calm.bounceMix, raw.bounceMix, `${difficulty} calm bounce moved`);
+    assert.ok(calm.jitterAmp < raw.jitterAmp, `${difficulty} calm jitter did not soften`);
+    const rawRadius = roamRadius(6, difficulty);
+    assert.ok(rawRadius > 0, 'sanity: roam uses the raw profile');
+  }
+  // The paths are the same shapes, just walked slower: the same seed at a
+  // later time never jumps outside the raw bound.
+  const raw = motionForRound(8);
+  const calm = calmMotion(8);
+  for (let i = 0; i < sheepForRound(8); i++) {
+    for (let t = 0; t <= 40; t += 2) {
+      const p = wanderOffset(roundSeed(8), i, sheepForRound(8), t, calm);
+      assert.ok(Math.hypot(p.x, p.z) <= raw.radius * Math.SQRT2 + 1e-9);
+      assert.deepEqual(p, wanderOffset(roundSeed(8), i, sheepForRound(8), t, calm));
+    }
+  }
+  // The store toggle persists like sound and Night Meadow.
+  const { store } = newStore();
+  store.setCalmOn(true);
+  assert.equal(store.state.calmOn, true);
+  assert.equal(store.state.sheepCount, sheepForRound(1), 'the flock size did not move');
+  assert.equal(store.state.seed, roundSeed(1), 'the seed did not move');
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({ round: 3, difficulty: 'hard', totalCounted: 2, calmOn: true });
+  assert.equal(restored.state.calmOn, true);
+  // Normalization: anything but exactly true is off, and the copy helper
+  // keeps its exact words in both modes.
+  assert.equal(normalizeCalm('1'), false);
+  assert.equal(normalizeCalm(1), false);
+  assert.match(roundIntroText(4, 'normal', false, true), /Calm mode keeps them slow/);
+  assert.ok(!roundIntroText(4, 'normal', false, false).includes('Calm mode'));
 });
 
 test('a fresh run resets the Speed Round mode and reads a stale clock as off', () => {

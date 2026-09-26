@@ -12,6 +12,12 @@ export const MAX_SHEEP = 12;
 // Round at which the movement ramp reaches full chaos.
 export const DEFAULT_DIFFICULTY = 'normal';
 
+// The ladder's length. The round pill reads "Round 5 of 9" so a player
+// always knows how far the run goes; the flock keeps its shape past the
+// top (see sheepForRound's cap) and the suffix drops off there, so the
+// pill never claims a round the flock does not have.
+export const TOTAL_ROUNDS = 9;
+
 // The difficulty dials. Normal is today's curve exactly; Easy stretches the
 // same character arc out and calms it down, Hard and Expert compress it and
 // push it further. growth is the sheep-per-round multiplier, rampRounds how
@@ -76,6 +82,18 @@ export function normalizeSpeedRound(on) {
   return on === true;
 }
 
+// How much Calm mode slows the flock: a pure multiplier on the movement
+// clock. 0.35 turns even the round-9 scramble into a gentle shuffle and
+// leaves the flock sizes, seeds and round numbering untouched, so rounds
+// stay exactly as hard to count, only easier to follow.
+export const CALM_SPEED = 0.35;
+
+// A calm flag survives a save, a server sync and a deep link only when it
+// is exactly true; anything else reads as normal play.
+export function normalizeCalm(on) {
+  return on === true;
+}
+
 // The on-screen clock text. Whole seconds only, so "30" and "9" rather
 // than "30s" and "9s": children read bare numerals more easily.
 export function speedRoundClock(secondsLeft) {
@@ -120,6 +138,16 @@ export function motionForRound(round, difficulty = DEFAULT_DIFFICULTY) {
   };
 }
 
+// Calm mode keeps the same wander shape (so a sheep still reads as the
+// same animal on the same path) but slides the motion clock down, which
+// slows every blended speed and the nervous wobble without changing how
+// far a sheep can roam. Renderers call this instead of motionForRound;
+// everything that frames or bounds the flock keeps using the raw profile.
+export function calmMotion(round, difficulty = DEFAULT_DIFFICULTY) {
+  const m = motionForRound(round, difficulty);
+  return { ...m, speed: m.speed * CALM_SPEED, jitterAmp: m.jitterAmp * CALM_SPEED };
+}
+
 // Largest distance a sheep can sit from its home spot, so a renderer can
 // pad its camera fit / grid and never let a sheep wander out of view. This
 // is a true upper bound on wanderOffset: it sums the worst case of each of
@@ -144,6 +172,18 @@ export function roundLabel(round) {
   return 'Round ' + normalizeRound(round);
 }
 
+// The on-screen round text: "Round 5 of 9" while the ladder has more
+// rungs above it, and plain "Round 9" once the flock has reached its cap
+// and the ladder has no further rung to name. The Speed Round keeps its
+// mode prefix so the badge stays honest about what is being played.
+export function roundBadgeText(round, speedOn = false) {
+  const r = normalizeRound(round);
+  const prefix = speedOn ? 'Speed round ' : 'Round ';
+  return r < TOTAL_ROUNDS
+    ? `${prefix}${r} of ${TOTAL_ROUNDS}`
+    : `${prefix}${r}`;
+}
+
 // Copy helpers live here beside the difficulty curve so the exact wording a
 // player reads can be asserted in tests/game.test.mjs without a browser.
 // Both renderers and the round-complete panel share these words.
@@ -153,8 +193,10 @@ export function sheepPhrase(n) {
 
 // A short, honest warning about what the flock will do.
 export function paceLine(round, difficulty = DEFAULT_DIFFICULTY) {
-  const m = motionForRound(round, difficulty);
-  if (m.jitterAmp > 0.12) return 'They are jumpy now.';
+  const m = calmMotion(round, difficulty);
+  // The raw profile decides, not the calm-slid one: a slowed round 5 is
+  // still a jumpy flock, only an easier one to follow.
+  if (motionForRound(round, difficulty).jitterAmp > 0.12) return 'They are jumpy now.';
   if (m.bounceMix > 0.5) return 'They bounce off in all directions.';
   if (m.speed > 1.1) return 'They are quicker.';
   if (m.speed > 0) return 'They start to wander.';
@@ -164,12 +206,15 @@ export function paceLine(round, difficulty = DEFAULT_DIFFICULTY) {
 // The pre-round briefing's first line: what this round asks for. Reads
 // "Round 1 has 1 sheep. This one stands still." for a fresh run and names a
 // bigger, faster flock for a run that starts on a later round.
-export function roundIntroText(round, difficulty = DEFAULT_DIFFICULTY, speedOn = false) {
+export function roundIntroText(round, difficulty = DEFAULT_DIFFICULTY, speedOn = false, calmOn = false) {
   const r = normalizeRound(round);
   const d = normalizeDifficulty(difficulty);
+  const intro = `Round ${r} has ${sheepPhrase(sheepForRound(r, d))}. ${paceLine(r, d)}`;
   return speedOn
-    ? `Round ${r} has ${sheepPhrase(sheepForRound(r, d))}. ${paceLine(r, d)} Count them all before the clock runs out.`
-    : `Round ${r} has ${sheepPhrase(sheepForRound(r, d))}. ${paceLine(r, d)}`;
+    ? `${intro} Count them all before the clock runs out.`
+    : calmOn
+      ? `${intro} Calm mode keeps them slow.`
+      : intro;
 }
 
 // The round-complete card line for the just-played round: a Speed Round
