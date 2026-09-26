@@ -84,6 +84,8 @@ const ADVANCE_DELAY_MS = 2600;
 // A beat after the last sheep is tapped, so the tap reads before the round
 // settles itself.
 const AUTO_SUBMIT_MS = 650;
+// One second per countdown number, per the brief.
+const COUNTDOWN_STEP_MS = 1000;
 
 // Recolors the sky and ground only. The DOM class carries the CSS side
 // (page sky gradient and the DOM fallback's field), and the renderer gets
@@ -104,6 +106,10 @@ const els = {
   submitBtn: document.getElementById('submit-count'),
   roundIntro: document.getElementById('round-intro'),
   roundIntroSize: document.getElementById('round-intro-size'),
+  countdownOverlay: document.getElementById('countdown-overlay'),
+  countdownNumber: document.getElementById('countdown-number'),
+  countdownStatus: document.getElementById('countdown-status'),
+  countdownSkipBtn: document.getElementById('countdown-skip-btn'),
   bestRoundChip: document.getElementById('best-round-chip'),
   bestRoundValue: document.getElementById('best-round-value'),
   startCountingBtn: document.getElementById('start-counting-btn'),
@@ -202,6 +208,14 @@ let autoSubmitTimer = null;
 // True while the pre-round briefing covers the board, so no tap or
 // submit can register before the player taps Start counting.
 let introOpen = false;
+// True while the 3-2-1 countdown covers the board. Like the briefing, it
+// is modal: taps, keyboard counting and Done counting all stay blocked
+// until it finishes (or is skipped).
+let countdownOpen = false;
+// The one interval that steps the 3-2-1 overlay. Cleared with the round
+// itself (advance, restart, visibility) so a stale tick can never start
+// a round the player has already left.
+let countdownTimer = null;
 
 // Fixed fixtures for the proposal-check deep links, per dapp.json's
 // `tests` array — deliberately not read from any network state.
@@ -219,6 +233,12 @@ function buildStaticState() {
     ...extra,
   });
   if (sceneParam === 'flock') return at(9);
+  if (sceneParam === 'countdown') {
+    // The 3-2-1 countdown overlay, frozen with the first number on it.
+    // Everything else reads like a live round-1 board, so the card's
+    // dapp.json check sees the real surface.
+    return at(1);
+  }
   if (sceneParam === 'intro') {
     // The Get-ready card with an earned best round on it, so the chip has a
     // frozen fixture for its dapp.json check. Hardcoded only, like every
@@ -313,6 +333,16 @@ async function boot() {
   // The frozen intro fixture shows the card with the Best Round chip filled
   // from hardcoded data, so the chip's check has a deterministic route.
   if (staticMode && sceneParam === 'intro') showRoundIntro(store.state);
+  // The frozen countdown fixture: the overlay up with the first number on
+  // it, and the a11y mirror in the same state the live overlay puts it in.
+  if (staticMode && sceneParam === 'countdown') {
+    countdownOpen = true;
+    els.countdownOverlay.hidden = false;
+    els.countdownNumber.textContent = '3';
+    els.countdownStatus.textContent = '3';
+    renderA11yList(store.state);
+    els.countdownSkipBtn.focus({ preventScroll: true });
+  }
   // On a /?round=N deep link the intro is suppressed (the player has
   // already played), but the difficulty fixtures need the picker to be
   // visible for their dapp.json check. Render it without opening the card.
@@ -490,6 +520,8 @@ async function mountFallback() {
 function handleTap(index) {
   // The briefing is open: no count registers until the player starts.
   if (introOpen) return;
+  // Same for the countdown overlay: nothing counts until the round starts.
+  if (countdownOpen) return;
   // Purely visual: a soft ripple where the sheep was tapped, before any
   // counting state changes. Skipped under prefers-reduced-motion.
   if (renderer && renderer.kind === 'three') {
@@ -523,6 +555,7 @@ function handleTap(index) {
 
 function submitCount() {
   if (introOpen) return;
+  if (countdownOpen) return;
   clearTimeout(autoSubmitTimer);
   store.submitCount();
 }
@@ -574,11 +607,59 @@ function showRoundIntro(state) {
 function dismissRoundIntro() {
   introOpen = false;
   els.roundIntro.hidden = true;
-  // A Speed Round starts when the player does.
+  showCountdown(store.state);
+}
+
+// The 3-2-1 countdown. Covers the board between "Start counting" (or the
+// next round's auto-advance) and the first tap of the round, so young
+// players can ready their eyes. Pure DOM: it sits over both the canvas
+// and the card fallback unchanged. Tapping the card (or the button)
+// skips the rest of the countdown; the round starts either way.
+function showCountdown(state) {
+  // Frozen ?scene= fixtures and deep links hold still for screenshots;
+  // they never run the countdown. Neither does a round that starts
+  // behind the briefing card instead.
+  if (staticMode || roundParam !== null || introOpen) return;
+  clearCountdown();
+  countdownOpen = true;
+  els.countdownNumber.textContent = '3';
+  els.countdownStatus.textContent = '3';
+  els.countdownOverlay.hidden = false;
+  updateChrome(store.state);
+  renderA11yList(store.state);
+  els.countdownSkipBtn.focus({ preventScroll: true });
+  let remaining = 3;
+  countdownTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining > 0) {
+      els.countdownNumber.textContent = String(remaining);
+      els.countdownStatus.textContent = String(remaining);
+      return;
+    }
+    dismissCountdown();
+  }, COUNTDOWN_STEP_MS);
+}
+
+function dismissCountdown() {
+  clearCountdown();
+  countdownOpen = false;
+  els.countdownOverlay.hidden = true;
+  // The mirror follows the state change: the countdown line leaves the
+  // list and the sheep buttons come back, so screen readers hear the
+  // round become live the same moment sighted players see it.
+  renderA11yList(store.state);
+  // A Speed Round starts when the countdown does.
   startSpeedClock();
   // A soft baa announces the new flock. playBaa checks the sound
   // setting itself, so no extra gate is needed here.
   playBaa();
+}
+
+function clearCountdown() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
 }
 
 // ---- Speed Round clock ----
@@ -619,20 +700,23 @@ function stopSpeedClock() {
 function advanceRound() {
   clearTimeout(advanceTimer);
   stopSpeedClock();
+  clearCountdown();
   if (store.state.phase !== ROUND_PASSED) return;
   store.nextRound();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
   playBaa();
-  // A Speed Round run keeps the mode on for the next flock, with a fresh
-  // 30 second clock.
-  startSpeedClock();
+  // A Speed Round run keeps the mode on for the next flock; the fresh
+  // 30 second clock starts when the countdown ends, not when the flock
+  // lands.
+  showCountdown(store.state);
 }
 
 function restartRun() {
   clearTimeout(advanceTimer);
   clearTimeout(autoSubmitTimer);
   stopSpeedClock();
+  clearCountdown();
   store.restartRun();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
@@ -739,12 +823,28 @@ function renderA11yList(state) {
     buttons = els.a11yList.querySelectorAll('button');
   }
   buttons.forEach((btn, i) => {
-    // The briefing card is open: no tap can land, so the mirror says so
-    // instead of offering a button that would silently do nothing.
-    btn.disabled = introOpen;
+    // The briefing card or the countdown is open: no tap can land, so the
+    // mirror says so instead of offering a button that would silently do
+    // nothing.
+    btn.disabled = introOpen || countdownOpen;
     btn.textContent = state.counted.includes(i)
       ? `Sheep ${i + 1}, counted` : `Sheep ${i + 1}, not counted yet`;
   });
+  // The countdown mirrors into the a11y channel too, appended after the
+  // clock line, so when the round goes live the clock is the last thing
+  // screen readers hear. The line (and the buttons it belongs with)
+  // leaves with the overlay.
+  let countdownLine = els.a11yList.querySelector('#a11y-countdown-status');
+  if (countdownOpen) {
+    if (!countdownLine) {
+      countdownLine = document.createElement('p');
+      countdownLine.id = 'a11y-countdown-status';
+      els.a11yList.appendChild(countdownLine);
+    }
+    countdownLine.textContent = 'Get ready, round starting.';
+  } else if (countdownLine) {
+    countdownLine.remove();
+  }
   // The clock is part of the round's state, so the screen-reader list
   // mirrors it too. It stays only while the clock is actually running
   // (same condition as the on-screen pill): once the round is passed or
@@ -766,6 +866,29 @@ function renderA11yList(state) {
 
 els.submitBtn.addEventListener('click', submitCount);
 els.startCountingBtn.addEventListener('click', dismissRoundIntro);
+els.countdownSkipBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  dismissCountdown();
+});
+els.countdownOverlay.addEventListener('pointerdown', () => {
+  if (countdownOpen) dismissCountdown();
+});
+els.countdownOverlay.addEventListener('keydown', (e) => {
+  if (countdownOpen && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    dismissCountdown();
+  }
+});
+document.addEventListener('visibilitychange', () => {
+  // A stale countdown must never start a round the player is not looking
+  // at: when the app is hidden, pause the tick and keep the overlay up.
+  // The next tap (or the button) starts the round instead. Returning to
+  // view must NOT clear it: the unhide itself fires visibilitychange, and
+  // clearing there would strand the round before it starts.
+  if (countdownOpen && document.hidden) {
+    clearCountdown();
+  }
+});
 els.nextRoundBtn.addEventListener('click', advanceRound);
 els.restartBtn.addEventListener('click', restartRun);
 
