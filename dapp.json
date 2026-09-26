@@ -36,6 +36,18 @@
       ]
     },
     {
+      "name": "Round intro shows the Best Round chip",
+      "id": "round.intro-best",
+      "visual": true,
+      "path": "/?scene=intro",
+      "expectSelector": "#best-round-chip:not([hidden])",
+      "expectText": "Best round",
+      "impact": [
+        "public/**",
+        "dapp.json"
+      ]
+    },
+    {
       "id": "round.chaotic",
       "name": "Round 8 board renders a jittery flock",
       "path": "/?round=8",

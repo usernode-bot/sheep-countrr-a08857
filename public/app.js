@@ -93,6 +93,8 @@ const els = {
   submitBtn: document.getElementById('submit-count'),
   roundIntro: document.getElementById('round-intro'),
   roundIntroSize: document.getElementById('round-intro-size'),
+  bestRoundChip: document.getElementById('best-round-chip'),
+  bestRoundValue: document.getElementById('best-round-value'),
   startCountingBtn: document.getElementById('start-counting-btn'),
   roundComplete: document.getElementById('round-complete'),
   successTitle: document.getElementById('success-title'),
@@ -202,6 +204,12 @@ function buildStaticState() {
     ...extra,
   });
   if (sceneParam === 'flock') return at(9);
+  if (sceneParam === 'intro') {
+    // The Get-ready card with an earned best round on it, so the chip has a
+    // frozen fixture for its dapp.json check. Hardcoded only, like every
+    // other fixture here.
+    return at(1, { bestRounds: { ...base.bestRounds, [difficultyParam]: 6 } });
+  }
   if (sceneParam === 'portrait') return at(1);
   if (sceneParam === 'empty') return at(3);
   if (sceneParam === 'midcount') return at(5, { count: 3, counted: [0, 1, 2] });
@@ -276,6 +284,9 @@ async function boot() {
   // counting. Frozen ?scene= fixtures stay card-free, and a player resuming
   // mid-run at a later round has already played.
   if (!staticMode && store.state.round === 1) showRoundIntro(store.state);
+  // The frozen intro fixture shows the card with the Best Round chip filled
+  // from hardcoded data, so the chip's check has a deterministic route.
+  if (staticMode && sceneParam === 'intro') showRoundIntro(store.state);
   // On a /?round=N deep link the intro is suppressed (the player has
   // already played), but the difficulty fixtures need the picker to be
   // visible for their dapp.json check. Render it without opening the card.
@@ -485,9 +496,19 @@ function syncDifficultyPicker(state) {
   els.bestValue.textContent = String(store.bestRound);
 }
 
+// The chip shows the current level's best only once the player has actually
+// finished a round at that level (best > round 1): a brand-new player has no
+// record to celebrate, so the chip stays hidden there.
+function syncBestRoundChip(state) {
+  const best = store.bestRound;
+  els.bestRoundValue.textContent = String(best);
+  els.bestRoundChip.hidden = !(best > 1);
+}
+
 function showRoundIntro(state) {
   els.roundIntroSize.textContent = roundIntroText(state.round, state.difficulty);
   syncDifficultyPicker(state);
+  syncBestRoundChip(state);
   els.roundIntro.hidden = false;
   introOpen = true;
 }
@@ -664,6 +685,7 @@ for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
     if (staticMode) return;
     store.setDifficulty(btn.dataset.difficulty);
     syncDifficultyPicker(store.state);
+    syncBestRoundChip(store.state);
     els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty);
     // The board behind the card shows the new level's round 1 flock.
     renderer?.resetRound(store.state);

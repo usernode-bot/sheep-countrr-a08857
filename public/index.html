@@ -738,6 +738,7 @@
         <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
         <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
+        <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
         <div id="difficulty-picker" role="radiogroup" aria-label="Difficulty" class="flex flex-wrap justify-center gap-2">
           <button type="button" class="difficulty-pill" data-difficulty="easy" role="radio" aria-checked="false">Easy</button>
           <button type="button" class="difficulty-pill" data-difficulty="normal" role="radio" aria-checked="true">Normal</button>
@@ -845,6 +846,39 @@
       background: #f0e9de;
       border-color: #f0e9de;
     }
+    .difficulty-pill[aria-checked="true"]:active { box-shadow: 0 1px 0 #e35d8a; }
+
+    /* Best Round chip on the Get ready card: the same pill shape as the
+       difficulty pills, but non-interactive, filled with the celebratory
+       yellow so it reads as an achievement rather than a control. */
+    .best-round-chip {
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-height: 2.5rem;
+      padding: 0.3rem 1.2rem;
+      border-radius: 9999px;
+      background: #fff0a6;
+      color: #5d4a12;
+      font-size: 1.05rem;
+      font-weight: 900;
+      box-shadow: 0 4px 0 #f2d76a;
+    }
+    .best-round-chip .chip-label { letter-spacing: 0.02em; }
+    .best-round-chip .chip-value {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.9rem;
+      padding: 0 0.4rem;
+      border-radius: 9999px;
+      background: #fffdf3;
+      color: #8a5a00;
+      font-size: 1.15rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .best-round-chip[hidden] { display: none; }
   </style>
   <script type="module" src="/app.js"></script>
 </body>
