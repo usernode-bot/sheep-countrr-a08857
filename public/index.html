@@ -417,6 +417,19 @@
       font-weight: 700;
       color: var(--plum-soft);
     }
+    /* Export status line: quiet feedback under the export button. Muted
+       plum for progress and success; the friend-error pink carries failures,
+       so no new palette is introduced. */
+    .export-status {
+      margin: 0;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--plum-soft);
+    }
+    .export-status.is-error {
+      color: #e35d8a;
+    }
+
     .stats-card .stat-value {
       font-weight: 900;
       color: var(--plum);
@@ -817,6 +830,11 @@
           <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="stat-value">0</span></div>
           <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="stat-value">0</span></div>
         </div>
+
+        <button id="export-btn" type="button" class="soft-btn" aria-describedby="export-status">
+          Export progress (CSV)
+        </button>
+        <p id="export-status" role="status" aria-live="polite" class="export-status" hidden></p>
 
         <button id="leaderboard-btn" type="button" class="soft-btn">
           Leaderboard

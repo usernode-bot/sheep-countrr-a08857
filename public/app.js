@@ -25,6 +25,7 @@ import {
 } from './rounds.js';
 import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
+import { bestRoundsCsv, weeklyHistoryCsv } from './export.js';
 
 const params = new URLSearchParams(window.location.search);
 const token = params.get('token') || sessionStorage.getItem('sheep-countrr:token') || '';
@@ -128,6 +129,8 @@ const els = {
   bestValue: document.getElementById('best-value'),
   totalValue: document.getElementById('total-value'),
   communityValue: document.getElementById('community-value'),
+  exportBtn: document.getElementById('export-btn'),
+  exportStatus: document.getElementById('export-status'),
   difficultyValue: document.getElementById('difficulty-value'),
   difficultyPicker: document.getElementById('difficulty-picker'),
   a11yList: document.getElementById('a11y-sheep-list'),
@@ -683,6 +686,7 @@ function updateChrome(state) {
   els.bestValue.textContent = String(store.bestRound);
   els.totalValue.textContent = String(state.totalCounted);
   els.communityValue.textContent = String(state.communityTotal);
+  setExportStatus('');
   els.soundToggle.checked = !!state.soundOn;
   els.nightToggle.checked = !!state.nightOn;
   applyTheme(state);
@@ -787,6 +791,7 @@ els.grownupsBtn.addEventListener('keydown', (e) => {
 });
 
 function openGrownups(state) {
+  setExportStatus('');
   els.roundValue.textContent = String(state.round);
   els.bestValue.textContent = String(store.bestRound);
   els.totalValue.textContent = String(state.totalCounted);
@@ -808,6 +813,67 @@ els.soundToggle.addEventListener('change', (e) => {
 els.nightToggle.addEventListener('change', (e) => {
   if (staticMode) return;
   store.setNightOn(e.target.checked);
+});
+
+// ---- Grown-ups CSV export ----
+// Downloads the player's best rounds and this week's finished runs as two
+// CSV files. In a live session the data comes from /api/export (the same
+// rows the panel and weekly leaderboard already show); the frozen
+// ?scene=grownups fixture renders from hardcoded data and never fetches,
+// so the static panel exports the same demo numbers without the network.
+// The status line announces what happened through its role="status".
+function setExportStatus(message, isError) {
+  els.exportStatus.textContent = message;
+  els.exportStatus.hidden = !message;
+  els.exportStatus.classList.toggle('is-error', !!isError);
+}
+
+function downloadCsv(filename, text) {
+  const blob = new Blob([text], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoke on the next tick: the click must still be able to start the
+  // download when this runs.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+let exporting = false;
+els.exportBtn.addEventListener('click', async () => {
+  if (exporting) return;
+  exporting = true;
+  els.exportBtn.disabled = true;
+  setExportStatus('Preparing export...');
+  try {
+    let data;
+    if (staticMode) {
+      data = {
+        bestRounds: store.state.bestRounds,
+        weeklyRuns: LEADERBOARD_FIXTURE.weekly.map((row) => ({
+          roundReached: row.roundReached,
+          speedRound: !!row.speedRound,
+        })),
+      };
+    } else {
+      const res = await fetch('/api/export', {
+        headers: token ? { 'x-usernode-token': token } : {},
+      });
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      data = await res.json();
+    }
+    downloadCsv('sheep-countrr-best-rounds.csv', bestRoundsCsv(data));
+    downloadCsv('sheep-countrr-weekly-history.csv', weeklyHistoryCsv(data.weeklyRuns));
+    setExportStatus('Exported best rounds and weekly history.');
+  } catch (err) {
+    setExportStatus('Export failed. Try again in a moment.', true);
+  } finally {
+    exporting = false;
+    els.exportBtn.disabled = false;
+  }
 });
 
 // Picking a level on the briefing card switches the run to that level at
