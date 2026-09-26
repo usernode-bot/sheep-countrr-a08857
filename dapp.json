@@ -116,6 +116,54 @@
       "expectText": "You reached round"
     },
     {
+      "name": "Game over offers Share result",
+      "path": "/?scene=gameover",
+      "expectText": "Share result"
+    },
+    {
+      "id": "share.view",
+      "name": "Shared result link shows the shared round read-only",
+      "path": "/?scene=sharegameover",
+      "expectSelector": "#shared-by",
+      "expectText": "You reached round 8",
+      "visual": true,
+      "impact": [
+        "public/app.js",
+        "public/index.html",
+        "server.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Friends tab offers Invite a friend",
+      "path": "/?scene=leaderboard&tab=friends",
+      "expectText": "Invite a friend"
+    },
+    {
+      "id": "invite.view",
+      "name": "Invite link shows the game and the inviter",
+      "path": "/?scene=invite",
+      "expectSelector": "#invite-card",
+      "expectText": "Sheep countrr",
+      "visual": true,
+      "impact": [
+        "public/app.js",
+        "public/index.html",
+        "server.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Share API returns the shared run",
+      "path": "/api/share/staging-demo-share",
+      "expectText": "Staging demo: Mabel"
+    },
+    {
+      "name": "Invite API names the inviter",
+      "path": "/api/invite/demo-invite",
+      "expectText": "Staging demo: Mabel"
+    },
+    {
       "name": "Grown-ups panel shows best round",
       "path": "/?scene=grownups",
       "expectSelector": "#grownups-panel",
@@ -128,6 +176,29 @@
       "expectText": "Sound effects"
     },
     {
+      "name": "Night Meadow toggle appears in the grown-ups panel",
+      "path": "/?scene=grownups",
+      "expectSelector": "#night-toggle",
+      "expectText": "Night Meadow",
+      "allowConsoleErrors": true
+    },
+    {
+      "id": "theme.night-meadow",
+      "name": "Night Meadow theme recolors sky and ground",
+      "path": "/?scene=grownups&night=1",
+      "expectSelector": "body.theme-night #grownups-panel",
+      "expectText": "Night Meadow",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/scene.js",
+        "public/state.js",
+        "dapp.json"
+      ],
+      "allowConsoleErrors": true
+    },
+    {
       "name": "No-WebGL fallback renders the same round",
       "path": "/?round=8&renderer=dom",
       "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(11)",
@@ -136,7 +207,7 @@
     {
       "id": "difficulty.expert",
       "name": "Expert difficulty marks Expert on the briefing card",
-      "path": "/?round=3&difficulty=expert",
+      "path": "/?round=1&difficulty=expert",
       "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=expert][aria-checked=true]",
       "visual": true,
       "impact": [

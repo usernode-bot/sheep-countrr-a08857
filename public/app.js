@@ -35,8 +35,29 @@ const hasDifficultyParam = params.get('difficulty') !== null;
 // The grown-ups fixture can force the sound toggle on (the shipped default
 // for the frozen ?scene=grownups card) without touching localStorage.
 const soundParam = params.get('sound');
+// The grown-ups fixture can force the Night Meadow toggle the same way
+// (?night=1 shows the night scene without touching localStorage).
+const nightParam = params.get('night');
 // Optional landing tab for the leaderboard fixture (?scene=leaderboard&tab=weekly).
 const tabParam = params.get('tab');
+// The two public share surfaces. Their URLs are plain paths, so detection is
+// a pathname match; both views fetch only their own public endpoint and
+// never touch localStorage, authenticated endpoints, or game state.
+const shareMatch = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)$/);
+const inviteMatch = location.pathname.match(/^\/invite\/([A-Za-z0-9_-]+)$/);
+const shareKey = shareMatch ? shareMatch[1] : null;
+const inviteCode = inviteMatch ? inviteMatch[1] : null;
+const publicViewMode = shareKey ? 'share' : (inviteCode ? 'invite' : null);
+// The invite page's one link breaks out of the platform's preview frame
+// into the real chromeless view; a tokenless top-level visit already lands
+// there through the server's own redirect. The target needs the platform
+// origin, which the page only knows inside the shell: outside it the
+// relative href stays and the browser resolves it against the app's own
+// host, where the landing-page fallback takes over gracefully.
+const PLATFORM_ORIGIN = (window.USERNODE_PLATFORM_ORIGIN || '');
+const inviteHref = PLATFORM_ORIGIN
+  ? `${PLATFORM_ORIGIN}/app/sheep-countrr-a08857/full`
+  : '/app/sheep-countrr-a08857/full';
 
 // Screenshot-state deep links are pure UI fixtures: they must never touch
 // localStorage or the server, in any environment. ?round=N is playable but
@@ -52,6 +73,15 @@ const ADVANCE_DELAY_MS = 2600;
 // A beat after the last sheep is tapped, so the tap reads before the round
 // settles itself.
 const AUTO_SUBMIT_MS = 650;
+
+// Recolors the sky and ground only. The DOM class carries the CSS side
+// (page sky gradient and the DOM fallback's field), and the renderer gets
+// the same flag so the WebGL ground, hills and fog follow. Nothing else on
+// the page changes color.
+function applyTheme(state) {
+  document.body.classList.toggle('theme-night', !!state.nightOn);
+  renderer?.setNight?.(!!state.nightOn);
+}
 
 const els = {
   countDisplay: document.getElementById('count-display'),
@@ -79,6 +109,7 @@ const els = {
   grownupsPanel: document.getElementById('grownups-panel'),
   grownupsClose: document.getElementById('grownups-close'),
   soundToggle: document.getElementById('sound-toggle'),
+  nightToggle: document.getElementById('night-toggle'),
   startOverBtn: document.getElementById('start-over-btn'),
   roundValue: document.getElementById('round-value'),
   bestValue: document.getElementById('best-value'),
@@ -88,6 +119,7 @@ const els = {
   difficultyPicker: document.getElementById('difficulty-picker'),
   a11yList: document.getElementById('a11y-sheep-list'),
   leaderboardBtn: document.getElementById('leaderboard-btn'),
+  countBadge: document.getElementById('count-badge'),
   leaderboard: document.getElementById('leaderboard'),
   leaderboardClose: document.getElementById('leaderboard-close'),
   leaderboardTabs: document.getElementById('leaderboard-tabs'),
@@ -101,6 +133,13 @@ const els = {
   friendInput: document.getElementById('friend-input'),
   friendResults: document.getElementById('friend-results'),
   friendError: document.getElementById('friend-error'),
+  shareBtn: document.getElementById('share-btn'),
+  sharedBy: document.getElementById('shared-by'),
+  inviteCard: document.getElementById('invite-card'),
+  inviteInvitee: document.getElementById('invite-invitee'),
+  inviteTagline: document.getElementById('invite-tagline'),
+  inviteButton: document.getElementById('invite-button'),
+  inviteFriendBtn: document.getElementById('invite-friend-btn'),
 };
 
 function claimsFromToken(t) {
@@ -187,7 +226,13 @@ function buildStaticState() {
       totalCounted: 18,
       communityTotal: 39,
       soundOn: soundParam === null || soundParam === '1',
+      nightOn: nightParam === '1',
     });
+  }
+  if (sceneParam === 'sharegameover') {
+    // The public share view for Mabel's seeded demo run: the round-8 flock
+    // behind the game-over card, read-only, with the shared-by line.
+    return at(8, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
   }
   return at(1);
 }
@@ -211,6 +256,10 @@ const LEADERBOARD_FIXTURE = {
 };
 
 async function boot() {
+  if (publicViewMode) {
+    await bootPublicView();
+    return;
+  }
   if (staticMode) {
     store.state = buildStaticState();
   } else if (roundParam !== null) {
@@ -250,10 +299,123 @@ async function boot() {
     openLeaderboard(LEADERBOARD_FIXTURE, tab);
   }
 
+  if (sceneParam === 'invite') {
+    // The public invite page fixture: the static game pitch plus the
+    // inviter line, matching the seeded demo identity.
+    bootInviteFixture();
+  }
+
+  if (sceneParam === 'sharegameover') {
+    // Mirror the tokenless /s/<key> view exactly: read-only card over the
+    // reached round's flock, no Start again, no Share button.
+    els.sharedBy.textContent = 'Counted by Staging demo: Mabel.';
+    els.sharedBy.hidden = false;
+    els.restartBtn.hidden = true;
+    els.shareBtn.hidden = true;
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) store.flush();
   });
   window.addEventListener('pagehide', () => store.flush());
+}
+
+function bootInviteFixture() {
+  els.inviteCard.hidden = false;
+  els.countBadge.hidden = true;
+  els.actionBar.hidden = true;
+  els.grownupsBtn.hidden = true;
+  els.inviteTagline.hidden = false;
+  els.inviteButton.href = inviteHref;
+  els.inviteInvitee.textContent = 'Invited by Staging demo: Mabel.';
+  els.inviteInvitee.hidden = false;
+  els.inviteButton.hidden = false;
+}
+
+// ---- Public share and invite views ----
+// Both views are tokenless by design: the visitor carries no platform token,
+// so these pages fetch only their own public endpoints, mount no game store,
+// and touch no localStorage. The share view reuses the game-over card the
+// player saw, with the round's deterministic flock behind it; the invite
+// view is the landing-page style card naming the game and the inviter.
+
+async function bootPublicView() {
+  if (publicViewMode === 'share') {
+    await bootShareView();
+  } else {
+    await bootInviteView();
+  }
+}
+
+async function bootShareView() {
+  let data = null;
+  try {
+    const res = await fetch(`/api/share/${encodeURIComponent(shareKey)}`);
+    if (res.ok) data = await res.json();
+  } catch {
+    /* not-found copy below */
+  }
+  if (!data) {
+    // Keep it gentle: the audience includes children, and a mistyped or
+    // revoked key still shows a card rather than a blank page.
+    els.gameOverRound.textContent = '1';
+    els.gameOverReason.textContent = 'This result link does not work anymore.';
+    els.gameOver.hidden = false;
+    els.sharedBy.hidden = true;
+    els.restartBtn.hidden = true;
+    els.shareBtn.hidden = true;
+    return;
+  }
+  const round = normalizeRound(data.roundReached);
+  store.state = {
+    ...store.state,
+    round,
+    sheepCount: sheepForRound(round, store.state.difficulty),
+    seed: roundSeed(round),
+    phase: RUN_OVER,
+    endedBy: data.endedBy === ENDED_DOUBLE_TAP ? ENDED_DOUBLE_TAP : null,
+    count: 0,
+    counted: [],
+  };
+  const wantsDom = rendererParam === 'dom' || !supportsWebGL();
+  renderer = wantsDom ? await mountFallback() : await mountScene();
+  renderer.setState(store.state);
+  updateChrome(store.state);
+  renderA11yList(store.state);
+  // The exact short-count reason line needs the tap count, which runs do
+  // not store; every missed or unknown-reason run reads the card's default
+  // line instead. Double-tap runs keep their exact line.
+  els.gameOverReason.textContent = data.endedBy === ENDED_DOUBLE_TAP
+    ? 'You counted the same sheep twice.'
+    : 'Some sheep were left uncounted.';
+  els.gameOver.hidden = false;
+  els.sharedBy.textContent = `Counted by ${data.username}.`;
+  els.sharedBy.hidden = false;
+  els.restartBtn.hidden = true;
+  els.shareBtn.hidden = true;
+}
+
+async function bootInviteView() {
+  els.inviteCard.hidden = false;
+  // The invite page carries no game state: the play chrome stays out of it.
+  els.countBadge.hidden = true;
+  els.actionBar.hidden = true;
+  els.grownupsBtn.hidden = true;
+  els.inviteTagline.hidden = false;
+  els.inviteButton.href = inviteHref;
+  els.inviteButton.hidden = false;
+  try {
+    const res = await fetch(`/api/invite/${encodeURIComponent(inviteCode)}`);
+    if (res.ok) {
+      const data = await res.json();
+      els.inviteInvitee.textContent = `Invited by ${data.username}.`;
+      els.inviteInvitee.hidden = !data.username;
+    } else {
+      els.inviteInvitee.hidden = true;
+    }
+  } catch {
+    els.inviteInvitee.hidden = true;
+  }
 }
 
 async function mountScene() {
@@ -415,6 +577,8 @@ function updateChrome(state) {
   els.totalValue.textContent = String(state.totalCounted);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
+  els.nightToggle.checked = !!state.nightOn;
+  applyTheme(state);
 
   syncPanels(state);
 }
@@ -495,6 +659,7 @@ function openGrownups(state) {
   els.totalValue.textContent = String(state.totalCounted);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
+  els.nightToggle.checked = !!state.nightOn;
   els.grownupsPanel.hidden = false;
 }
 function closeGrownups() {
@@ -505,6 +670,11 @@ els.grownupsClose.addEventListener('click', closeGrownups);
 els.soundToggle.addEventListener('change', (e) => {
   if (staticMode) return;
   store.setSoundOn(e.target.checked);
+});
+
+els.nightToggle.addEventListener('change', (e) => {
+  if (staticMode) return;
+  store.setNightOn(e.target.checked);
 });
 
 // Picking a level on the briefing card switches the run to that level at
@@ -803,5 +973,42 @@ els.leaderboardClose.addEventListener('click', closeLeaderboard);
 for (const [name, btn] of Object.entries(els.tabButtons)) {
   if (btn) btn.addEventListener('click', () => selectTab(name));
 }
+
+// ---- Share result and Invite a friend ----
+// Both copy a stable public link. The POSTs are small and idempotent
+// server-side; a failed tap can be retried, so failures restore the button
+// quietly and never crash the card.
+async function copyLink(postPath, body, btn) {
+  const originalText = btn.textContent;
+  try {
+    const res = await fetch(postPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-usernode-token': token },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error('bad status');
+    const data = await res.json();
+    const url = data.key
+      ? `${location.origin}/s/${data.key}`
+      : `${location.origin}/invite/${data.code}`;
+    await navigator.clipboard.writeText(url);
+    btn.textContent = 'Link copied.';
+    setTimeout(() => { btn.textContent = originalText; }, 2500);
+  } catch {
+    // Quietly restore: a clipboard rejection or a failed post is retryable
+    // by tapping again.
+    btn.textContent = originalText;
+  }
+}
+
+els.shareBtn.addEventListener('click', () => {
+  if (staticMode || publicViewMode) return;
+  copyLink('/api/shares', { runId: store.lastRunId || undefined }, els.shareBtn);
+});
+
+els.inviteFriendBtn.addEventListener('click', () => {
+  if (staticMode || publicViewMode) return;
+  copyLink('/api/invites', {}, els.inviteFriendBtn);
+});
 
 boot();

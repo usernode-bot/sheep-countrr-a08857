@@ -539,3 +539,18 @@ test('a finished run records once; a new run re-arms the record', () => {
   assert.equal(recordedRuns.length, 2);
   assert.equal(recordedRuns[1], 5);
 });
+
+test('share keys and invite codes match their public read shapes', () => {
+  // The server validates with the same bounds; these are the pure regex
+  // shapes so the test needs no network.
+  const SHARE_KEY_RE = /^[A-Za-z0-9_-]{10,32}$/;
+  const INVITE_CODE_RE = /^[A-Za-z0-9_-]{8,16}$/;
+  assert.ok(SHARE_KEY_RE.test('staging-demo-share'));
+  assert.ok(SHARE_KEY_RE.test('Abcdefghijklmnopqrstuvwx'));
+  assert.ok(!SHARE_KEY_RE.test('short'));
+  assert.ok(!SHARE_KEY_RE.test('has space in it'));
+  assert.ok(!SHARE_KEY_RE.test('<script>'));
+  assert.ok(INVITE_CODE_RE.test('demo-invite'));
+  assert.ok(!INVITE_CODE_RE.test('short'));
+  assert.ok(!INVITE_CODE_RE.test('no/slashes/here'));
+});

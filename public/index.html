@@ -97,6 +97,14 @@
       --safe-bottom: var(--un-safe-inset-bottom, env(safe-area-inset-bottom, 0px));
       --safe-left: var(--un-safe-inset-left, env(safe-area-inset-left, 0px));
       --safe-right: var(--un-safe-inset-right, env(safe-area-inset-right, 0px));
+      --meadow-ground-1: #b4e58a;
+      --meadow-ground-2: #8fd06a;
+      --meadow-ground-3: #9fdc74;
+      --meadow-glow: rgba(255,255,255,0.9);
+      --meadow-hill-a: #738886;
+      --meadow-hill-b: #5f7879;
+      --meadow-hill-c: #4f686c;
+      --meadow-fog: #a1afb8;
     }
 
     /* The `hidden` attribute and a Tailwind display utility (e.g. `flex`)
@@ -104,6 +112,31 @@
        after the browser default, so the utility would otherwise win and
        the element would stay visible. Force `hidden` to actually hide. */
     [hidden] { display: none !important; }
+
+    /* Night Meadow: recolors ONLY the sky and ground scenery. The counter
+       plate, pills, buttons and all text keep the day palette, so the
+       counter text contrast is unchanged; the night ground tones stay far
+       enough from the plate's cream that the plate itself is what carries
+       the >= 4.5:1 ratio in both themes. */
+    body.theme-night {
+      --sky-top: #1f2a44;
+      --sky-mid: #35486b;
+      --sky-low: #4b6172;
+      --horizon: #3d5a45;
+      --meadow-ground-1: #3e5c40;
+      --meadow-ground-2: #2f4a34;
+      --meadow-ground-3: #35553a;
+      --meadow-glow: rgba(214, 226, 255, 0.55);
+      --meadow-hill-a: #33513f;
+      --meadow-hill-b: #2b4638;
+      --meadow-hill-c: #243c30;
+      --meadow-fog: #2c3d52;
+    }
+    body.theme-night #scene-root {
+      background:
+        radial-gradient(60% 40% at 78% 8%, rgba(200, 214, 255, 0.5), rgba(200, 214, 255, 0) 70%),
+        linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
+    }
 
     html, body { height: 100%; overscroll-behavior: none; }
     body {
@@ -378,12 +411,12 @@
       overflow-y: auto;
       overscroll-behavior: contain;
       background:
-        radial-gradient(45% 22% at 12% 92%, #b4e58a 0 60%, transparent 61%),
-        radial-gradient(60% 26% at 70% 96%, #8fd06a 0 60%, transparent 61%),
-        radial-gradient(70% 30% at 40% 104%, #9fdc74 0 60%, transparent 61%),
-        radial-gradient(30% 14% at 88% 78%, #b4e58a 0 60%, transparent 61%),
-        radial-gradient(14% 8% at 22% 66%, rgba(255,255,255,0.9) 0 60%, transparent 61%),
-        radial-gradient(18% 9% at 74% 58%, rgba(255,255,255,0.9) 0 60%, transparent 61%),
+        radial-gradient(45% 22% at 12% 92%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(60% 26% at 70% 96%, var(--meadow-ground-2) 0 60%, transparent 61%),
+        radial-gradient(70% 30% at 40% 104%, var(--meadow-ground-3) 0 60%, transparent 61%),
+        radial-gradient(30% 14% at 88% 78%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(14% 8% at 22% 66%, var(--meadow-glow) 0 60%, transparent 61%),
+        radial-gradient(18% 9% at 74% 58%, var(--meadow-glow) 0 60%, transparent 61%),
         transparent;
     }
     .sheep-fallback-grid {
@@ -634,6 +667,19 @@
       </div>
     </div>
 
+    <!-- On the public invite page only: a read-only card naming the game
+         and the inviter, with one open button. The game chrome below stays
+         visible behind it, untouched. -->
+    <div id="invite-card" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+        <p class="celebration-sheep" aria-hidden="true">&#128017;</p>
+        <p class="celebration-title">Sheep countrr</p>
+        <p id="invite-tagline" hidden class="bedtime-message">Count sheep before they scatter.</p>
+        <p id="invite-invitee" hidden class="bedtime-message"></p>
+        <a id="invite-button" class="big-btn" href="/app/sheep-countrr-a08857/full" target="_top">Open Sheep countrr</a>
+      </div>
+    </div>
+
     <!-- Small, deliberately quiet corner control for grown-ups. A quick tap
          does nothing; only a ~1.5s press-and-hold opens the panel, so a
          curious child mashing the screen can't get in. -->
@@ -673,8 +719,12 @@
         <p class="bedtime-eyebrow">The flock scattered</p>
         <p id="game-over-reason" class="bedtime-message">Some sheep were left uncounted.</p>
         <p class="celebration-title">You reached round <span id="game-over-round" class="celebration-total">1</span>.</p>
+        <p id="shared-by" hidden class="bedtime-message"></p>
         <button id="restart-btn" type="button" class="big-btn">
           Start again
+        </button>
+        <button id="share-btn" type="button" class="big-btn">
+          Share result
         </button>
       </div>
     </div>
@@ -712,6 +762,11 @@
         <label class="setting-row">
           <span>Sound effects</span>
           <input id="sound-toggle" type="checkbox">
+        </label>
+
+        <label class="setting-row">
+          <span>Night Meadow</span>
+          <input id="night-toggle" type="checkbox">
         </label>
 
         <div class="stats-card">
@@ -755,6 +810,9 @@
           <div id="friend-results"></div>
           <p id="friend-error" hidden></p>
         </div>
+        <button id="invite-friend-btn" type="button" class="big-btn">
+          Invite a friend
+        </button>
 
         <div id="leaderboard-list" class="stats-card" aria-live="polite"></div>
       </div>
@@ -762,8 +820,13 @@
   </div>
 
   <style>
-    /* Difficulty pills on the Get ready card: the app's own pill look,
-       filled pink for the selected level, soft lavender otherwise. */
+    /* Difficulty pills on the Get ready card, in the dusk chrome's palette.
+       Explicit colours rather than --plum/--pink: the Bedtime tuning block
+       redefines those as cream and grey-lavender, which on a light pill
+       left the labels unreadable (1.05:1). Unselected pills match the soft
+       buttons (cream label on the dark card, about 7:1); the selected
+       level flips to a cream fill with a deep plum label (about 10:1), so
+       it stays distinct from the dark Start counting button. */
     .difficulty-pill {
       min-height: 2.75rem;
       padding: 0 1.4rem;
@@ -771,16 +834,17 @@
       font-size: 1.1rem;
       font-weight: 800;
       letter-spacing: 0.01em;
-      color: var(--plum);
-      background: #f4ecfa;
-      box-shadow: 0 5px 0 #dccbe9;
+      color: #f0e9de;
+      background: #ffffff12;
+      border: 2px solid #9da6af;
+      box-shadow: none;
       touch-action: manipulation;
     }
-    .difficulty-pill:active { transform: translateY(4px); box-shadow: 0 1px 0 #dccbe9; }
+    .difficulty-pill:active { transform: translateY(2px); }
     .difficulty-pill[aria-checked="true"] {
-      color: #fff;
-      background: var(--pink);
-      box-shadow: 0 5px 0 #e35d8a;
+      color: #283448;
+      background: #f0e9de;
+      border-color: #f0e9de;
     }
     .difficulty-pill[aria-checked="true"]:active { box-shadow: 0 1px 0 #e35d8a; }
 
