@@ -101,7 +101,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     grid.innerHTML = '';
     cards = [];
     current = state;
-    motion = motionForRound(state.round);
+    motion = motionForRound(state.round, state.difficulty);
     grid.dataset.size = String(state.sheepCount);
     for (let i = 0; i < state.sheepCount; i++) {
       const btn = document.createElement('button');

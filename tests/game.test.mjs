@@ -141,7 +141,7 @@ test('counting every sheep passes the round and advances', () => {
   assert.equal(store.state.count, 0);
   assert.deepEqual(store.state.counted, []);
   assert.equal(store.state.phase, COUNTING);
-  assert.equal(store.state.bestRound, 4);
+  assert.equal(store.bestRound, 4);
 });
 
 test('tapping an already-counted sheep ends the run', () => {
@@ -186,7 +186,8 @@ test('restarting returns to round 1 and keeps the best round reached', () => {
   assert.equal(store.state.sheepCount, 1);
   assert.equal(store.state.phase, COUNTING);
   assert.equal(store.state.endedBy, null);
-  assert.equal(store.state.bestRound, 7);
+  assert.equal(store.bestRound, 7);
+  assert.equal(store.state.bestRounds.normal, 7);
 });
 
 test('taps counted in any order keep their tap-order numbering', () => {
@@ -251,6 +252,193 @@ test('sheep phrases and pace lines read naturally at their edges', () => {
   for (const line of [paceLine(1), paceLine(2), paceLine(5), paceLine(8), paceLine(12)]) {
     assert.ok(!line.includes('\u2014'), line);
   }
+});
+test('every difficulty keeps round 1 as one motionless sheep', () => {
+  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+    assert.equal(sheepForRound(1, d), 1, `${d} round 1 flock`);
+    const m = motionForRound(1, d);
+    assert.equal(m.speed, 0, `${d} round 1 speed`);
+    assert.equal(m.radius, 0, `${d} round 1 radius`);
+    assert.equal(roamRadius(1, d), 0, `${d} round 1 roam`);
+    for (let t = 0; t < 60; t += 0.25) {
+      assert.deepEqual(wanderOffset(roundSeed(1), 0, 1, t, m), { x: 0, z: 0, turn: 0 });
+    }
+  }
+});
+
+test('each difficulty grows its flock on its own curve, capped', () => {
+  // Normal is the pre-difficulty game, byte for byte.
+  for (const round of [1, 2, 3, 5, 8, 9, 20]) {
+    assert.equal(sheepForRound(round, 'normal'), sheepForRound(round), `round ${round}`);
+  }
+  // Named check-fixture numbers from the dapp.json deep links.
+  assert.equal(sheepForRound(5, 'easy'), 5);
+  assert.equal(sheepForRound(5, 'normal'), 7);
+  assert.equal(sheepForRound(5, 'hard'), 9);
+  assert.equal(sheepForRound(5, 'expert'), 11);
+  // Easy stops at 6 sheep; the others at the shared MAX_SHEEP cap.
+  assert.equal(sheepForRound(30, 'easy'), 6);
+  for (const d of ['normal', 'hard', 'expert']) {
+    assert.equal(sheepForRound(30, d), MAX_SHEEP, `${d} cap`);
+  }
+  // A level never shrinks its flock as rounds go on.
+  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+    let prev = sheepForRound(1, d);
+    for (let round = 2; round <= 20; round++) {
+      const n = sheepForRound(round, d);
+      assert.ok(n >= prev && n <= d === 'easy' ? n <= 6 : n <= MAX_SHEEP, `${d} round ${round}`);
+      prev = n;
+    }
+  }
+});
+
+test('later rounds never tame down, at any difficulty', () => {
+  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+    let prev = motionForRound(1, d);
+    for (let round = 2; round <= 24; round++) {
+      const m = motionForRound(round, d);
+      assert.ok(m.speed >= prev.speed, `${d} round ${round} slowed down`);
+      assert.ok(m.radius >= prev.radius, `${d} round ${round} roams less`);
+      assert.ok(m.bounceMix >= prev.bounceMix, `${d} round ${round} bounces less`);
+      assert.ok(m.jitterAmp >= prev.jitterAmp, `${d} round ${round} jitters less`);
+      assert.ok(m.chaos >= prev.chaos, `${d} round ${round} is calmer`);
+      prev = m;
+    }
+  }
+  // The levels are meaningfully apart where the ramps bite.
+  assert.ok(motionForRound(5, 'expert').speed > motionForRound(5, 'normal').speed * 1.5);
+  assert.ok(motionForRound(5, 'easy').speed < motionForRound(5, 'normal').speed);
+});
+
+test('wandering stays deterministic, bounded and continuous at every difficulty', () => {
+  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+    // A sheep must stay followable by eye, never warping. The drift term
+    // has a corner at each reversal, so a single frame at the corner is
+    // allowed to move up to DRIFT_MAX; everything above that is a warp. The
+    // bound scales with the level: a faster difficulty legitimately covers
+    // more ground in the same 1/30th of a second.
+    const DRIFT_MAX = 0.5;
+    const JUMP_LIMIT = { easy: DRIFT_MAX, normal: DRIFT_MAX * 1.2, hard: DRIFT_MAX * 1.5, expert: DRIFT_MAX * 2 }[d];
+    for (let round = 1; round <= 16; round++) {
+      const m = motionForRound(round, d);
+      const bound = Math.max(roamRadius(round, d), 0.35);
+      const seed = roundSeed(round);
+      const herd = sheepForRound(round, d);
+      for (let i = 0; i < herd; i++) {
+        let last = wanderOffset(seed, i, herd, 0, m);
+        for (let t = 0; t <= 120; t += 1 / 30) {
+          const point = wanderOffset(seed, i, herd, t, m);
+          // roamRadius is what scene.js pads the camera by, per difficulty.
+          assert.ok(
+            Math.hypot(point.x, point.z) <= bound + 1e-9,
+            `${d} round ${round} sheep ${i} reached ${Math.hypot(point.x, point.z)} > ${bound}`
+          );
+          assert.ok(
+            Math.hypot(point.x - last.x, point.z - last.z) < JUMP_LIMIT,
+            `${d} round ${round} sheep ${i} jumped at t=${t}`
+          );
+          last = point;
+        }
+      }
+    }
+  }
+});
+
+test('omitting the difficulty means normal, everywhere', () => {
+  for (let round = 1; round <= 14; round++) {
+    assert.equal(
+      JSON.stringify(motionForRound(round)),
+      JSON.stringify(motionForRound(round, 'normal')),
+      `round ${round} motion`
+    );
+    assert.equal(sheepForRound(round), sheepForRound(round, 'normal'));
+    assert.equal(roamRadius(round), roamRadius(round, 'normal'));
+    assert.equal(paceLine(round), paceLine(round, 'normal'));
+  }
+  // Anything unrecognised reads as normal too.
+  assert.equal(
+    JSON.stringify(motionForRound(5, 'bogus')),
+    JSON.stringify(motionForRound(5, 'normal'))
+  );
+});
+
+test('the briefing names the right flock per difficulty', () => {
+  assert.equal(roundIntroText(3, 'expert'), 'Round 3 has 6 sheep. They start to wander.');
+  assert.equal(roundIntroText(5, 'expert'), 'Round 5 has 11 sheep. They are jumpy now.');
+  assert.equal(roundIntroText(5, 'hard'), 'Round 5 has 9 sheep. They bounce off in all directions.');
+  assert.equal(roundIntroText(3, 'easy'), 'Round 3 has 3 sheep. They start to wander.');
+  assert.equal(roundIntroText(1, 'expert'), 'Round 1 has 1 sheep. This one stands still.');
+  // No em dashes in anything the player reads, at any level.
+  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+    for (const round of [1, 5, 12]) {
+      assert.ok(!roundIntroText(round, d).includes('\u2014'), `em dash in ${d} round ${round}`);
+      assert.ok(!paceLine(round, d).includes('\u2014'), `em dash in pace ${d} round ${round}`);
+    }
+  }
+});
+
+test('switching difficulty resets the run and keeps other levels bests', () => {
+  const { store } = newStore();
+  store.startRound(5, { silent: true });
+  store.tapSheep(0);
+  store.setDifficulty('expert');
+  assert.equal(store.state.difficulty, 'expert');
+  assert.equal(store.state.round, 1);
+  assert.equal(store.state.count, 0);
+  assert.deepEqual(store.state.counted, []);
+  assert.equal(store.state.sheepCount, sheepForRound(1, 'expert'));
+  // Normal's best round survives the switch; Expert starts at 1.
+  assert.equal(store.state.bestRounds.normal, 5);
+  assert.equal(store.state.bestRounds.expert, 1);
+  assert.equal(store.bestRound, 1);
+  // An unknown level falls back to normal rather than crashing.
+  store.setDifficulty('bogus');
+  assert.equal(store.state.difficulty, 'normal');
+  // Lifetime taps keep accumulating across the switch.
+  const before = store.state.totalCounted;
+  store.tapSheep(0);
+  assert.equal(store.state.totalCounted, before + 1);
+});
+
+test('a level runs its own curve once selected', () => {
+  const { store } = newStore();
+  store.setDifficulty('expert');
+  store.startRound(3, { silent: true });
+  assert.equal(store.state.sheepCount, sheepForRound(3, 'expert'));
+  store.setDifficulty('easy');
+  store.startRound(5, { silent: true });
+  assert.equal(store.state.sheepCount, sheepForRound(5, 'easy'));
+});
+
+test('the per-difficulty best map survives a local save and load', () => {
+  const { store } = newStore();
+  store.setDifficulty('hard');
+  store.startRound(6, { silent: true });
+  assert.equal(store.bestRound, 6);
+  // A fresh store reading the same storage shape restores both levels.
+  const saved = {
+    round: 2,
+    difficulty: 'hard',
+    bestRounds: { easy: 3, normal: 9, hard: 6, expert: 1 },
+    totalCounted: 12,
+    soundOn: true,
+  };
+  const { store: restored } = newStore();
+  restored.loadLocalFrom(saved);
+  assert.equal(restored.state.difficulty, 'hard');
+  assert.equal(restored.bestRound, 6);
+  assert.equal(restored.state.bestRounds.normal, 9);
+  assert.equal(restored.state.bestRounds.easy, 3);
+  assert.equal(restored.state.totalCounted, 12);
+  assert.equal(restored.state.soundOn, true);
+});
+
+test('a legacy best round folds into normal, not every level', () => {
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({ round: 4, bestRound: 8, totalCounted: 20, soundOn: false });
+  assert.equal(restored.state.difficulty, 'normal');
+  assert.equal(restored.state.bestRounds.normal, 8);
+  assert.equal(restored.state.bestRounds.expert, 1);
 });
 
 test('the week starts Monday 00:00 UTC', () => {
