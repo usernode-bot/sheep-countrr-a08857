@@ -92,6 +92,10 @@ const MAX_TAPS_PER_SYNC = 12;
 // 'normal', matching public/rounds.js's normalizeDifficulty.
 const DIFFICULTIES = new Set(['easy', 'normal', 'hard', 'expert']);
 
+// The flock-size picker values the client may report. Anything else falls
+// back to 'medium', matching public/rounds.js's normalizeFlockSize.
+const FLOCK_SIZES = new Set(['small', 'medium', 'large']);
+
 app.use(express.json());
 
 // Verify platform-issued JWT if one was passed, then enforce auth on
@@ -302,7 +306,7 @@ function randomSeed() {
 app.get('/api/state', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT round, best_round, total_counted, sound_on, night_on
+      `SELECT round, best_round, total_counted, sound_on, night_on, flock_size
        FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
@@ -331,6 +335,7 @@ app.get('/api/state', async (req, res) => {
     res.json({
       round: row.round,
       difficulty: row.difficulty,
+      flockSize: FLOCK_SIZES.has(row.flock_size) ? row.flock_size : 'medium',
       bestRounds,
       bestRound: row.best_round,
       totalCounted: row.total_counted,
@@ -359,6 +364,8 @@ app.post('/api/state', async (req, res) => {
   const nightOn = !!body.nightOn;
   // An unrecognised difficulty is never stored; it reads back as Normal.
   const difficulty = DIFFICULTIES.has(body.difficulty) ? body.difficulty : 'normal';
+  // An unrecognised flock size is never stored; it reads back as Medium.
+  const flockSize = FLOCK_SIZES.has(body.flockSize) ? body.flockSize : 'medium';
 
   try {
     const { rows } = await pool.query(
@@ -380,19 +387,20 @@ app.post('/api/state', async (req, res) => {
 
     await pool.query(
       `INSERT INTO sheep_progress
-         (user_id, username, round, best_round, best_rounds, difficulty, total_counted, sound_on, night_on, seed)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (user_id, username, round, best_round, best_rounds, difficulty, flock_size, total_counted, sound_on, night_on, seed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (user_id) DO UPDATE SET
          username = EXCLUDED.username,
          round = EXCLUDED.round,
          best_round = EXCLUDED.best_round,
          best_rounds = EXCLUDED.best_rounds,
          difficulty = EXCLUDED.difficulty,
+         flock_size = EXCLUDED.flock_size,
          total_counted = EXCLUDED.total_counted,
          sound_on = EXCLUDED.sound_on,
          night_on = EXCLUDED.night_on,
          updated_at = NOW()`,
-      [req.user.id, req.user.username, round, bestRound, JSON.stringify(bestRounds), difficulty, totalCounted, soundOn, nightOn, randomSeed()]
+      [req.user.id, req.user.username, round, bestRound, JSON.stringify(bestRounds), difficulty, flockSize, totalCounted, soundOn, nightOn, randomSeed()]
     );
 
     res.json({ ok: true });
@@ -528,6 +536,9 @@ async function start() {
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS difficulty VARCHAR(255) NOT NULL DEFAULT 'normal'`);
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS best_rounds JSONB NOT NULL DEFAULT '{}'`);
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS night_on BOOLEAN NOT NULL DEFAULT false`);
+  // Flock-size picker: which size the player last chose. Rows written
+  // before sizes existed read as Medium via the column default.
+  await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS flock_size VARCHAR(255) NOT NULL DEFAULT 'medium'`);
   await pool.query(`ALTER TABLE sheep_progress ALTER COLUMN seed SET DEFAULT 0`);
 
   // Finished runs, one row per run end: what the This week tab ranks. The

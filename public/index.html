@@ -727,6 +727,12 @@
           <button type="button" class="difficulty-pill" data-difficulty="hard" role="radio" aria-checked="false">Hard</button>
           <button type="button" class="difficulty-pill" data-difficulty="expert" role="radio" aria-checked="false">Expert</button>
         </div>
+        <p id="round-intro-label" class="bedtime-message">The usual flock.</p>
+        <div id="flock-picker" role="radiogroup" aria-label="Flock size" class="flex flex-wrap justify-center gap-2">
+          <button type="button" class="flock-pill" data-flock="small" role="radio" aria-checked="false">Small</button>
+          <button type="button" class="flock-pill" data-flock="medium" role="radio" aria-checked="true">Medium</button>
+          <button type="button" class="flock-pill" data-flock="large" role="radio" aria-checked="false">Large</button>
+        </div>
         <button id="start-counting-btn" type="button" class="big-btn">
           Start counting
         </button>
@@ -754,6 +760,7 @@
         <div class="stats-card">
           <div class="flex justify-between"><span>This round</span><span id="round-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Difficulty</span><span id="difficulty-value" class="stat-value">Normal</span></div>
+          <div class="flex justify-between"><span>Flock size</span><span id="flock-size-value" class="stat-value">Medium</span></div>
           <div class="flex justify-between"><span>Best round</span><span id="best-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="stat-value">0</span></div>
           <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="stat-value">0</span></div>
@@ -801,7 +808,7 @@
   <style>
     /* Difficulty pills on the Get ready card: the app's own pill look,
        filled pink for the selected level, soft lavender otherwise. */
-    .difficulty-pill {
+    .flock-pill {
       min-height: 2.75rem;
       padding: 0 1.4rem;
       border-radius: 9999px;
@@ -813,13 +820,13 @@
       box-shadow: 0 5px 0 #dccbe9;
       touch-action: manipulation;
     }
-    .difficulty-pill:active { transform: translateY(4px); box-shadow: 0 1px 0 #dccbe9; }
-    .difficulty-pill[aria-checked="true"] {
+    .flock-pill:active { transform: translateY(4px); box-shadow: 0 1px 0 #dccbe9; }
+    .flock-pill[aria-checked="true"] {
       color: #fff;
       background: var(--pink);
       box-shadow: 0 5px 0 #e35d8a;
     }
-    .difficulty-pill[aria-checked="true"]:active { box-shadow: 0 1px 0 #e35d8a; }
+    .flock-pill[aria-checked="true"]:active { box-shadow: 0 1px 0 #e35d8a; }
   </style>
   <script type="module" src="/app.js"></script>
 </body>

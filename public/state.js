@@ -9,8 +9,10 @@
 
 import {
   DEFAULT_DIFFICULTY,
+  DEFAULT_FLOCK_SIZE,
   MAX_SHEEP,
   normalizeDifficulty,
+  normalizeFlockSize,
   normalizeRound,
   roundSeed,
   sheepForRound,
@@ -31,6 +33,10 @@ export const ENDED_MISSED = 'missed';
 // One best round per difficulty, kept in a map so a best on Easy can never
 // masquerade as one on Hard.
 export const DIFFICULTY_KEYS = ['easy', 'normal', 'hard', 'expert'];
+
+// The flock-size picker rides alongside difficulty without touching it, so
+// the per-difficulty best map stays meaningful at every size.
+export const FLOCK_SIZE_KEYS = ['small', 'medium', 'large'];
 
 function normalizeBestRounds(raw, fallback) {
   const out = { easy: 1, normal: 1, hard: 1, expert: 1 };
@@ -65,6 +71,7 @@ export function createDefaultState() {
     soundOn: false,
     nightOn: false,
     difficulty: DEFAULT_DIFFICULTY,
+    flockSize: DEFAULT_FLOCK_SIZE,
   };
 }
 
@@ -124,6 +131,7 @@ export class StateStore {
         soundOn: !!saved.soundOn,
         nightOn: !!saved.nightOn,
         difficulty: normalizeDifficulty(saved.difficulty),
+        flockSize: normalizeFlockSize(saved.flockSize),
       };
       this.startRound(this.state.round, { silent: true });
     } catch {
@@ -138,6 +146,7 @@ export class StateStore {
       localStorage.setItem(this.storageKey, JSON.stringify({
         round: this.state.round,
         difficulty: this.state.difficulty,
+        flockSize: this.state.flockSize,
         bestRounds: this.state.bestRounds,
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
@@ -163,6 +172,7 @@ export class StateStore {
         soundOn: !!data.soundOn,
         nightOn: !!data.nightOn,
         difficulty: normalizeDifficulty(data.difficulty),
+        flockSize: normalizeFlockSize(data.flockSize),
       };
       this.startRound(this.state.round, { silent: true });
       this.saveLocal();
@@ -191,6 +201,7 @@ export class StateStore {
         body: JSON.stringify({
           round: this.state.round,
           difficulty: this.state.difficulty,
+          flockSize: this.state.flockSize,
           bestRound: this.bestRound,
           newTaps: taps,
           soundOn: this.state.soundOn,
@@ -208,13 +219,7 @@ export class StateStore {
     const bestRound = Math.max(this.state.bestRounds[this.state.difficulty] || 1, next);
     this.state = {
       ...this.state,
-      round: next,
-      sheepCount: sheepForRound(next, this.state.difficulty),
-      seed: this.seedFor(next),
-      count: 0,
-      counted: [],
-      phase: COUNTING,
-      endedBy: null,
+      ...this.startRoundFields(next),
       bestRounds: {
         ...this.state.bestRounds,
         [this.state.difficulty]: bestRound,
@@ -240,6 +245,7 @@ export class StateStore {
           soundOn: !!saved.soundOn,
           nightOn: !!saved.nightOn,
           difficulty: normalizeDifficulty(saved.difficulty),
+          flockSize: normalizeFlockSize(saved.flockSize),
     };
     this.startRound(this.state.round, { silent: true });
     return this.state;
@@ -260,6 +266,38 @@ export class StateStore {
     this.flush();
     this.onChange(this.state);
     return this.state;
+  }
+
+  // Picking a flock size rescales every round of the current difficulty's
+  // ladder. Like setSoundOn it is a setting, not a new run: the round does
+  // not restart here, the picker's caller decides what the board shows.
+  setFlockSize(size) {
+    const flockSize = normalizeFlockSize(size);
+    if (flockSize === this.state.flockSize) return this.state;
+    // The size merges first so the round fields below derive from it: the
+    // current round shows the new count immediately and the picker's
+    // caller re-renders the board.
+    this.state = { ...this.state, flockSize };
+    this.state = { ...this.state, ...this.startRoundFields(this.state.round) };
+    this.saveLocal();
+    this.flush();
+    this.onChange(this.state);
+    return this.state;
+  }
+
+  // The per-round fields startRound derives, reusable when only the size
+  // changed and the round number itself did not.
+  startRoundFields(round) {
+    const next = normalizeRound(round);
+    return {
+      round: next,
+      sheepCount: sheepForRound(next, this.state.difficulty, this.state.flockSize),
+      seed: this.seedFor(next),
+      count: 0,
+      counted: [],
+      phase: COUNTING,
+      endedBy: null,
+    };
   }
 
   // Record a finished run for the weekly leaderboard. Runs are short and

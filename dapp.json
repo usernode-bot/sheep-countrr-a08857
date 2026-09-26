@@ -147,7 +147,7 @@
     {
       "id": "difficulty.expert",
       "name": "Expert difficulty marks Expert on the briefing card",
-      "path": "/?round=3&difficulty=expert",
+      "path": "/?round=1&difficulty=expert",
       "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=expert][aria-checked=true]",
       "visual": true,
       "impact": [
@@ -157,6 +157,45 @@
         "public/index.html",
         "dapp.json"
       ]
+    },
+    {
+      "name": "Flock-size picker marks Small on the intro card",
+      "id": "flock.picker",
+      "visual": true,
+      "path": "/?round=1&flock=small",
+      "expectSelector": "#flock-picker .flock-pill[data-flock=small][aria-checked=true]",
+      "expectText": "A small flock, about half the usual.",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/rounds.js",
+        "public/state.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Small flock halves the round 5 board",
+      "path": "/?round=5&flock=small",
+      "expectSelector": "#count-display",
+      "expectText": "of 4 sheep"
+    },
+    {
+      "name": "Large flock scales up to the board cap",
+      "path": "/?round=5&flock=large",
+      "expectSelector": "#count-display",
+      "expectText": "of 12 sheep"
+    },
+    {
+      "name": "No-WebGL fallback renders the small flock too",
+      "path": "/?round=8&flock=small&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(6)",
+      "expectText": "Round 8"
+    },
+    {
+      "name": "Grown-ups panel names the chosen flock size",
+      "path": "/?scene=grownups&flock=large",
+      "expectSelector": "#flock-size-value",
+      "expectText": "Large"
     },
     {
       "name": "Largest flock still fits the board",
