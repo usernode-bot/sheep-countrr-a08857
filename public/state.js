@@ -11,6 +11,7 @@ import {
   DEFAULT_DIFFICULTY,
   MAX_SHEEP,
   SPEED_ROUND_SECONDS,
+  normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
   normalizeSpeedRound,
@@ -69,6 +70,7 @@ export function createDefaultState() {
     communityTotal: 0,
     soundOn: false,
     nightOn: false,
+    calmOn: false,
     difficulty: DEFAULT_DIFFICULTY,
     speedOn: false,
     secondsLeft: null,
@@ -134,6 +136,7 @@ export class StateStore {
         totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
         soundOn: !!saved.soundOn,
         nightOn: !!saved.nightOn,
+        calmOn: normalizeCalm(saved.calmOn),
         difficulty: normalizeDifficulty(saved.difficulty),
         speedOn: normalizeSpeedRound(saved.speedOn),
       };
@@ -154,6 +157,7 @@ export class StateStore {
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
         nightOn: this.state.nightOn,
+        calmOn: this.state.calmOn,
         speedOn: this.state.speedOn,
       }));
     } catch {
@@ -175,6 +179,7 @@ export class StateStore {
         communityTotal: Math.max(0, Number(data.communityTotal) || 0),
         soundOn: !!data.soundOn,
         nightOn: !!data.nightOn,
+        calmOn: normalizeCalm(data.calmOn),
         difficulty: normalizeDifficulty(data.difficulty),
       };
       this.startRound(this.state.round, { silent: true });
@@ -208,6 +213,7 @@ export class StateStore {
           newTaps: taps,
           soundOn: this.state.soundOn,
           nightOn: this.state.nightOn,
+          calmOn: this.state.calmOn,
         }),
       });
     } catch {
@@ -258,6 +264,7 @@ export class StateStore {
           totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
           soundOn: !!saved.soundOn,
           nightOn: !!saved.nightOn,
+          calmOn: normalizeCalm(saved.calmOn),
           difficulty: normalizeDifficulty(saved.difficulty),
           speedOn: normalizeSpeedRound(saved.speedOn),
     };
@@ -422,6 +429,16 @@ export class StateStore {
 
   setNightOn(on) {
     this.state = { ...this.state, nightOn: !!on };
+    this.saveLocal();
+    this.scheduleSync();
+    this.onChange(this.state);
+  }
+
+  // Calm mode is a comfort setting, not a per-run mode: it survives
+  // restarts and rounds, like sound and Night Meadow.
+  setCalmOn(on) {
+    const calmOn = normalizeCalm(on);
+    this.state = { ...this.state, calmOn };
     this.saveLocal();
     this.scheduleSync();
     this.onChange(this.state);

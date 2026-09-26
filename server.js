@@ -438,7 +438,7 @@ function randomSeed() {
 app.get('/api/state', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT round, best_round, total_counted, sound_on, night_on
+      `SELECT round, best_round, total_counted, sound_on, night_on, calm_on
        FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
@@ -451,7 +451,7 @@ app.get('/api/state', async (req, res) => {
          ON CONFLICT (user_id) DO NOTHING`,
         [req.user.id, req.user.username, randomSeed()]
       );
-      row = { round: 1, best_round: 1, total_counted: 0, sound_on: false, night_on: false, difficulty: 'normal', best_rounds: {} };
+      row = { round: 1, best_round: 1, total_counted: 0, sound_on: false, night_on: false, calm_on: false, difficulty: 'normal', best_rounds: {} };
     }
 
     const { rows: totalRows } = await pool.query(
@@ -472,6 +472,7 @@ app.get('/api/state', async (req, res) => {
       totalCounted: row.total_counted,
       soundOn: row.sound_on,
       nightOn: row.night_on,
+      calmOn: row.calm_on,
       communityTotal,
     });
   } catch (err) {
@@ -493,6 +494,7 @@ app.post('/api/state', async (req, res) => {
   const newTaps = clamp(parseInt(body.newTaps, 10) || 0, 0, MAX_TAPS_PER_SYNC);
   const soundOn = !!body.soundOn;
   const nightOn = !!body.nightOn;
+  const calmOn = !!body.calmOn;
   // An unrecognised difficulty is never stored; it reads back as Normal.
   const difficulty = DIFFICULTIES.has(body.difficulty) ? body.difficulty : 'normal';
 
@@ -516,8 +518,8 @@ app.post('/api/state', async (req, res) => {
 
     await pool.query(
       `INSERT INTO sheep_progress
-         (user_id, username, round, best_round, best_rounds, difficulty, total_counted, sound_on, night_on, seed)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (user_id, username, round, best_round, best_rounds, difficulty, total_counted, sound_on, night_on, calm_on, seed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (user_id) DO UPDATE SET
          username = EXCLUDED.username,
          round = EXCLUDED.round,
@@ -527,8 +529,9 @@ app.post('/api/state', async (req, res) => {
          total_counted = EXCLUDED.total_counted,
          sound_on = EXCLUDED.sound_on,
          night_on = EXCLUDED.night_on,
+         calm_on = EXCLUDED.calm_on,
          updated_at = NOW()`,
-      [req.user.id, req.user.username, round, bestRound, JSON.stringify(bestRounds), difficulty, totalCounted, soundOn, nightOn, randomSeed()]
+      [req.user.id, req.user.username, round, bestRound, JSON.stringify(bestRounds), difficulty, totalCounted, soundOn, nightOn, calmOn, randomSeed()]
     );
 
     res.json({ ok: true });
@@ -695,6 +698,8 @@ async function start() {
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS difficulty VARCHAR(255) NOT NULL DEFAULT 'normal'`);
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS best_rounds JSONB NOT NULL DEFAULT '{}'`);
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS night_on BOOLEAN NOT NULL DEFAULT false`);
+  // Calm mode: a comfort setting stored with the other grown-up toggles.
+  await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS calm_on BOOLEAN NOT NULL DEFAULT false`);
   await pool.query(`ALTER TABLE sheep_progress ALTER COLUMN seed SET DEFAULT 0`);
 
   // Finished runs, one row per run end: what the This week tab ranks. The
