@@ -1,7 +1,7 @@
 {
   "name": "Sheep countrr",
   "icon": {
-    "emoji": "🐑"
+    "emoji": "\ud83d\udc11"
   },
   "secrets": [],
   "tests": [
@@ -176,6 +176,19 @@
       "expectSelector": "#friend-add",
       "expectText": "Add friend",
       "allowConsoleErrors": true
+    },
+    {
+      "id": "music.toggle",
+      "name": "Game screen shows the music mute toggle",
+      "path": "/?round=1",
+      "expectSelector": "#music-btn[aria-pressed=true]",
+      "visual": true,
+      "impact": [
+        "public/sound.js",
+        "public/app.js",
+        "public/index.html",
+        "dapp.json"
+      ]
     }
   ]
 }

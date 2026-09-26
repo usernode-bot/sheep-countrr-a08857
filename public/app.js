@@ -17,7 +17,15 @@ import {
   sheepPhrase,
   successMessage,
 } from './rounds.js';
-import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
+import {
+  playTapChime,
+  playBaa,
+  playCelebration,
+  setSoundEnabled,
+  setMusicEnabled,
+  setMusicHidden,
+  unlockMusic,
+} from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
 
 const params = new URLSearchParams(window.location.search);
@@ -77,6 +85,7 @@ const els = {
   grownupsPanel: document.getElementById('grownups-panel'),
   grownupsClose: document.getElementById('grownups-close'),
   soundToggle: document.getElementById('sound-toggle'),
+  musicBtn: document.getElementById('music-btn'),
   startOverBtn: document.getElementById('start-over-btn'),
   roundValue: document.getElementById('round-value'),
   bestValue: document.getElementById('best-value'),
@@ -783,3 +792,57 @@ for (const [name, btn] of Object.entries(els.tabButtons)) {
 }
 
 boot();
+
+// ---- Background music ----
+// On by default, remembered per device. Deep links (?scene=, ?round=) never
+// touch localStorage, so there the choice lives for the page only.
+const MUSIC_KEY = 'sheep-countrr:music';
+function loadMusicPref() {
+  if (deepLink) return true;
+  try {
+    return localStorage.getItem(MUSIC_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+function renderMusicBtn(on) {
+  els.musicBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  els.musicBtn.setAttribute('aria-label', on ? 'Music on. Tap to mute.' : 'Music off. Tap to play music.');
+}
+let musicOn = loadMusicPref();
+renderMusicBtn(musicOn);
+setMusicEnabled(musicOn);
+setMusicHidden(document.hidden);
+
+els.musicBtn.addEventListener('click', () => {
+  musicOn = !musicOn;
+  renderMusicBtn(musicOn);
+  setMusicEnabled(musicOn);
+  unlockMusic();
+  if (!deepLink) {
+    try {
+      localStorage.setItem(MUSIC_KEY, musicOn ? 'on' : 'off');
+    } catch {
+      /* storage refused: the choice lasts for this visit */
+    }
+  }
+});
+
+// Browsers only allow audio after a gesture, so the first tap anywhere
+// starts the music. Taps on the music button itself are left to its own
+// click handler, so a first tap there mutes instead of playing a blip.
+function firstGesture(e) {
+  if (e.target && e.target.closest && e.target.closest('#music-btn')) return;
+  unlockMusic();
+  window.removeEventListener('pointerdown', firstGesture, true);
+  window.removeEventListener('keydown', firstGesture, true);
+}
+window.addEventListener('pointerdown', firstGesture, true);
+window.addEventListener('keydown', firstGesture, true);
+
+// Pause while nobody is looking: a switched tab, or the platform shell
+// keeping this app loaded but hidden.
+document.addEventListener('visibilitychange', () => setMusicHidden(document.hidden));
+window.addEventListener('usernode:visibility-changed', (e) => {
+  setMusicHidden(!!(e.detail && e.detail.hidden) || document.hidden);
+});
