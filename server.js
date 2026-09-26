@@ -202,14 +202,17 @@ function normalizeHandle(raw) {
 // line the player saw.
 app.post('/api/runs', async (req, res) => {
   const roundReached = clamp(parseInt((req.body || {}).roundReached, 10) || 1, 1, MAX_ROUND);
-  const endReason = ['doubleTap', 'missed'].includes((req.body || {}).endedBy)
+  const endReason = ['doubleTap', 'missed', 'timeUp'].includes((req.body || {}).endedBy)
     ? (req.body || {}).endedBy : null;
+  // Speed Rounds carry their own tag so the weekly leaderboard can show
+  // them separately from normal rounds.
+  const speedRound = !!(req.body || {}).speedRound;
   try {
     const { rows } = await pool.query(
-      `INSERT INTO sheep_runs (user_id, username, round_reached, end_reason)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO sheep_runs (user_id, username, round_reached, end_reason, speed_round)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [req.user.id, req.user.username, roundReached, endReason]
+      [req.user.id, req.user.username, roundReached, endReason, speedRound]
     );
     res.json({ ok: true, id: rows[0].id });
   } catch (err) {
@@ -264,7 +267,8 @@ app.get('/api/share/:key', async (req, res) => {
   if (!validShareKey(req.params.key)) return res.status(404).json({ error: 'Not found' });
   try {
     const { rows } = await pool.query(
-      `SELECT r.username, r.round_reached AS "roundReached", r.end_reason AS "endedBy", r.ended_at AS "endedAt"
+      `SELECT r.username, r.round_reached AS "roundReached", r.end_reason AS "endedBy",
+              r.speed_round AS "speedRound", r.ended_at AS "endedAt"
        FROM sheep_run_shares s
        JOIN sheep_runs r ON r.id = s.run_id
        WHERE s.share_key = $1`,
@@ -330,10 +334,10 @@ app.get('/api/leaderboard', async (req, res) => {
     );
 
     const { rows: weeklyRows } = await pool.query(
-      `SELECT user_id, username, round_reached AS "roundReached"
+      `SELECT user_id, username, round_reached AS "roundReached", speed_round AS "speedRound"
        FROM (
          SELECT DISTINCT ON (user_id)
-                user_id, username, round_reached, ended_at
+                user_id, username, round_reached, speed_round, ended_at
          FROM sheep_runs
          WHERE ended_at >= date_trunc('week', NOW())
          ORDER BY user_id, round_reached DESC, ended_at ASC
@@ -355,7 +359,7 @@ app.get('/api/leaderboard', async (req, res) => {
 
     res.json({
       global: globalRows.map((r) => ({ username: r.username, bestRound: r.bestRound, totalCounted: r.totalCounted })),
-      weekly: weeklyRows.map((r) => ({ username: r.username, roundReached: r.roundReached })),
+      weekly: weeklyRows.map((r) => ({ username: r.username, roundReached: r.roundReached, speedRound: r.speedRound })),
       friends: friendRows.map((r) => ({ username: r.username, bestRound: r.bestRound })),
     });
   } catch (err) {
@@ -622,17 +626,17 @@ async function seedStagingData() {
   // The last-week row exists to prove the Monday 00:00 UTC boundary hides
   // it from the This week tab while Mabel's newer run keeps her on it.
   const weekRuns = [
-    { id: 900101, user_id: -101, username: 'Staging demo: Mabel', round_reached: 8, when: "date_trunc('week', NOW()) + interval '2 hours'" },
-    { id: 900102, user_id: -102, username: 'Staging demo: Otto', round_reached: 7, when: "date_trunc('week', NOW()) + interval '2 hours'" },
-    { id: 900103, user_id: -103, username: 'Staging demo: Pip', round_reached: 4, when: "date_trunc('week', NOW()) + interval '1 hour'" },
-    { id: 900104, user_id: -101, username: 'Staging demo: Mabel', round_reached: 5, when: "date_trunc('week', NOW()) - interval '3 days'" },
+    { id: 900101, user_id: -101, username: 'Staging demo: Mabel', round_reached: 8, speed: true, when: "date_trunc('week', NOW()) + interval '2 hours'" },
+    { id: 900102, user_id: -102, username: 'Staging demo: Otto', round_reached: 7, speed: false, when: "date_trunc('week', NOW()) + interval '2 hours'" },
+    { id: 900103, user_id: -103, username: 'Staging demo: Pip', round_reached: 4, speed: false, when: "date_trunc('week', NOW()) + interval '1 hour'" },
+    { id: 900104, user_id: -101, username: 'Staging demo: Mabel', round_reached: 5, speed: false, when: "date_trunc('week', NOW()) - interval '3 days'" },
   ];
   for (const r of weekRuns) {
     await pool.query(
-      `INSERT INTO sheep_runs (id, user_id, username, round_reached, ended_at)
-       VALUES ($1, $2, $3, $4, ${r.when})
+      `INSERT INTO sheep_runs (id, user_id, username, round_reached, speed_round, ended_at)
+       VALUES ($1, $2, $3, $4, $5, ${r.when})
        ON CONFLICT (id) DO NOTHING`,
-      [r.id, r.user_id, r.username, r.round_reached]
+      [r.id, r.user_id, r.username, r.round_reached, r.speed]
     );
   }
 
@@ -712,6 +716,10 @@ async function start() {
   // player saw. Rows written before this column existed read as NULL and
   // the shared view falls back to the generic copy.
   await pool.query(`ALTER TABLE sheep_runs ADD COLUMN IF NOT EXISTS end_reason VARCHAR(255)`);
+
+  // Speed Round tag: which runs were played against the 30 second clock,
+  // so the weekly leaderboard marks them separately from normal rounds.
+  await pool.query(`ALTER TABLE sheep_runs ADD COLUMN IF NOT EXISTS speed_round BOOLEAN NOT NULL DEFAULT false`);
 
   // Public table: shares point at already-public run rows (a username and a
   // round number the leaderboard publishes), and the key is unguessable, so

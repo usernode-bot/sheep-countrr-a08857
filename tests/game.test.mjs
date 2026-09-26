@@ -7,14 +7,19 @@ import {
   RUN_OVER,
   ENDED_DOUBLE_TAP,
   ENDED_MISSED,
+  ENDED_TIME_UP,
 } from '../public/state.js';
 import {
   MAX_SHEEP,
   motionForRound,
   paceLine,
   roamRadius,
+  roundCompleteTitle,
   roundIntroText,
   roundSeed,
+  SPEED_ROUND_SECONDS,
+  speedRoundClock,
+  weeklyScoreLabel,
   sheepForRound,
   sheepPhrase,
   normalizeRound,
@@ -553,4 +558,79 @@ test('share keys and invite codes match their public read shapes', () => {
   assert.ok(INVITE_CODE_RE.test('demo-invite'));
   assert.ok(!INVITE_CODE_RE.test('short'));
   assert.ok(!INVITE_CODE_RE.test('no/slashes/here'));
+});
+
+test('a Speed Round toggles on the briefing and runs the same flock', () => {
+  const { store } = newStore();
+  store.setSpeedOn(true);
+  assert.equal(store.state.speedOn, true);
+  assert.equal(store.state.secondsLeft, SPEED_ROUND_SECONDS);
+  // Same flock as the normal round: the count and the seed do not move.
+  assert.equal(store.state.sheepCount, sheepForRound(1));
+  assert.equal(store.state.seed, roundSeed(1));
+  // The briefing line names the clock.
+  assert.match(roundIntroText(1, 'normal', true), /before the clock runs out/);
+  // Toggling off drops the clock again.
+  store.setSpeedOn(false);
+  assert.equal(store.state.speedOn, false);
+  assert.equal(store.state.secondsLeft, null);
+});
+
+test('the Speed Round clock ticks whole seconds and ends the run at zero', () => {
+  const { store, recordedRuns } = newStore(true);
+  store.setSpeedOn(true);
+  store.startRound(2, { silent: true });
+  assert.equal(store.state.secondsLeft, SPEED_ROUND_SECONDS);
+  store.tapSheep(0);
+  assert.equal(store.tickClock(), true);
+  assert.equal(store.state.secondsLeft, SPEED_ROUND_SECONDS - 1);
+  // A normal round ignores the clock entirely.
+  store.setSpeedOn(false);
+  const normal = store.tickClock();
+  assert.equal(normal, true);
+  assert.equal(store.state.secondsLeft, null);
+  // Back on for the timeout: every step down to zero, then the run ends.
+  store.setSpeedOn(true);
+  for (let left = SPEED_ROUND_SECONDS - 1; left > 0; left--) {
+    assert.equal(store.tickClock(), true);
+  }
+  assert.equal(store.tickClock(), false, 'the zero step reports the timeout');
+  // app.js owns the timeout action: the same endRun path a missed count
+  // uses, with the clock's own reason.
+  store.endRun(ENDED_TIME_UP);
+  assert.equal(store.state.phase, RUN_OVER);
+  assert.equal(store.state.endedBy, ENDED_TIME_UP);
+  assert.equal(recordedRuns.length, 1);
+});
+
+test('a passed Speed Round advances with a fresh clock and keeps the mode', () => {
+  const { store } = newStore();
+  store.setSpeedOn(true);
+  store.startRound(1, { silent: true });
+  const n = store.state.sheepCount;
+  for (let i = 0; i < n; i++) store.tapSheep(i);
+  store.submitCount();
+  assert.equal(store.state.phase, ROUND_PASSED);
+  store.nextRound();
+  assert.equal(store.state.speedOn, true, 'the mode is sticky within the run');
+  assert.equal(store.state.secondsLeft, SPEED_ROUND_SECONDS, 'the next round gets a fresh clock');
+  assert.equal(store.state.phase, COUNTING);
+});
+
+test('a fresh run resets the Speed Round mode and reads a stale clock as off', () => {
+  const { store } = newStore();
+  store.setSpeedOn(true);
+  store.endRun(ENDED_TIME_UP);
+  store.restartRun();
+  assert.equal(store.state.speedOn, false);
+  assert.equal(store.state.secondsLeft, null);
+  // Normalization: anything but exactly true is off, and the clock text
+  // never goes negative.
+  assert.equal(normalizeRound(3), 3);
+  assert.equal(speedRoundClock(0.4), '1');
+  assert.equal(speedRoundClock(-2), '0');
+  assert.match(roundCompleteTitle(4, true), /Speed Round 4 counted/);
+  assert.equal(roundCompleteTitle(4, false), 'Round 4 counted.');
+  assert.equal(weeklyScoreLabel(8, true), 'Speed 8');
+  assert.equal(weeklyScoreLabel(8, false), 'Round 8');
 });

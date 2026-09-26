@@ -5,17 +5,23 @@ import {
   ROUND_PASSED,
   RUN_OVER,
   ENDED_DOUBLE_TAP,
+  ENDED_TIME_UP,
 } from './state.js';
 import {
   DEFAULT_DIFFICULTY,
+  SPEED_ROUND_SECONDS,
   normalizeDifficulty,
   normalizeRound,
+  normalizeSpeedRound,
   paceLine,
+  roundCompleteTitle,
   roundIntroText,
   roundSeed,
   sheepForRound,
   sheepPhrase,
+  speedRoundClock,
   successMessage,
+  weeklyScoreLabel,
 } from './rounds.js';
 import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
@@ -32,6 +38,11 @@ const roundParam = params.get('round');
 // persisted from a deep link.
 const difficultyParam = normalizeDifficulty(params.get('difficulty'));
 const hasDifficultyParam = params.get('difficulty') !== null;
+// The Speed Round flag from a deep link (?round=8&speed=1): it applies to
+// the run it opens, but like the difficulty it is never persisted from a
+// deep link, so the store stays ephemeral there.
+const hasSpeedParam = params.get('speed') !== null;
+const speedParam = normalizeSpeedRound(params.get('speed') === '1');
 // The grown-ups fixture can force the sound toggle on (the shipped default
 // for the frozen ?scene=grownups card) without touching localStorage.
 const soundParam = params.get('sound');
@@ -96,6 +107,8 @@ const els = {
   bestRoundChip: document.getElementById('best-round-chip'),
   bestRoundValue: document.getElementById('best-round-value'),
   startCountingBtn: document.getElementById('start-counting-btn'),
+  speedToggle: document.getElementById('speed-toggle'),
+  speedTimer: document.getElementById('speed-timer'),
   roundComplete: document.getElementById('round-complete'),
   successTitle: document.getElementById('success-title'),
   roundCompleteTitle: document.getElementById('round-complete-title'),
@@ -198,6 +211,8 @@ function buildStaticState() {
     ...base,
     round,
     difficulty: difficultyParam,
+    speedOn: hasSpeedParam && speedParam,
+    secondsLeft: hasSpeedParam && speedParam ? SPEED_ROUND_SECONDS : null,
     sheepCount: sheepForRound(round, difficultyParam),
     seed: roundSeed(round),
     bestRounds: { ...base.bestRounds, [difficultyParam]: Math.max(round, base.bestRounds[difficultyParam]) },
@@ -213,12 +228,22 @@ function buildStaticState() {
   if (sceneParam === 'portrait') return at(1);
   if (sceneParam === 'empty') return at(3);
   if (sceneParam === 'midcount') return at(5, { count: 3, counted: [0, 1, 2] });
+  if (sceneParam === 'speed') {
+    // The Speed Round board mid-count, clock visibly running: the dapp.json
+    // check reads the countdown pill from this route.
+    return at(3, { count: 2, counted: [0, 1], speedOn: true, secondsLeft: SPEED_ROUND_SECONDS });
+  }
   if (sceneParam === 'roundcomplete') {
     const n = sheepForRound(4, difficultyParam);
     return at(4, { count: n, counted: [...Array(n).keys()], phase: ROUND_PASSED });
   }
   if (sceneParam === 'gameover') {
     return at(6, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
+  }
+  if (sceneParam === 'speedgameover') {
+    // A Speed Round the clock ran out on: its own game-over reason line,
+    // with the mode still named on the round badge behind the card.
+    return at(4, { count: 3, counted: [0, 1, 2], phase: RUN_OVER, speedOn: true, secondsLeft: 0, endedBy: ENDED_TIME_UP });
   }
   if (sceneParam === 'grownups') {
     return at(5, {
@@ -248,7 +273,7 @@ const LEADERBOARD_FIXTURE = {
     { username: 'Staging demo: Pip', bestRound: 3, totalCounted: 5 },
   ],
   weekly: [
-    { username: 'Staging demo: Mabel', roundReached: 8 },
+    { username: 'Staging demo: Mabel', roundReached: 8, speedRound: true },
     { username: 'Staging demo: Otto', roundReached: 7 },
     { username: 'Staging demo: Pip', roundReached: 4 },
   ],
@@ -267,6 +292,7 @@ async function boot() {
     // fixed seed so the same URL always frames the same pasture. An optional
     // difficulty= picks the curve; it stays ephemeral like the round itself.
     if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
+    if (hasSpeedParam) store.state = { ...store.state, speedOn: speedParam };
     store.startRound(normalizeRound(roundParam), { silent: true });
   } else {
     store.loadLocal();
@@ -292,6 +318,13 @@ async function boot() {
   // visible for their dapp.json check. Render it without opening the card.
   if (staticMode && roundParam !== null) syncDifficultyPicker(store.state);
 
+  // A run that resumes (or opens on a deep link) into a Speed Round that
+  // is already counting starts its clock here; a round behind the briefing
+  // card starts it when the player taps Start counting. Frozen ?scene=
+  // fixtures hold the clock still (the same rule that parks their
+  // round-complete auto-advance), so a screenshot can catch the countdown.
+  if (!staticMode && store.state.speedOn && store.state.phase === COUNTING && !introOpen) startSpeedClock();
+
   if (sceneParam === 'grownups') openGrownups(store.state);
 
   if (sceneParam === 'leaderboard') {
@@ -308,6 +341,7 @@ async function boot() {
   if (sceneParam === 'sharegameover') {
     // Mirror the tokenless /s/<key> view exactly: read-only card over the
     // reached round's flock, no Start again, no Share button.
+    els.gameOverReason.textContent = 'You counted the same sheep twice.';
     els.sharedBy.textContent = 'Counted by Staging demo: Mabel.';
     els.sharedBy.hidden = false;
     els.restartBtn.hidden = true;
@@ -373,6 +407,8 @@ async function bootShareView() {
     sheepCount: sheepForRound(round, store.state.difficulty),
     seed: roundSeed(round),
     phase: RUN_OVER,
+    speedOn: normalizeSpeedRound(data.speedRound),
+    secondsLeft: normalizeSpeedRound(data.speedRound) ? SPEED_ROUND_SECONDS : null,
     endedBy: data.endedBy === ENDED_DOUBLE_TAP ? ENDED_DOUBLE_TAP : null,
     count: 0,
     counted: [],
@@ -387,7 +423,9 @@ async function bootShareView() {
   // line instead. Double-tap runs keep their exact line.
   els.gameOverReason.textContent = data.endedBy === ENDED_DOUBLE_TAP
     ? 'You counted the same sheep twice.'
-    : 'Some sheep were left uncounted.';
+    : data.endedBy === ENDED_TIME_UP
+      ? 'The clock ran out.'
+      : 'Some sheep were left uncounted.';
   els.gameOver.hidden = false;
   els.sharedBy.textContent = `Counted by ${data.username}.`;
   els.sharedBy.hidden = false;
@@ -505,9 +543,21 @@ function syncBestRoundChip(state) {
   els.bestRoundChip.hidden = !(best > 1);
 }
 
+function syncSpeedToggle(state) {
+  els.speedToggle.checked = !!state.speedOn;
+}
+
+// The round badge names the mode while a Speed Round is live, so the
+// result reads differently from a normal round in screenshots too.
+function syncRoundBadge(state) {
+  els.roundBadge.textContent = state.speedOn && state.phase !== RUN_OVER
+    ? `Speed round ${state.round}` : `Round ${state.round}`;
+}
+
 function showRoundIntro(state) {
-  els.roundIntroSize.textContent = roundIntroText(state.round, state.difficulty);
+  els.roundIntroSize.textContent = roundIntroText(state.round, state.difficulty, state.speedOn);
   syncDifficultyPicker(state);
+  syncSpeedToggle(state);
   syncBestRoundChip(state);
   els.roundIntro.hidden = false;
   introOpen = true;
@@ -516,29 +566,72 @@ function showRoundIntro(state) {
 function dismissRoundIntro() {
   introOpen = false;
   els.roundIntro.hidden = true;
+  // A Speed Round starts when the player does.
+  startSpeedClock();
   // A soft baa announces the new flock. playBaa checks the sound
   // setting itself, so no extra gate is needed here.
   playBaa();
 }
 
+// ---- Speed Round clock ----
+// One interval drives the countdown. The store steps it whole seconds at
+// a time, so every surface reads the same state; the end (time out,
+// before or after the last tap) is the run-end path every other outcome
+// already shares. A fresh round, a restart or a board reset clears it.
+let speedClockTimer = null;
+
+function startSpeedClock() {
+  clearInterval(speedClockTimer);
+  if (!store.state.speedOn || store.state.phase !== COUNTING) return;
+  // First update paints the clock without waiting a second.
+  updateChrome(store.state);
+  renderA11yList(store.state);
+  speedClockTimer = setInterval(() => {
+    if (store.state.phase !== COUNTING || !store.state.speedOn) {
+      clearInterval(speedClockTimer);
+      return;
+    }
+    const alive = store.tickClock();
+    // The clock line in the a11y list follows the pill every second, not
+    // only when a sheep is tapped.
+    renderA11yList(store.state);
+    if (!alive) {
+      clearInterval(speedClockTimer);
+      // Time out before the flock is finished: the run ends, exactly as
+      // a missed count does, with its own reason line.
+      if (store.state.phase === COUNTING && store.state.speedOn) store.endRun(ENDED_TIME_UP);
+    }
+  }, 1000);
+}
+
+function stopSpeedClock() {
+  clearInterval(speedClockTimer);
+}
+
 function advanceRound() {
   clearTimeout(advanceTimer);
+  stopSpeedClock();
   if (store.state.phase !== ROUND_PASSED) return;
   store.nextRound();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
   playBaa();
+  // A Speed Round run keeps the mode on for the next flock, with a fresh
+  // 30 second clock.
+  startSpeedClock();
 }
 
 function restartRun() {
   clearTimeout(advanceTimer);
   clearTimeout(autoSubmitTimer);
+  stopSpeedClock();
   store.restartRun();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
   playBaa();
-  // A restart is the start of a fresh run, so the briefing comes back.
-  // Frozen ?scene= fixtures stay card-free.
+  // A restart is the start of a fresh run, so the briefing comes back,
+  // with the Speed Round toggle off again. Frozen ?scene= fixtures stay
+  // card-free.
   if (!staticMode) showRoundIntro(store.state);
 }
 
@@ -566,7 +659,13 @@ function updateChrome(state) {
   }
   lastShownCount = state.count;
 
-  els.roundBadge.textContent = `Round ${state.round}`;
+  syncRoundBadge(state);
+  // The Speed Round countdown is its own pill, so the count plate keeps
+  // its job (taps counted). Hidden the moment the mode is off, the round
+  // is passed or the run ends; a normal round never shows one.
+  const showTimer = !!state.speedOn && state.phase === COUNTING && state.secondsLeft != null;
+  els.speedTimer.hidden = !showTimer;
+  if (showTimer) els.speedTimer.textContent = speedRoundClock(state.secondsLeft);
   els.countDisplay.textContent = String(state.count);
   els.countWord.textContent = `of ${sheepPhrase(state.sheepCount)}`;
   els.playHint.textContent = hintFor(state);
@@ -589,7 +688,7 @@ function syncPanels(state) {
 
   if (passed) {
     els.successTitle.textContent = successMessage();
-    els.roundCompleteTitle.textContent = `Round ${state.round} counted.`;
+    els.roundCompleteTitle.textContent = roundCompleteTitle(state.round, state.speedOn);
     els.roundCompleteNext.textContent =
       `Next up: ${sheepPhrase(sheepForRound(state.round + 1, state.difficulty))}. ${paceLine(state.round + 1, state.difficulty)}`;
   }
@@ -597,7 +696,9 @@ function syncPanels(state) {
     els.gameOverRound.textContent = String(state.round);
     els.gameOverReason.textContent = state.endedBy === ENDED_DOUBLE_TAP
       ? 'You counted the same sheep twice.'
-      : `You said done with ${state.count} of ${sheepPhrase(state.sheepCount)} counted.`;
+      : state.endedBy === ENDED_TIME_UP
+        ? 'The clock ran out.'
+        : `You said done with ${state.count} of ${sheepPhrase(state.sheepCount)} counted.`;
     playBaa();
   }
   els.roundComplete.hidden = !passed;
@@ -616,7 +717,10 @@ function syncPanels(state) {
 
 function renderA11yList(state) {
   // Keep the focused button alive while announcing its new counted state.
-  if (els.a11yList.children.length !== state.sheepCount) {
+  // Only buttons are sheep; the Speed Round clock line below is plain
+  // status text and must never be counted as a sheep slot.
+  let buttons = els.a11yList.querySelectorAll('button');
+  if (buttons.length !== state.sheepCount) {
     els.a11yList.replaceChildren();
     for (let i = 0; i < state.sheepCount; i++) {
       const btn = document.createElement('button');
@@ -624,11 +728,32 @@ function renderA11yList(state) {
       btn.addEventListener('click', () => handleTap(i));
       els.a11yList.appendChild(btn);
     }
+    buttons = els.a11yList.querySelectorAll('button');
   }
-  Array.from(els.a11yList.children).forEach((btn, i) => {
+  buttons.forEach((btn, i) => {
+    // The briefing card is open: no tap can land, so the mirror says so
+    // instead of offering a button that would silently do nothing.
+    btn.disabled = introOpen;
     btn.textContent = state.counted.includes(i)
       ? `Sheep ${i + 1}, counted` : `Sheep ${i + 1}, not counted yet`;
   });
+  // The clock is part of the round's state, so the screen-reader list
+  // mirrors it too. It stays only while the clock is actually running
+  // (same condition as the on-screen pill): once the round is passed or
+  // the run ends, the line leaves the list. Off or hidden, it stays out
+  // of the list entirely.
+  let clockLine = els.a11yList.querySelector('#a11y-speed-clock');
+  const clockRunning = state.speedOn && state.phase === COUNTING && state.secondsLeft != null;
+  if (clockRunning) {
+    if (!clockLine) {
+      clockLine = document.createElement('p');
+      clockLine.id = 'a11y-speed-clock';
+      els.a11yList.appendChild(clockLine);
+    }
+    clockLine.textContent = `Speed Round, ${speedRoundClock(state.secondsLeft)} seconds left.`;
+  } else if (clockLine) {
+    clockLine.remove();
+  }
 }
 
 els.submitBtn.addEventListener('click', submitCount);
@@ -692,6 +817,19 @@ for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
     renderA11yList(store.state);
   });
 }
+
+// The Speed Round toggle flips before Start counting. The briefing line
+// and the flock behind the card update so the player sees the mode they
+// are about to play; the flag lives one round, and the next round's
+// briefing asks again.
+els.speedToggle.addEventListener('change', (e) => {
+  if (staticMode) return;
+  store.setSpeedOn(e.target.checked);
+  syncSpeedToggle(store.state);
+  els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty, store.state.speedOn);
+  renderer?.resetRound(store.state);
+  renderA11yList(store.state);
+});
 
 els.startOverBtn.addEventListener('click', () => {
   if (staticMode) return;
@@ -801,7 +939,7 @@ function renderTab() {
       els.leaderboardList.appendChild(scoreRow({
         rank: i + 1,
         name: r.username,
-        scoreLabel: `Round ${r.roundReached}`,
+        scoreLabel: weeklyScoreLabel(r.roundReached, !!r.speedRound),
         isMe: isMe(r.username),
       }));
     });

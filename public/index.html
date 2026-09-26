@@ -224,6 +224,25 @@
       box-shadow: 0 6px 16px rgba(90, 60, 120, 0.16);
     }
 
+    /* ---- Speed Round countdown pill: the round pill's shape, in the
+       celebratory yellow the Best Round chip already uses, so the clock
+       reads as the mode's own status rather than a warning. ---- */
+    .speed-timer {
+      background: rgba(255, 240, 166, 0.94);
+      border-color: #e0b93c;
+      color: #5d4a12;
+      font-variant-numeric: tabular-nums;
+      min-width: 4.5rem;
+      text-align: center;
+    }
+    .speed-timer[hidden] { display: none; }
+    .setting-row.speed-toggle-row {
+      width: 100%;
+      border: 2px solid #9da6af;
+      font-weight: 600;
+    }
+    .setting-row.speed-toggle-row input { accent-color: #a18cb8; }
+
     /* ---- Bottom action bar ---- */
     #action-bar {
       pointer-events: none;
@@ -661,6 +680,7 @@
     <!-- Round and running tap count, on screen at all times. -->
     <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex flex-col items-center gap-2">
       <div id="round-badge" class="round-pill">Round 1</div>
+      <div id="speed-timer" class="round-pill speed-timer" hidden aria-live="off">30</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
         <span id="count-display">0</span>
         <span id="count-word">of 1 sheep</span>
@@ -739,6 +759,11 @@
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
         <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
         <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
+        <label id="speed-toggle-row" class="setting-row speed-toggle-row" for="speed-toggle">
+          <span>Speed Round</span>
+          <input id="speed-toggle" type="checkbox">
+        </label>
+
         <div id="difficulty-picker" role="radiogroup" aria-label="Difficulty" class="flex flex-wrap justify-center gap-2">
           <button type="button" class="difficulty-pill" data-difficulty="easy" role="radio" aria-checked="false">Easy</button>
           <button type="button" class="difficulty-pill" data-difficulty="normal" role="radio" aria-checked="true">Normal</button>
