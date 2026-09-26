@@ -86,6 +86,10 @@ export class StateStore {
     // One finished run is recorded at most once per run; a fresh run
     // re-arms the guard (see startRound).
     this.runRecorded = false;
+    // The id of the most recently recorded run, for Share result. Best
+    // effort only: a failed run post leaves it unset and Share falls back
+    // to the player's most recent server-side run.
+    this.lastRunId = null;
     // Test seam: called with the round reached instead of POSTing, so the
     // guard can be asserted without a network. Real play leaves it unset
     // and records through /api/runs.
@@ -260,6 +264,8 @@ export class StateStore {
   // a run end can be the last thing the session ever syncs (page closed
   // on the game-over card), so this posts immediately, not through the
   // debounced flush. Best effort: a failed post never blocks play.
+  // The run id is remembered for Share result, and the reason is stored
+  // with the run so a shared card shows the same line the player saw.
   recordRun() {
     // The test seam answers even for an ephemeral deep-link store: the
     // unit suite runs with no token, like the fixtures do.
@@ -276,8 +282,12 @@ export class StateStore {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-usernode-token': this.token },
         keepalive: true,
-        body: JSON.stringify({ roundReached: this.state.round }),
-      }).catch(() => {});
+        body: JSON.stringify({ roundReached: this.state.round, endedBy: this.state.endedBy }),
+      }).then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.id) this.lastRunId = data.id;
+        })
+        .catch(() => {});
     } catch {
       /* best effort */
     }

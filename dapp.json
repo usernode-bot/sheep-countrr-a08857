@@ -104,6 +104,54 @@
       "expectText": "You reached round"
     },
     {
+      "name": "Game over offers Share result",
+      "path": "/?scene=gameover",
+      "expectText": "Share result"
+    },
+    {
+      "id": "share.view",
+      "name": "Shared result link shows the shared round read-only",
+      "path": "/?scene=sharegameover",
+      "expectSelector": "#shared-by",
+      "expectText": "You reached round 8",
+      "visual": true,
+      "impact": [
+        "public/app.js",
+        "public/index.html",
+        "server.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Friends tab offers Invite a friend",
+      "path": "/?scene=leaderboard&tab=friends",
+      "expectText": "Invite a friend"
+    },
+    {
+      "id": "invite.view",
+      "name": "Invite link shows the game and the inviter",
+      "path": "/?scene=invite",
+      "expectSelector": "#invite-card",
+      "expectText": "Sheep countrr",
+      "visual": true,
+      "impact": [
+        "public/app.js",
+        "public/index.html",
+        "server.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Share API returns the shared run",
+      "path": "/api/share/staging-demo-share",
+      "expectText": "Staging demo: Mabel"
+    },
+    {
+      "name": "Invite API names the inviter",
+      "path": "/api/invite/demo-invite",
+      "expectText": "Staging demo: Mabel"
+    },
+    {
       "name": "Grown-ups panel shows best round",
       "path": "/?scene=grownups",
       "expectSelector": "#grownups-panel",
