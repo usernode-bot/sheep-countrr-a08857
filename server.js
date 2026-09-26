@@ -9,6 +9,7 @@ const bridgeFetch = (url, opts, cb) =>
 const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 // The platform's address, injected by the platform at deploy (#2047). Never
 // written out here: a hardcoded hostname is what broke this app when the
@@ -49,7 +50,11 @@ const PUBLIC_API_PATHS = new Set(['/health']);
 // bootstrap). The route stays open, and the script is proxied from the
 // platform's canonical copy rather than copied into this repo, so
 // fleet-wide bridge fixes keep reaching this app on the next page load.
-const PUBLIC_PREFIXES = ['/usernode-bridge/'];
+// The two public share surfaces are deliberately tokenless: a visitor who
+// opens /s/<key> or /invite/<code> has no platform token to forward, so the
+// data endpoints under these prefixes answer without one. Only GET routes
+// are registered under them, so every other method 404s at the router.
+const PUBLIC_PREFIXES = ['/usernode-bridge/', '/api/share/', '/api/invite/'];
 const BRIDGE_BASE_URL = ((process.env.USERNODE_PLATFORM_ORIGIN || process.env.PLATFORM_URL || '')
   .replace(/\/+$/, '')) + '/usernode-bridge/v1/bridge.js';
 app.use('/usernode-bridge', (req, res) => {
@@ -91,6 +96,29 @@ const MAX_TAPS_PER_SYNC = 12;
 // The difficulty levels the client may report. Anything else falls back to
 // 'normal', matching public/rounds.js's normalizeDifficulty.
 const DIFFICULTIES = new Set(['easy', 'normal', 'hard', 'expert']);
+
+// URL-safe code shapes. The client copies full URLs, but the key/code itself
+// never carries anything else, so a strict charset check is all the input
+// validation a public read needs. Too-short and too-long strings fail the
+// length bounds; anything else fails the charset.
+const SHARE_KEY_RE = /^[A-Za-z0-9_-]{10,32}$/;
+const INVITE_CODE_RE = /^[A-Za-z0-9_-]{8,16}$/;
+
+function validShareKey(key) {
+  return typeof key === 'string' && SHARE_KEY_RE.test(key);
+}
+
+function validInviteCode(code) {
+  return typeof code === 'string' && INVITE_CODE_RE.test(code);
+}
+
+function randomShareKey() {
+  return crypto.randomBytes(16).toString('base64url');
+}
+
+function randomInviteCode() {
+  return crypto.randomBytes(8).toString('base64url');
+}
 
 app.use(express.json());
 
@@ -169,15 +197,119 @@ function normalizeHandle(raw) {
 
 // One row per finished run. Identity comes from the verified token, never
 // from the body; the round is clamped to the same bound as /api/state.
+// The row id is returned so the client can link a share to the run it just
+// recorded; the end reason is stored so a shared card shows the same reason
+// line the player saw.
 app.post('/api/runs', async (req, res) => {
   const roundReached = clamp(parseInt((req.body || {}).roundReached, 10) || 1, 1, MAX_ROUND);
+  const endReason = ['doubleTap', 'missed'].includes((req.body || {}).endedBy)
+    ? (req.body || {}).endedBy : null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO sheep_runs (user_id, username, round_reached, end_reason)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [req.user.id, req.user.username, roundReached, endReason]
+    );
+    res.json({ ok: true, id: rows[0].id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// One share per run, idempotent. Sharing is always the run owner's own
+// action: a runId that names someone else's run is indistinguishable from a
+// nonexistent one (404), so the API never confirms other users' run ids.
+// The URL itself is built client-side from location.origin so it is correct
+// in every environment the app runs in.
+app.post('/api/shares', async (req, res) => {
+  const runId = Number.isInteger((req.body || {}).runId) ? (req.body || {}).runId : null;
+  try {
+    let run;
+    if (runId !== null) {
+      const { rows } = await pool.query(
+        `SELECT id FROM sheep_runs WHERE id = $1 AND user_id = $2`,
+        [runId, req.user.id]
+      );
+      run = rows[0];
+      if (!run) return res.status(404).json({ error: 'No such run' });
+    } else {
+      const { rows } = await pool.query(
+        `SELECT id FROM sheep_runs WHERE user_id = $1 ORDER BY ended_at DESC, id DESC LIMIT 1`,
+        [req.user.id]
+      );
+      run = rows[0];
+      if (!run) return res.status(404).json({ error: 'No run to share' });
+    }
+    await pool.query(
+      `INSERT INTO sheep_run_shares (run_id, share_key, created_by_user_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (run_id) DO NOTHING`,
+      [run.id, randomShareKey(), req.user.id]
+    );
+    const { rows } = await pool.query(
+      `SELECT share_key FROM sheep_run_shares WHERE run_id = $1`,
+      [run.id]
+    );
+    res.json({ key: rows[0].share_key });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The public read behind /s/<key>. Only fields the weekly leaderboard
+// already publishes for the same rows leave the database, and the key is
+// unguessable, so no enumeration is possible.
+app.get('/api/share/:key', async (req, res) => {
+  if (!validShareKey(req.params.key)) return res.status(404).json({ error: 'Not found' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.username, r.round_reached AS "roundReached", r.end_reason AS "endedBy", r.ended_at AS "endedAt"
+       FROM sheep_run_shares s
+       JOIN sheep_runs r ON r.id = s.run_id
+       WHERE s.share_key = $1`,
+      [req.params.key]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// One stable invite code per player. Created on first ask, returned
+// unchanged afterwards; codes do not expire and are not consumed on use.
+app.post('/api/invites', async (req, res) => {
   try {
     await pool.query(
-      `INSERT INTO sheep_runs (user_id, username, round_reached)
-       VALUES ($1, $2, $3)`,
-      [req.user.id, req.user.username, roundReached]
+      `INSERT INTO sheep_invites (owner_user_id, invite_code)
+       VALUES ($1, $2)
+       ON CONFLICT (owner_user_id) DO NOTHING`,
+      [req.user.id, randomInviteCode()]
     );
-    res.json({ ok: true });
+    const { rows } = await pool.query(
+      `SELECT invite_code FROM sheep_invites WHERE owner_user_id = $1`,
+      [req.user.id]
+    );
+    res.json({ code: rows[0].invite_code });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The public read behind /invite/<code>: the inviter's display name, which
+// is already public on the global leaderboard. Nothing else is exposed.
+app.get('/api/invite/:code', async (req, res) => {
+  if (!validInviteCode(req.params.code)) return res.status(404).json({ error: 'Not found' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.username FROM sheep_invites i
+       LEFT JOIN sheep_progress p ON p.user_id = i.owner_user_id
+       WHERE i.invite_code = $1`,
+      [req.params.code]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json({ username: rows[0].username });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -428,7 +560,15 @@ app.use((req, res, next) => {
 // (and this repo's own usernode-run-checks) can navigate straight to them,
 // since neither can mint a real platform-signed token.
 app.get('*', (req, res) => {
+  // Public share and invite views are served tokenless: the visitor carries
+  // no platform token by definition, and these pages read only their own
+  // public data endpoints, so they must not depend on the chromeless shell
+  // minting a token for them. Skipping the chromeless redirect here also
+  // removes any redirect-loop risk if it ever fired on the same path.
   if (!req.user && !req.query.scene && !req.query.round) {
+    if (req.path.startsWith('/s/') || req.path.startsWith('/invite/')) {
+      return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    }
     // Deep-link pass-through (platform #743): carry the visited
     // path+query into the chromeless view so share links land on the
     // shared screen, not Home. The clean platform route stores `path`
@@ -495,6 +635,29 @@ async function seedStagingData() {
       [r.id, r.user_id, r.username, r.round_reached]
     );
   }
+
+  // A shareable demo run with its share row, so the /s/<key> view and the
+  // public /api/share read have something to show in a fresh preview. The
+  // end_reason matches what the shared card renders for it.
+  await pool.query(
+    `INSERT INTO sheep_runs (id, user_id, username, round_reached, end_reason, ended_at)
+     VALUES (900105, -101, 'Staging demo: Mabel', 8, 'doubleTap', date_trunc('week', NOW()) + interval '3 hours')
+     ON CONFLICT (id) DO NOTHING`
+  );
+  await pool.query(
+    `INSERT INTO sheep_run_shares (run_id, share_key, created_by_user_id)
+     VALUES (900105, 'staging-demo-share', -101)
+     ON CONFLICT (run_id) DO NOTHING`
+  );
+
+  // One invite for the demo identity, so the /invite/<code> page has an
+  // inviter to name. The code is obviously fake and nothing in game logic
+  // reads it.
+  await pool.query(
+    `INSERT INTO sheep_invites (owner_user_id, invite_code)
+     VALUES (-101, 'demo-invite')
+     ON CONFLICT (owner_user_id) DO NOTHING`
+  );
 }
 
 async function start() {
@@ -544,6 +707,36 @@ async function start() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS sheep_runs_week_idx ON sheep_runs (ended_at)`);
+
+  // Why the run ended, so a shared card shows the same reason line the
+  // player saw. Rows written before this column existed read as NULL and
+  // the shared view falls back to the generic copy.
+  await pool.query(`ALTER TABLE sheep_runs ADD COLUMN IF NOT EXISTS end_reason VARCHAR(255)`);
+
+  // Public table: shares point at already-public run rows (a username and a
+  // round number the leaderboard publishes), and the key is unguessable, so
+  // no `staging:private` comment is needed; rows copy into previews. One
+  // share per run; the share dies with the run.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sheep_run_shares (
+      id BIGSERIAL PRIMARY KEY,
+      run_id BIGINT NOT NULL UNIQUE REFERENCES sheep_runs(id) ON DELETE CASCADE,
+      share_key VARCHAR(32) NOT NULL UNIQUE,
+      created_by_user_id INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Public table: one stable invite code per player. A code maps to a
+  // display username that is already public on the global leaderboard, so
+  // nothing here is a secret.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sheep_invites (
+      owner_user_id INTEGER PRIMARY KEY,
+      invite_code VARCHAR(16) NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
 
   // The following list, one row per (owner, friend). A following graph is
   // personal information beyond a public username, so the table is marked
