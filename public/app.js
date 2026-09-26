@@ -35,6 +35,9 @@ const hasDifficultyParam = params.get('difficulty') !== null;
 // The grown-ups fixture can force the sound toggle on (the shipped default
 // for the frozen ?scene=grownups card) without touching localStorage.
 const soundParam = params.get('sound');
+// The grown-ups fixture can force the Night Meadow toggle the same way
+// (?night=1 shows the night scene without touching localStorage).
+const nightParam = params.get('night');
 // Optional landing tab for the leaderboard fixture (?scene=leaderboard&tab=weekly).
 const tabParam = params.get('tab');
 // The two public share surfaces. Their URLs are plain paths, so detection is
@@ -71,6 +74,15 @@ const ADVANCE_DELAY_MS = 2600;
 // settles itself.
 const AUTO_SUBMIT_MS = 650;
 
+// Recolors the sky and ground only. The DOM class carries the CSS side
+// (page sky gradient and the DOM fallback's field), and the renderer gets
+// the same flag so the WebGL ground, hills and fog follow. Nothing else on
+// the page changes color.
+function applyTheme(state) {
+  document.body.classList.toggle('theme-night', !!state.nightOn);
+  renderer?.setNight?.(!!state.nightOn);
+}
+
 const els = {
   countDisplay: document.getElementById('count-display'),
   countWord: document.getElementById('count-word'),
@@ -95,6 +107,7 @@ const els = {
   grownupsPanel: document.getElementById('grownups-panel'),
   grownupsClose: document.getElementById('grownups-close'),
   soundToggle: document.getElementById('sound-toggle'),
+  nightToggle: document.getElementById('night-toggle'),
   startOverBtn: document.getElementById('start-over-btn'),
   roundValue: document.getElementById('round-value'),
   bestValue: document.getElementById('best-value'),
@@ -205,6 +218,7 @@ function buildStaticState() {
       totalCounted: 18,
       communityTotal: 39,
       soundOn: soundParam === null || soundParam === '1',
+      nightOn: nightParam === '1',
     });
   }
   if (sceneParam === 'sharegameover') {
@@ -542,6 +556,8 @@ function updateChrome(state) {
   els.totalValue.textContent = String(state.totalCounted);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
+  els.nightToggle.checked = !!state.nightOn;
+  applyTheme(state);
 
   syncPanels(state);
 }
@@ -622,6 +638,7 @@ function openGrownups(state) {
   els.totalValue.textContent = String(state.totalCounted);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
+  els.nightToggle.checked = !!state.nightOn;
   els.grownupsPanel.hidden = false;
 }
 function closeGrownups() {
@@ -632,6 +649,11 @@ els.grownupsClose.addEventListener('click', closeGrownups);
 els.soundToggle.addEventListener('change', (e) => {
   if (staticMode) return;
   store.setSoundOn(e.target.checked);
+});
+
+els.nightToggle.addEventListener('change', (e) => {
+  if (staticMode) return;
+  store.setNightOn(e.target.checked);
 });
 
 // Picking a level on the briefing card switches the run to that level at

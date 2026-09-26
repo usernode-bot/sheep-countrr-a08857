@@ -63,6 +63,7 @@ export function createDefaultState() {
     totalCounted: 0,
     communityTotal: 0,
     soundOn: false,
+    nightOn: false,
     difficulty: DEFAULT_DIFFICULTY,
   };
 }
@@ -125,6 +126,7 @@ export class StateStore {
         bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
         totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
         soundOn: !!saved.soundOn,
+        nightOn: !!saved.nightOn,
         difficulty: normalizeDifficulty(saved.difficulty),
       };
       this.startRound(this.state.round, { silent: true });
@@ -143,6 +145,7 @@ export class StateStore {
         bestRounds: this.state.bestRounds,
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
+        nightOn: this.state.nightOn,
       }));
     } catch {
       /* storage full or unavailable; the run still works this session */
@@ -162,6 +165,7 @@ export class StateStore {
         totalCounted: Math.max(0, Number(data.totalCounted) || 0),
         communityTotal: Math.max(0, Number(data.communityTotal) || 0),
         soundOn: !!data.soundOn,
+        nightOn: !!data.nightOn,
         difficulty: normalizeDifficulty(data.difficulty),
       };
       this.startRound(this.state.round, { silent: true });
@@ -194,6 +198,7 @@ export class StateStore {
           bestRound: this.bestRound,
           newTaps: taps,
           soundOn: this.state.soundOn,
+          nightOn: this.state.nightOn,
         }),
       });
     } catch {
@@ -235,9 +240,10 @@ export class StateStore {
       ...this.state,
       round: normalizeRound(saved.round),
       bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
-      totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
-      soundOn: !!saved.soundOn,
-      difficulty: normalizeDifficulty(saved.difficulty),
+          totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
+          soundOn: !!saved.soundOn,
+          nightOn: !!saved.nightOn,
+          difficulty: normalizeDifficulty(saved.difficulty),
     };
     this.startRound(this.state.round, { silent: true });
     return this.state;
@@ -361,6 +367,13 @@ export class StateStore {
 
   setSoundOn(on) {
     this.state = { ...this.state, soundOn: !!on };
+    this.saveLocal();
+    this.scheduleSync();
+    this.onChange(this.state);
+  }
+
+  setNightOn(on) {
+    this.state = { ...this.state, nightOn: !!on };
     this.saveLocal();
     this.scheduleSync();
     this.onChange(this.state);
