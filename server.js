@@ -37,6 +37,7 @@ const APP_AUDIENCE = process.env.USERNODE_APP_ID
 // Paths that stay open without authentication. Add a path here (and add it
 // with `app.get`/`app.post` below) if you deliberately want it public.
 // Everything else requires a valid platform-issued JWT.
+const PUBLIC_API_PATHS = new Set(['/health']);
 // The platform's bridge script is injected into the app shell on every app
 // and is centrally served from the app's own hostname — never vendored.
 // Normally the platform's edge answers it before this container sees the
@@ -78,7 +79,6 @@ app.use('/usernode-bridge', (req, res) => {
   });
   upstream.end();
 });
-
 
 // The highest round a client may report, and the most sheep one sync can
 // claim to have tapped. The per-round sheep count lives in

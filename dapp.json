@@ -69,6 +69,17 @@
       "expectText": "Round 5"
     },
     {
+      "name": "Round complete shows the Next round action",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#next-round-btn",
+      "expectText": "Next round"
+    },
+    {
+      "name": "Done counting action is on the play screen",
+      "path": "/?round=1",
+      "expectText": "Done counting"
+    },
+    {
       "name": "Round complete message names the next flock",
       "path": "/?scene=roundcomplete",
       "expectSelector": "#round-complete-title",
