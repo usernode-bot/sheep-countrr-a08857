@@ -1,7 +1,7 @@
 {
   "name": "Sheep countrr",
   "icon": {
-    "emoji": "\ud83d\udc11"
+    "emoji": "🐑"
   },
   "secrets": [],
   "tests": [
@@ -108,6 +108,12 @@
       "path": "/?scene=grownups",
       "expectSelector": "#grownups-panel",
       "expectText": "Best round"
+    },
+    {
+      "name": "Grown-ups panel lists the sound effects toggle",
+      "path": "/?scene=grownups",
+      "expectSelector": "#sound-toggle",
+      "expectText": "Sound effects"
     },
     {
       "name": "No-WebGL fallback renders the same round",

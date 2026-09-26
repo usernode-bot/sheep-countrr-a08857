@@ -17,7 +17,7 @@ import {
   sheepPhrase,
   successMessage,
 } from './rounds.js';
-import { playTapChime, playCelebration } from './sound.js';
+import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
 
 const params = new URLSearchParams(window.location.search);
@@ -217,6 +217,7 @@ async function boot() {
 
   renderer.setState(store.state);
   updateChrome(store.state);
+  setSoundEnabled(!!store.state.soundOn);
   renderA11yList(store.state);
 
   // The briefing covers the board before the first round of a run starts
@@ -278,7 +279,7 @@ function handleTap(index) {
   const result = store.tapSheep(index);
   if (result.outcome === 'counted') {
     renderer.countSheep(index, result.number);
-    if (store.state.soundOn) playTapChime(result.number);
+    playTapChime(result.number);
     renderA11yList(store.state);
     if (store.isComplete()) {
       // Auto-complete: every sheep is marked, so the round closes itself.
@@ -326,6 +327,9 @@ function showRoundIntro(state) {
 function dismissRoundIntro() {
   introOpen = false;
   els.roundIntro.hidden = true;
+  // A soft baa announces the new flock. playBaa checks the sound
+  // setting itself, so no extra gate is needed here.
+  playBaa();
 }
 
 function advanceRound() {
@@ -334,6 +338,7 @@ function advanceRound() {
   store.nextRound();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
+  playBaa();
 }
 
 function restartRun() {
@@ -342,6 +347,7 @@ function restartRun() {
   store.restartRun();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
+  playBaa();
   // A restart is the start of a fresh run, so the briefing comes back.
   // Frozen ?scene= fixtures stay card-free.
   if (!staticMode) showRoundIntro(store.state);
@@ -397,6 +403,7 @@ function syncPanels(state) {
     els.gameOverReason.textContent = state.endedBy === ENDED_DOUBLE_TAP
       ? 'You counted the same sheep twice.'
       : `You said done with ${state.count} of ${sheepPhrase(state.sheepCount)} counted.`;
+    playBaa();
   }
   els.roundComplete.hidden = !passed;
   els.gameOver.hidden = !over;
@@ -406,7 +413,7 @@ function syncPanels(state) {
   clearTimeout(advanceTimer);
   if (passed) {
     renderer?.celebrate?.();
-    if (state.soundOn) playCelebration();
+    playCelebration();
     // Frozen fixtures stay put so a screenshot catches the message.
     if (!staticMode) advanceTimer = setTimeout(advanceRound, ADVANCE_DELAY_MS);
   }
@@ -457,6 +464,7 @@ function openGrownups(state) {
   els.totalValue.textContent = String(state.totalCounted);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
+  setSoundEnabled(!!state.soundOn);
   els.grownupsPanel.hidden = false;
 }
 function closeGrownups() {
@@ -466,6 +474,7 @@ els.grownupsClose.addEventListener('click', closeGrownups);
 
 els.soundToggle.addEventListener('change', (e) => {
   if (staticMode) return;
+  setSoundEnabled(e.target.checked);
   store.setSoundOn(e.target.checked);
 });
 

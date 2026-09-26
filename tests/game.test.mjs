@@ -23,6 +23,7 @@ import {
 import { wanderOffset } from '../public/movement.js';
 import { weekStartUtc, sortScoreRows } from '../public/leaderboard.js';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
+import { isSoundEnabled, setSoundEnabled } from '../public/sound.js';
 
 // A store that behaves exactly like a /?round=N deep link: fixed seeds, and
 // no localStorage or network to reach for from a test process.
@@ -408,6 +409,32 @@ test('a level runs its own curve once selected', () => {
   store.setDifficulty('easy');
   store.startRound(5, { silent: true });
   assert.equal(store.state.sheepCount, sheepForRound(5, 'easy'));
+});
+
+test('the sound enabled flag gates before any AudioContext work', () => {
+  // Off by default: a fresh page never makes noise.
+  setSoundEnabled(false);
+  assert.equal(isSoundEnabled(), false);
+  // The toggle mirrors the shared state's soundOn bit.
+  setSoundEnabled(true);
+  assert.equal(isSoundEnabled(), true);
+  setSoundEnabled(false);
+  assert.equal(isSoundEnabled(), false);
+});
+
+test('the sound toggle persists through save and load', () => {
+  const { store } = newStore();
+  store.setSoundOn(true);
+  assert.equal(store.state.soundOn, true);
+  // A fresh store reading the same storage shape restores the toggle.
+  const saved = { round: 2, difficulty: 'normal', totalCounted: 4, soundOn: true };
+  const { store: restored } = newStore();
+  restored.loadLocalFrom(saved);
+  assert.equal(restored.state.soundOn, true);
+  // And off again stays off.
+  const { store: muted } = newStore();
+  muted.loadLocalFrom({ round: 2, difficulty: 'normal', totalCounted: 4, soundOn: false });
+  assert.equal(muted.state.soundOn, false);
 });
 
 test('the per-difficulty best map survives a local save and load', () => {
