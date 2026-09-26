@@ -7,7 +7,7 @@
 // ribbon and a number plate. Ten sheep is under a hundred draw calls, which
 // is what keeps the low tier smooth.
 import * as THREE from 'three';
-import { layoutPositions, NUMBER_COLORS } from './layout.js';
+import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
 import { MAX_SHEEP, motionForRound, roamRadius } from './rounds.js';
 
@@ -146,6 +146,32 @@ function buildNumberTextures() {
     textures.push(makeTexture(canvas));
   }
   return textures;
+}
+
+// A small cream pill with the sheep's name, floating above its head.
+// Fixed-width canvas so every label shares one sprite scale; the text is
+// centered inside it. Same palette family as the number plates.
+const NAME_FONT = '800 30px "Nunito", ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Segoe UI", system-ui, sans-serif';
+
+function buildNameTexture(name) {
+  const w = 256;
+  const h = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(80, 50, 90, 0.18)';
+  roundRect(ctx, 16, 18, w - 32, h - 22, 26);
+  ctx.fill();
+  ctx.fillStyle = '#fffaf2';
+  roundRect(ctx, 8, 8, w - 16, h - 22, 24);
+  ctx.fill();
+  ctx.fillStyle = '#4a3b5c';
+  ctx.font = NAME_FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, w / 2, h / 2 - 4);
+  return makeTexture(canvas);
 }
 
 function buildCloudTexture() {
@@ -700,6 +726,20 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const pickGeo = new THREE.SphereGeometry(0.9, 8, 6);
   const pickMat = new THREE.MeshBasicMaterial({ visible: false });
   const numberTextures = buildNumberTextures();
+  // Name-label textures, built on demand and shared across rounds: a
+  // name's pill is identical wherever that name appears.
+  const nameTextureCache = new Map();
+  function nameTexture(name) {
+    let tex = nameTextureCache.get(name);
+    if (!tex) {
+      tex = buildNameTexture(name);
+      nameTextureCache.set(name, tex);
+    }
+    return tex;
+  }
+  // Whether floating name labels are on. Toggled from app.js; never
+  // changes counting, only what is drawn.
+  let namesOn = false;
   const starTexture = buildStarTexture();
   const dotTexture = buildDotTexture();
 
@@ -730,6 +770,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function buildFlock(state) {
     lastState = state;
+    namesOn = !!state.namesOn;
     motion = motionForRound(state.round, state.difficulty);
     sheep.forEach((s) => { s.ribbonMat.dispose(); s.numberSprite.material.dispose(); });
     scene.remove(sheepGroup);
@@ -778,6 +819,17 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       numberSprite.visible = false;
       g.add(numberSprite);
 
+      // Optional playful name label above the head. Uncounted sheep float
+      // it where the number plate would sit; counted sheep lift it above
+      // the number plate so the two never overlap.
+      const nameSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: nameTexture(sheepName(state.seed, i)), transparent: true, depthTest: false, fog: false })
+      );
+      nameSprite.scale.set(1.7, 0.425, 1);
+      nameSprite.position.set(0, 1.5, 0.1);
+      nameSprite.visible = namesOn;
+      g.add(nameSprite);
+
       // Large invisible pick target so small fingers land the tap.
       const pick = new THREE.Mesh(pickGeo, pickMat);
       pick.position.y = 0.62;
@@ -802,6 +854,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         ribbon,
         ribbonMat,
         numberSprite,
+        nameSprite,
         counted: false,
         origin: { x: pos.x, z: pos.z },
         heading: g.rotation.y,
@@ -1113,6 +1166,17 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       if (s.numberSprite.visible && s.ribbonPop < 0) {
         s.numberSprite.position.y = 1.55 + (reducedMotion ? 0 : Math.sin(t * 2.2 + s.phase) * 0.035);
       }
+
+      // Name label: a gentle float while grazing; parked above the number
+      // plate once counted, so the two never overlap.
+      if (s.nameSprite) {
+        s.nameSprite.visible = namesOn;
+        if (namesOn) {
+          s.nameSprite.position.y = s.counted
+            ? 2.05
+            : 1.5 + (reducedMotion ? 0 : Math.sin(t * 1.8 + s.phase) * 0.03);
+        }
+      }
     });
 
     clouds.forEach((c) => {
@@ -1194,6 +1258,15 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     setNight(on) {
       applyNight(on);
     },
+    setNames(on) {
+      namesOn = !!on;
+      if (lastState && !!lastState.namesOn !== namesOn) {
+        lastState = { ...lastState, namesOn };
+      }
+      sheep.forEach((s) => {
+        if (s.nameSprite) s.nameSprite.visible = namesOn;
+      });
+    },
     destroy() {
       stop();
       clearTimeout(resizeTimer);
@@ -1206,6 +1279,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
       ripplePool.dispose();
+      nameTextureCache.forEach((tex) => tex.dispose());
       renderer.dispose();
       canvas.remove();
     },

@@ -27,6 +27,7 @@ import {
 } from '../public/rounds.js';
 import { wanderOffset } from '../public/movement.js';
 import { weekStartUtc, sortScoreRows } from '../public/leaderboard.js';
+import { sheepName } from '../public/layout.js';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
 import { isSoundEnabled, setSoundEnabled } from '../public/sound.js';
 
@@ -111,6 +112,30 @@ test('wandering is deterministic, bounded by roamRadius, and never teleports', (
   }
   const m = motionForRound(10);
   assert.notDeepEqual(wanderOffset(7, 1, 12, 1, m), wanderOffset(7, 2, 12, 1, m));
+});
+
+test('name labels are playful, deterministic and drift by seed', () => {
+  // The same sheep in the same round is always named the same, so the 3D
+  // scene, the DOM cards and the a11y mirror cannot disagree.
+  for (const seed of [roundSeed(1), roundSeed(5), roundSeed(9)]) {
+    for (let i = 0; i < 12; i++) {
+      assert.equal(sheepName(seed, i), sheepName(seed, i));
+    }
+  }
+  // A different round shuffles which sheep gets which name.
+  assert.notEqual(sheepName(roundSeed(1), 0), sheepName(roundSeed(3), 0));
+  // Hostile inputs read as slot 0 of seed 0 rather than crashing.
+  assert.equal(typeof sheepName(-1, 0), 'string');
+  assert.equal(sheepName('x', 'y'), sheepName(0, 0));
+  // A flock of twelve never repeats a name within one round.
+  for (const seed of [roundSeed(9), 424242]) {
+    const names = new Set(Array.from({ length: 12 }, (_, i) => sheepName(seed, i)));
+    assert.equal(names.size, 12, `seed ${seed} repeats a name`);
+  }
+  // No em dashes in anything a player reads.
+  for (const name of Array.from({ length: 24 }, (_, i) => sheepName(roundSeed(4) + i, i))) {
+    assert.ok(!name.includes('\u2014'), name);
+  }
 });
 
 test('a deep-link round is reproducible and never grows past the cap', () => {

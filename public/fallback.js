@@ -2,7 +2,7 @@
 // is set for testing. Shares the exact same counting semantics as the
 // 3D scene: same tap contract (onTap(index)), same counted-badge numbers,
 // same pastel per number.
-import { NUMBER_COLORS } from './layout.js';
+import { NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
 import { motionForRound } from './rounds.js';
 
@@ -114,13 +114,34 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       for (const [name, value] of Object.entries(FLEECES[i % FLEECES.length])) {
         btn.style.setProperty(`--${name}`, value);
       }
-      btn.innerHTML = SHEEP_SVG + '<span class="sheep-card-badge" hidden></span>' + '<span class="sheep-tap-ripple" hidden></span>';
+      btn.innerHTML = SHEEP_SVG
+        + '<span class="sheep-name-label" hidden></span>'
+        + '<span class="sheep-card-badge" hidden></span>'
+        + '<span class="sheep-tap-ripple" hidden></span>';
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
       cards.push(btn);
     }
     state.counted.forEach((idx, order) => markCounted(idx, order + 1, false));
+    syncNames(state);
     startDrift();
+  }
+
+  // The optional name label above each card. Same deterministic name the
+  // 3D scene and the a11y list use, so a sheep is called the same thing
+  // whichever way it is drawn.
+  function syncNames(state) {
+    for (let i = 0; i < cards.length; i++) {
+      const label = cards[i] && cards[i].querySelector('.sheep-name-label');
+      if (!label) continue;
+      if (state.namesOn) {
+        label.hidden = false;
+        label.textContent = sheepName(state.seed, i);
+      } else {
+        label.hidden = true;
+        label.textContent = '';
+      }
+    }
   }
 
   // The cards drift with the same seeded motion the 3D flock uses, so a
@@ -241,6 +262,9 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     },
     setNight(on) {
       setNight(on);
+    },
+    setNames(on) {
+      if (current) syncNames({ ...current, namesOn: !!on });
     },
     destroy() {
       cancelAnimationFrame(rafId);
