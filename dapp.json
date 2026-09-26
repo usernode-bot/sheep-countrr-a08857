@@ -116,6 +116,29 @@
       "expectText": "Sound effects"
     },
     {
+      "name": "Night Meadow toggle appears in the grown-ups panel",
+      "path": "/?scene=grownups",
+      "expectSelector": "#night-toggle",
+      "expectText": "Night Meadow",
+      "allowConsoleErrors": true
+    },
+    {
+      "id": "theme.night-meadow",
+      "name": "Night Meadow theme recolors sky and ground",
+      "path": "/?scene=grownups&night=1",
+      "expectSelector": "body.theme-night #grownups-panel",
+      "expectText": "Night Meadow",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/scene.js",
+        "public/state.js",
+        "dapp.json"
+      ],
+      "allowConsoleErrors": true
+    },
+    {
       "name": "No-WebGL fallback renders the same round",
       "path": "/?round=8&renderer=dom",
       "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(11)",

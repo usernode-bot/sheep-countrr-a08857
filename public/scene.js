@@ -33,6 +33,16 @@ const COLORS = {
   fog: '#a1afb8',
 };
 
+// Night Meadow: only the scenery (ground, hills, fog) shifts to its dark
+// counterpart; every sheep color, the flowers and the UI stay as they are.
+const NIGHT_COLORS = {
+  ground: '#3e5c40',
+  hillA: '#33513f',
+  hillB: '#2b4638',
+  hillC: '#243c30',
+  fog: '#2c3d52',
+};
+
 // One plush fleece color per sheep, repeating across bigger flocks. The
 // face stays the same warm tan on every sheep so they all still read as
 // the same little animal, just in different pajamas.
@@ -470,6 +480,7 @@ function detectTier() {
 
 export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, getOverlayRect, getBottomOverlayRect }) {
   let tier = detectTier();
+  let night = false;
 
   const canvas = document.createElement('canvas');
   canvas.className = 'sheep-canvas';
@@ -520,12 +531,26 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     [-9, -13, 9, 2.6, COLORS.hillA], [8, -15, 11, 3.2, COLORS.hillB], [0, -19, 14, 3.4, COLORS.hillC],
     [-16, -17, 10, 3.0, COLORS.hillB], [17, -12, 8, 2.2, COLORS.hillA], [-5, -22, 12, 4.2, COLORS.hillC],
   ];
-  hills.forEach(([x, z, r, h, color]) => {
+  const hillMeshes = [];
+  hills.forEach(([x, z, r, h, color], i) => {
     const m = new THREE.Mesh(hillGeo, new THREE.MeshLambertMaterial({ color }));
     m.scale.set(r, h * 0.42, r * 0.8);
     m.position.set(x, -0.1, z);
     scene.add(m);
+    hillMeshes.push([m, ['hillA', 'hillB', 'hillC'][i % 3]]);
   });
+
+  // Applies the day/night palette to the ground, hills and fog only. The
+  // sky behind the transparent canvas is CSS on the container; the sheep,
+  // trees and flowers keep their colors so they still read as daytime
+  // objects under a dimmer meadow.
+  function applyNight(on) {
+    night = !!on;
+    const c = night ? NIGHT_COLORS : COLORS;
+    ground.material.color.set(c.ground);
+    hillMeshes.forEach(([m, key]) => m.material.color.set(c[key]));
+    scene.fog.color.set(c.fog);
+  }
 
   // A few round toy trees along the back.
   const treeGeo = buildTreeGeometry();
@@ -1059,6 +1084,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     kind: 'three',
     setState(state) {
       buildFlock(state);
+      applyNight(!!state.nightOn);
     },
     countSheep(index, number) {
       markCounted(index, number, true);
@@ -1071,6 +1097,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     },
     resetRound(state) {
       buildFlock(state);
+    },
+    setNight(on) {
+      applyNight(on);
     },
     destroy() {
       stop();
