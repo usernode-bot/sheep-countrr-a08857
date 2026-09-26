@@ -192,10 +192,18 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
 
   function celebrate() {}
 
+  // Night Meadow: the field's ground gradients are CSS variables on the
+  // body class (see index.html), so the DOM renderer only has to mirror
+  // the state flag into its own styling scope. Nothing else changes.
+  function setNight(on) {
+    field.classList.toggle('theme-night', !!on);
+  }
+
   return {
     kind: 'dom',
     setState(state) {
       render(state);
+      setNight(!!state.nightOn);
     },
     countSheep(index, number) {
       markCounted(index, number, true);
@@ -208,6 +216,9 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     },
     resetRound(state) {
       render(state);
+    },
+    setNight(on) {
+      setNight(on);
     },
     destroy() {
       cancelAnimationFrame(rafId);

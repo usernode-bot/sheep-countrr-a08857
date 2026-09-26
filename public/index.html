@@ -97,6 +97,14 @@
       --safe-bottom: var(--un-safe-inset-bottom, env(safe-area-inset-bottom, 0px));
       --safe-left: var(--un-safe-inset-left, env(safe-area-inset-left, 0px));
       --safe-right: var(--un-safe-inset-right, env(safe-area-inset-right, 0px));
+      --meadow-ground-1: #b4e58a;
+      --meadow-ground-2: #8fd06a;
+      --meadow-ground-3: #9fdc74;
+      --meadow-glow: rgba(255,255,255,0.9);
+      --meadow-hill-a: #738886;
+      --meadow-hill-b: #5f7879;
+      --meadow-hill-c: #4f686c;
+      --meadow-fog: #a1afb8;
     }
 
     /* The `hidden` attribute and a Tailwind display utility (e.g. `flex`)
@@ -104,6 +112,31 @@
        after the browser default, so the utility would otherwise win and
        the element would stay visible. Force `hidden` to actually hide. */
     [hidden] { display: none !important; }
+
+    /* Night Meadow: recolors ONLY the sky and ground scenery. The counter
+       plate, pills, buttons and all text keep the day palette, so the
+       counter text contrast is unchanged; the night ground tones stay far
+       enough from the plate's cream that the plate itself is what carries
+       the >= 4.5:1 ratio in both themes. */
+    body.theme-night {
+      --sky-top: #1f2a44;
+      --sky-mid: #35486b;
+      --sky-low: #4b6172;
+      --horizon: #3d5a45;
+      --meadow-ground-1: #3e5c40;
+      --meadow-ground-2: #2f4a34;
+      --meadow-ground-3: #35553a;
+      --meadow-glow: rgba(214, 226, 255, 0.55);
+      --meadow-hill-a: #33513f;
+      --meadow-hill-b: #2b4638;
+      --meadow-hill-c: #243c30;
+      --meadow-fog: #2c3d52;
+    }
+    body.theme-night #scene-root {
+      background:
+        radial-gradient(60% 40% at 78% 8%, rgba(200, 214, 255, 0.5), rgba(200, 214, 255, 0) 70%),
+        linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
+    }
 
     html, body { height: 100%; overscroll-behavior: none; }
     body {
@@ -378,12 +411,12 @@
       overflow-y: auto;
       overscroll-behavior: contain;
       background:
-        radial-gradient(45% 22% at 12% 92%, #b4e58a 0 60%, transparent 61%),
-        radial-gradient(60% 26% at 70% 96%, #8fd06a 0 60%, transparent 61%),
-        radial-gradient(70% 30% at 40% 104%, #9fdc74 0 60%, transparent 61%),
-        radial-gradient(30% 14% at 88% 78%, #b4e58a 0 60%, transparent 61%),
-        radial-gradient(14% 8% at 22% 66%, rgba(255,255,255,0.9) 0 60%, transparent 61%),
-        radial-gradient(18% 9% at 74% 58%, rgba(255,255,255,0.9) 0 60%, transparent 61%),
+        radial-gradient(45% 22% at 12% 92%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(60% 26% at 70% 96%, var(--meadow-ground-2) 0 60%, transparent 61%),
+        radial-gradient(70% 30% at 40% 104%, var(--meadow-ground-3) 0 60%, transparent 61%),
+        radial-gradient(30% 14% at 88% 78%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(14% 8% at 22% 66%, var(--meadow-glow) 0 60%, transparent 61%),
+        radial-gradient(18% 9% at 74% 58%, var(--meadow-glow) 0 60%, transparent 61%),
         transparent;
     }
     .sheep-fallback-grid {
@@ -711,6 +744,11 @@
         <label class="setting-row">
           <span>Sound effects</span>
           <input id="sound-toggle" type="checkbox">
+        </label>
+
+        <label class="setting-row">
+          <span>Night Meadow</span>
+          <input id="night-toggle" type="checkbox">
         </label>
 
         <div class="stats-card">
