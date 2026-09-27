@@ -50,6 +50,13 @@ keeping track of who you already counted does not.
   total shown in the grown-ups panel. A half-counted round is never
   restored, since returning to taps you do not remember making would end
   the run on the next tap.
+- **Leaderboard** (grown-ups gate): a card with three tabs. Global ranks
+  the best round ever reached; This week ranks the best round achieved in
+  the current week (Monday 00:00 UTC to Sunday night, the same everywhere);
+  Friends ranks the Homeroom handles you follow, picked from the platform's
+  user directory with a typeahead field. Each finished run records its
+  round for the weekly tab. `/\?scene=leaderboard` freezes the card with
+  demo rows (add `&tab=weekly` or `&tab=friends` for the other tabs).
 - Reduced-motion preference holds the flock still and drops the tap
   animations in both renderers.
 

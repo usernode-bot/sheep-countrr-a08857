@@ -83,7 +83,7 @@
   <style>
     :root {
       --plum: #4a3b5c;
-      --plum-soft: #8a6fa3;
+      --plum-soft: #6b5290;
       --cream: #fffaf2;
       --pink: #ff8fab;
       --pink-soft: #ffd6e3;
@@ -97,6 +97,15 @@
       --safe-bottom: var(--un-safe-inset-bottom, env(safe-area-inset-bottom, 0px));
       --safe-left: var(--un-safe-inset-left, env(safe-area-inset-left, 0px));
       --safe-right: var(--un-safe-inset-right, env(safe-area-inset-right, 0px));
+      --meadow-ground-1: #b4e58a;
+      --meadow-ground-2: #8fd06a;
+      --meadow-ground-3: #9fdc74;
+      --meadow-glow: rgba(255,255,255,0.9);
+      --meadow-hill-a: #738886;
+      --meadow-hill-b: #5f7879;
+      --meadow-hill-c: #4f686c;
+      --meadow-fog: #a1afb8;
+      --calm-motion-speed: 1;
     }
 
     /* The `hidden` attribute and a Tailwind display utility (e.g. `flex`)
@@ -104,6 +113,58 @@
        after the browser default, so the utility would otherwise win and
        the element would stay visible. Force `hidden` to actually hide. */
     [hidden] { display: none !important; }
+
+    /* Night Meadow: recolors ONLY the sky and ground scenery. The counter
+       plate, pills, buttons and all text keep the day palette, so the
+       counter text contrast is unchanged; the night ground tones stay far
+       enough from the plate's cream that the plate itself is what carries
+       the >= 4.5:1 ratio in both themes. */
+    body.theme-night {
+      --sky-top: #1f2a44;
+      --sky-mid: #35486b;
+      --sky-low: #4b6172;
+      --horizon: #3d5a45;
+      --meadow-ground-1: #3e5c40;
+      --meadow-ground-2: #2f4a34;
+      --meadow-ground-3: #35553a;
+      --meadow-glow: rgba(214, 226, 255, 0.55);
+      --meadow-hill-a: #33513f;
+      --meadow-hill-b: #2b4638;
+      --meadow-hill-c: #243c30;
+      --meadow-fog: #2c3d52;
+    }
+    /* Calm mode: the same move as Night Meadow, but for tempo. Only the
+       meadow's colors soften and the sheep's speed dials down; the
+       counter, pills, buttons and all text keep their palette and the
+       flock, seeds and round numbering stay exactly as they are. The DOM
+       fallback's card drift uses the same CSS variable, so both renderers
+       slow down together. */
+    body.theme-calm {
+      --sky-top: #cfe3ff;
+      --sky-mid: #c6ddf2;
+      --sky-low: #e3f0f7;
+      --horizon: #fff4e2;
+      --meadow-ground-1: #cfe6b2;
+      --meadow-ground-2: #a9d48c;
+      --meadow-ground-3: #b6dd99;
+      --meadow-glow: rgba(255,255,255,0.6);
+      --meadow-hill-a: #7f9691;
+      --meadow-hill-b: #6d8484;
+      --meadow-hill-c: #5c7478;
+      --meadow-fog: #aebcc4;
+      --calm-motion-speed: 0.35;
+    }
+    body.theme-calm #scene-root {
+      background:
+        radial-gradient(60% 40% at 78% 8%, rgba(255, 244, 200, 0.4), rgba(255, 244, 200, 0) 70%),
+        linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
+    }
+
+    body.theme-night #scene-root {
+      background:
+        radial-gradient(60% 40% at 78% 8%, rgba(200, 214, 255, 0.5), rgba(200, 214, 255, 0) 70%),
+        linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
+    }
 
     html, body { height: 100%; overscroll-behavior: none; }
     body {
@@ -132,7 +193,7 @@
       padding: 0.55rem 1.6rem 0.7rem;
       border-radius: 2rem;
       background: var(--cream);
-      border: 4px solid var(--pink-soft);
+      border: 3px solid #8f6ba8;
       box-shadow:
         0 10px 24px rgba(90, 60, 120, 0.18),
         0 4px 0 #f4c6d6,
@@ -191,6 +252,49 @@
       box-shadow: 0 6px 16px rgba(90, 60, 120, 0.16);
     }
 
+    /* ---- Speed Round countdown pill: the round pill's shape, in the
+       celebratory yellow the Best Round chip already uses, so the clock
+       reads as the mode's own status rather than a warning. ---- */
+    .speed-timer {
+      background: rgba(255, 240, 166, 0.94);
+      border-color: #e0b93c;
+      color: #5d4a12;
+      font-variant-numeric: tabular-nums;
+      min-width: 4.5rem;
+      text-align: center;
+    }
+    .speed-timer[hidden] { display: none; }
+
+    /* ---- Pass-and-play Duel ---- */
+    /* The turn clock is the Speed Round pill's shape in the dusk palette,
+       so the two modes never fight over the count plate. */
+    .duel-timer {
+      font-variant-numeric: tabular-nums;
+      min-width: 4.5rem;
+      text-align: center;
+    }
+    .duel-timer[hidden] { display: none; }
+    .duel-score-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-height: 3rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 1.25rem;
+      background: #ffffff08;
+      border: 2px solid #ffffff20;
+      font-weight: 800;
+    }
+    .duel-score-name { color: #c0c7cf; text-align: left; }
+    .duel-score-value { font-weight: 900; color: #ecdbc0; font-variant-numeric: tabular-nums; }
+    .setting-row.speed-toggle-row {
+      width: 100%;
+      border: 2px solid #9da6af;
+      font-weight: 600;
+    }
+    .setting-row.speed-toggle-row input { accent-color: #a18cb8; }
+
     /* ---- Bottom action bar ---- */
     #action-bar {
       pointer-events: none;
@@ -212,16 +316,16 @@
       min-width: 13rem;
       padding: 0.8rem 2.2rem;
       border-radius: 9999px;
-      background: var(--pink);
-      color: #fff;
+      background: var(--plum);
+      color: var(--cream);
       font-size: 1.35rem;
       font-weight: 900;
       letter-spacing: 0.01em;
-      box-shadow: 0 6px 0 #e35d8a, 0 12px 22px rgba(255, 127, 167, 0.3);
+      border: 2px solid #8f6ba8;
       touch-action: manipulation;
     }
-    .submit-btn:active { transform: translateY(5px); box-shadow: 0 2px 0 #e35d8a; }
-    .submit-btn[disabled] { opacity: 0.5; box-shadow: none; transform: none; }
+    .submit-btn:active { transform: translateY(5px); box-shadow: none; }
+    .submit-btn[disabled] { opacity: 0.5; box-shadow: none; transform: none; color: #565f6a; }
 
     /* ---- Grown-ups corner button: big target, quiet look ---- */
     #grownups-btn {
@@ -230,13 +334,13 @@
       width: 3.5rem;
       height: 3.5rem;
       border-radius: 9999px;
-      background: rgba(255, 255, 255, 0.55);
-      color: rgba(74, 59, 92, 0.55);
+      background: var(--plum);
+      color: var(--cream);
       font-size: 1.35rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 2px 0 rgba(255,255,255,0.8), 0 4px 12px rgba(90, 60, 120, 0.12);
+      box-shadow: 0 4px 12px rgba(90, 60, 120, 0.12);
       -webkit-touch-callout: none;
       touch-action: none;
     }
@@ -306,13 +410,14 @@
       font-size: 1.5rem;
       font-weight: 900;
       letter-spacing: 0.01em;
-      color: #fff;
-      background: linear-gradient(180deg, #ff9fbb 0%, #ff7fa7 100%);
-      box-shadow: 0 7px 0 #e35d8a, 0 12px 22px rgba(255, 127, 167, 0.35);
-      text-shadow: 0 2px 0 rgba(160, 50, 90, 0.35);
+      color: var(--cream);
+      background: var(--plum);
+      box-shadow: none;
+      text-shadow: none;
       transition: transform 0.08s ease, box-shadow 0.08s ease;
     }
-    .big-btn:active { transform: translateY(5px); box-shadow: 0 2px 0 #e35d8a, 0 6px 12px rgba(255, 127, 167, 0.25); }
+    .big-btn:active { transform: translateY(5px); box-shadow: none; }
+    .big-btn:hover { background: #6b5580; }
     .soft-btn {
       width: 100%;
       min-height: 3.5rem;
@@ -341,7 +446,7 @@
       min-height: 2.75rem;
       min-width: 4.5rem;
       border-radius: 1rem;
-      border: 3px solid var(--pink-soft);
+      border: 2px solid #8f6ba8;
       background: var(--cream);
       font-weight: 800;
       font-size: 1.1rem;
@@ -351,7 +456,7 @@
     .setting-row input[type="checkbox"] {
       width: 2rem;
       height: 2rem;
-      accent-color: var(--pink);
+      accent-color: var(--plum);
     }
     .stats-card {
       border-radius: 1.5rem;
@@ -364,6 +469,19 @@
       font-weight: 700;
       color: var(--plum-soft);
     }
+    /* Export status line: quiet feedback under the export button. Muted
+       plum for progress and success; the friend-error pink carries failures,
+       so no new palette is introduced. */
+    .export-status {
+      margin: 0;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--plum-soft);
+    }
+    .export-status.is-error {
+      color: #e35d8a;
+    }
+
     .stats-card .stat-value {
       font-weight: 900;
       color: var(--plum);
@@ -377,12 +495,12 @@
       overflow-y: auto;
       overscroll-behavior: contain;
       background:
-        radial-gradient(45% 22% at 12% 92%, #b4e58a 0 60%, transparent 61%),
-        radial-gradient(60% 26% at 70% 96%, #8fd06a 0 60%, transparent 61%),
-        radial-gradient(70% 30% at 40% 104%, #9fdc74 0 60%, transparent 61%),
-        radial-gradient(30% 14% at 88% 78%, #b4e58a 0 60%, transparent 61%),
-        radial-gradient(14% 8% at 22% 66%, rgba(255,255,255,0.9) 0 60%, transparent 61%),
-        radial-gradient(18% 9% at 74% 58%, rgba(255,255,255,0.9) 0 60%, transparent 61%),
+        radial-gradient(45% 22% at 12% 92%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(60% 26% at 70% 96%, var(--meadow-ground-2) 0 60%, transparent 61%),
+        radial-gradient(70% 30% at 40% 104%, var(--meadow-ground-3) 0 60%, transparent 61%),
+        radial-gradient(30% 14% at 88% 78%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(14% 8% at 22% 66%, var(--meadow-glow) 0 60%, transparent 61%),
+        radial-gradient(18% 9% at 74% 58%, var(--meadow-glow) 0 60%, transparent 61%),
         transparent;
     }
     .sheep-fallback-grid {
@@ -421,8 +539,27 @@
       animation: none;
     }
     .sheep-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    /* Soft tap ripple: an expanding ring from where the card was tapped.
+       Purely visual, skipped entirely under prefers-reduced-motion. */
+    .sheep-tap-ripple {
+      position: absolute;
+      inset: -6%;
+      border-radius: 34%;
+      border: 4px solid var(--pink-soft, #ffd6e3);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .sheep-tap-ripple.is-rippling { animation: sheep-tap-ripple 0.55s ease-out; }
+    @keyframes sheep-tap-ripple {
+      0% { opacity: 0.55; transform: scale(0.72); }
+      100% { opacity: 0; transform: scale(1.18); }
+    }
     .sheep-bow { opacity: 0; transform: scale(0); transform-origin: 60px 80px; transition: transform 0.35s cubic-bezier(.34,1.56,.64,1), opacity 0.2s; }
     .is-counted .sheep-bow { opacity: 1; transform: scale(1); }
+    /* Calm mode: a gentle recolor of the fleece SVG instead of a new
+       drawing. The sheep keeps its shape, its eyes and its badge; only
+       the wash gets softer. */
+    body.theme-calm .sheep-card .sheep-svg { filter: saturate(0.5) opacity(0.92); }
     .sheep-eyes { transform-origin: 60px 58px; animation: blink 4.5s infinite; animation-delay: var(--bob-delay, 0s); }
     @keyframes blink {
       0%, 92%, 100% { transform: scaleY(1); }
@@ -432,6 +569,30 @@
       0%, 100% { transform: translateY(0); }
       50% { transform: translateY(-6px); }
     }
+    /* Optional name label: a small cream pill above each card, shown only
+       when the grown-ups toggle is on. Reads as the sheep's own name, in
+       the same palette family as the counted badge. */
+    .sheep-name-label {
+      position: absolute;
+      top: -34px;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 120%;
+      padding: 0.15rem 0.7rem;
+      border-radius: 9999px;
+      background: var(--cream);
+      color: var(--plum);
+      font-size: 1rem;
+      font-weight: 900;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border: 3px solid var(--pink-soft);
+      box-shadow: 0 3px 0 rgba(74, 59, 92, 0.12);
+      pointer-events: none;
+    }
+    [hidden].sheep-name-label { display: none; }
+
     .sheep-card-badge {
       position: absolute;
       top: -10px;
@@ -467,6 +628,90 @@
     .sheep-card[data-revealed] .wolf-tail { transform: none; opacity: 1; }
     .sheep-card[data-revealed] { --fleece: #cfc9bd; --fleece-light: #e2ddd2; --fleece-shade: #b3ada2; }
 
+    /* ---- Leaderboard card ---- */
+    #leaderboard-tabs {
+      display: flex;
+      gap: 0.5rem;
+    }
+    #leaderboard-tabs button {
+      flex: 1;
+      min-height: 3rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: 1.25rem;
+      border: 3px solid var(--pink-soft);
+      background: var(--cream);
+      color: var(--plum);
+      font-weight: 900;
+      font-size: 1.05rem;
+      letter-spacing: 0.03em;
+    }
+    #leaderboard-tabs button[aria-selected="true"] {
+      background: var(--pink-soft);
+    }
+    .lb-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-height: 3rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 1.25rem;
+      background: #fff;
+      box-shadow: 0 3px 0 #f0e2f7;
+      font-weight: 800;
+      color: var(--plum-soft);
+    }
+    .lb-row.is-me { background: #fff0f4; }
+    .lb-row .lb-rank { min-width: 1.6rem; font-weight: 900; color: var(--plum); }
+    .lb-row .lb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+    .lb-row .lb-score { font-weight: 900; color: var(--plum); }
+    .lb-row .lb-remove {
+      width: 2.25rem; height: 2.25rem;
+      border-radius: 9999px;
+      background: transparent;
+      border: none;
+      color: var(--plum-soft);
+      font-size: 1.2rem;
+      font-weight: 900;
+      line-height: 1;
+      flex: none;
+    }
+    .lb-note { margin: 0; text-align: center; font-weight: 800; color: var(--plum-soft); }
+    #friend-add { display: flex; flex-direction: column; gap: 0.5rem; }
+    #friend-add .friend-input-row { display: flex; align-items: center; gap: 0.5rem; }
+    .friend-label { font-weight: 900; color: var(--plum); flex: none; }
+    #friend-input {
+      flex: 1;
+      min-height: 3rem;
+      border-radius: 1.25rem;
+      border: 3px solid var(--pink-soft);
+      background: var(--cream);
+      color: var(--plum);
+      font-weight: 800;
+      font-size: 1.05rem;
+      padding: 0 1rem;
+    }
+    #friend-error { margin: 0; color: #e35d8a; font-weight: 800; }
+    #friend-results {
+      display: none;
+      flex-direction: column;
+      border-radius: 1.25rem;
+      background: var(--cream);
+      border: 3px solid var(--pink-soft);
+      overflow: hidden;
+    }
+    #friend-results.open { display: flex; }
+    #friend-results button {
+      min-height: 2.75rem;
+      padding: 0.4rem 1rem;
+      border: none;
+      background: transparent;
+      color: var(--plum);
+      font-weight: 800;
+      text-align: left;
+    }
+    #friend-results button:hover { background: var(--pink-soft); }
+
     .visually-hidden {
       position: absolute;
       width: 1px; height: 1px;
@@ -493,6 +738,7 @@
     @media (prefers-reduced-motion: reduce) {
       .sheep-card, .sheep-eyes, .celebration-sheep, .celebration-sheep span { animation: none; }
       .count-pop, .panel-pop { animation: none; }
+      .sheep-tap-ripple { animation: none; opacity: 0; }
     }
     /* Bedtime tuning: muted dusk, quiet controls, no flashing rewards. */
     :root {
@@ -509,31 +755,47 @@
     }
     body { margin: 0; background: #283448; -webkit-font-smoothing: antialiased; }
     #scene-root { background: linear-gradient(180deg, var(--sky-top), var(--sky-mid) 40%, var(--horizon)); }
-    .count-plate { background: #303d4bea; border: 1px solid #ffffff26; box-shadow: none; padding: .65rem 1.8rem; }
+    .count-plate { background: #303d4b; border: 2px solid #9da6af; box-shadow: none; padding: .65rem 1.8rem; }
     .count-plate::before, .count-plate::after { display: none; }
     #count-display { font-size: 3.5rem; font-weight: 600; text-shadow: none; }
-    #count-word { font-weight: 500; letter-spacing: .02em; text-transform: none; }
-    #grownups-btn { color: #e3e3e9; background: #303d4b9e; box-shadow: none; }
-    #play-hint { color: #f5f0e6; font-weight: 500; text-shadow: 0 1px 4px #283448; }
-    .round-pill { background: #303d4bea; border: 1px solid #ffffff26; color: #f0e9de; font-weight: 600; letter-spacing: .04em; text-transform: none; box-shadow: none; }
-    .submit-btn { background: #c9c0d4; color: #2c3545; font-weight: 600; box-shadow: none; }
-    .submit-btn:active { transform: translateY(2px); box-shadow: none; }
+    #count-word { font-weight: 500; letter-spacing: .02em; text-transform: none; color: #565f6a; }
+    #grownups-btn { color: #e3e3e9; background: #3c4a59; box-shadow: none; }
+    #play-hint { margin: 0 .5rem; padding: .35rem 1rem; border-radius: 9999px; background: #283448f5; color: #f5f0e6; font-weight: 500; text-shadow: none; }
+    .round-pill { background: #303d4b; border: 2px solid #9da6af; color: #f0e9de; font-weight: 600; letter-spacing: .04em; text-transform: none; box-shadow: none; }
+    .submit-btn { background: #283448; color: #f0e9de; font-weight: 600; box-shadow: 0 6px 0 #f0e9de, 0 12px 22px rgba(255, 127, 167, 0.3); border: 2px solid #9da6af; }
+    .submit-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #f0e9de; }
     .panel-backdrop { background: #202b3bb8; }
-    .panel-card { background: var(--cream); border: 1px solid #ffffff26; box-shadow: none; }
+    .panel-card { background: var(--cream); border: 2px solid #9da6af; box-shadow: none; }
     .panel-pop { animation: panel-rest .8s ease-out; }
     @keyframes panel-rest { from { opacity: 0; } to { opacity: 1; } }
     .celebration-title { font-weight: 500; font-size: 1.75rem; }
-    .celebration-total { color: #ecdbc0; }
+    .celebration-total { color: #5d4a12; background: #fbe7b8; box-shadow: 0 3px 0 #f2d76a; }
     .bedtime-eyebrow, .bedtime-message { margin: 0; color: #c0c7cf; }
-    .big-btn { background: #c9c0d4; color: #2c3545; box-shadow: none; border: 0; font-weight: 600; }
-    .big-btn:hover { background: #d3ccdc; }
-    .soft-btn, #grownups-close { background: #ffffff12; color: #f0e9de; box-shadow: none; border: 1px solid #ffffff26; }
+    .big-btn { background: #283448; color: #f0e9de; box-shadow: none; border: 2px solid #34435a; font-weight: 600; }
+    .big-btn:hover { background: #34435a; border-color: #9da6af; }
+    .soft-btn, #grownups-close { background: #ffffff12; color: #f0e9de; box-shadow: none; border: 2px solid #9da6af; }
+    /* 3-2-1 countdown card: one quiet number at a time, sized like the
+       count plate's big digits so the eye is already warmed up. A gentle
+       fade replaces each number; prefers-reduced-motion stops it. */
+    .countdown-card { cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+    .countdown-number {
+      margin: 0.25rem 0;
+      font-size: 4.6rem;
+      line-height: 1;
+      font-weight: 600;
+      color: var(--plum);
+      font-variant-numeric: tabular-nums;
+      animation: countdown-rest 0.7s ease-in-out;
+    }
+    @keyframes countdown-rest { from { opacity: 0.25; } to { opacity: 1; } }
+    .countdown-card .soft-btn { pointer-events: auto; }
     .setting-row, .stats-card { background: #ffffff08; border-color: #ffffff20; }
-    .setting-row select { color: #f0e9de; background: #283448; }
+    .setting-row select { color: #f0e9de; background: #283448; border-color: #9da6af; }
+    .setting-row input[type="checkbox"] { accent-color: #a18cb8; }
     .stat-value { color: #ecdbc0; }
     .count-pop { animation: count-rest .8s ease-in-out; }
     @keyframes count-rest { 50% { transform: scale(1.025); } }
-    button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #ecdbc0; outline-offset: 4px; }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #283448; outline-offset: 2px; box-shadow: 0 0 0 3px #f0e9de; }
     .sheep-fallback-field { background:
       radial-gradient(65% 25% at 15% 100%, #738886 0 70%, transparent 71%),
       radial-gradient(90% 35% at 85% 110%, #5f7879 0 70%, transparent 71%); }
@@ -542,10 +804,15 @@
     .sheep-card.is-counted { background: #ffffff15; border-color: #b7afc5; }
     .is-counted .sheep-eyes { animation: none; transform: scaleY(.14); }
     .sheep-card-badge { box-shadow: none; }
+    .submit-btn[disabled] { opacity: 1; background: var(--pink); color: #3d4653; box-shadow: none; border-color: #9da6af; }
     #a11y-sheep-list:focus-within { clip: auto; width: auto; height: auto; inset: auto 12px 132px; white-space: normal; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #303d4b; border-radius: 16px; }
     #a11y-sheep-list button { min-height: 48px; padding: 8px; }
     @media (max-height: 520px) { #play-hint { font-size: .875rem; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+    /* Calm mode: the DOM cards' drift follows the same speed dial the
+       movement module applies in JS, via a CSS lookup the script reads
+       back (getComputedStyle). One number, three surfaces. */
+    body.theme-calm .sheep-card { animation-duration: 7s; }
   </style>
 </head>
 <body class="h-full overflow-hidden">
@@ -557,9 +824,24 @@
     <!-- Round and running tap count, on screen at all times. -->
     <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex flex-col items-center gap-2">
       <div id="round-badge" class="round-pill">Round 1</div>
+      <div id="speed-timer" class="round-pill speed-timer" hidden aria-live="off">30</div>
+      <div id="duel-turn-clock" class="round-pill duel-timer" hidden aria-live="off">45</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
         <span id="count-display">0</span>
         <span id="count-word">of 1 sheep</span>
+      </div>
+    </div>
+
+    <!-- On the public invite page only: a read-only card naming the game
+         and the inviter, with one open button. The game chrome below stays
+         visible behind it, untouched. -->
+    <div id="invite-card" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+        <p class="celebration-sheep" aria-hidden="true">&#128017;</p>
+        <p class="celebration-title">Sheep countrr</p>
+        <p id="invite-tagline" hidden class="bedtime-message">Count sheep before they scatter.</p>
+        <p id="invite-invitee" hidden class="bedtime-message"></p>
+        <a id="invite-button" class="big-btn" href="/app/sheep-countrr-a08857/full" target="_top">Open Sheep countrr</a>
       </div>
     </div>
 
@@ -573,6 +855,11 @@
 
     <!-- Hidden accessible mirror of every sheep, for keyboard/screen-reader use. -->
     <div id="a11y-sheep-list" class="visually-hidden"></div>
+    <!-- The round ladder's length, mirrored for screen readers (visually
+         the round pill carries it). A static line, not an aria-live one:
+         it says where the run is, not what just happened, so it must not
+         interrupt the sheep taps the list announces. -->
+    <p id="a11y-round-progress" class="visually-hidden">Round 1 of 9.</p>
 
     <!-- Bottom action bar: the hint, and the button that ends the round. -->
     <div id="action-bar" class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2">
@@ -580,6 +867,19 @@
       <button id="submit-count" type="button" class="submit-btn">
         Done counting
       </button>
+    </div>
+
+    <!-- 3-2-1 countdown: a large, quiet breath before a round starts, so
+         young players can ready their eyes. One tap anywhere (or on the
+         button) skips the rest. Plain DOM, so the card fallback shows it
+         exactly the same as the canvas path. -->
+    <div id="countdown-overlay" hidden class="panel-backdrop absolute inset-0 flex items-center justify-center">
+      <div class="panel-card countdown-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-3">
+        <p class="bedtime-eyebrow">Get ready</p>
+        <p id="countdown-number" class="countdown-number">3</p>
+        <p id="countdown-status" class="visually-hidden" role="status"></p>
+        <button id="countdown-skip-btn" type="button" class="soft-btn">Start now</button>
+      </div>
     </div>
 
     <!-- Round passed: the success state. Praise first, then the round just
@@ -603,8 +903,27 @@
         <p id="game-over-reason" class="bedtime-message">Some sheep were left uncounted.</p>
         <p id="game-over-streak" class="bedtime-message" hidden>You dodged some wolf rounds in a row.</p>
         <p class="celebration-title">You reached round <span id="game-over-round" class="celebration-total">1</span>.</p>
+        <p id="shared-by" hidden class="bedtime-message"></p>
         <button id="restart-btn" type="button" class="big-btn">
           Start again
+        </button>
+        <button id="share-btn" type="button" class="big-btn">
+          Share result
+        </button>
+      </div>
+    </div>
+
+    <!-- Pass-and-play Duel: the handoff and results card. Same panel
+         grammar as the game-over and briefing cards. -->
+    <div id="duel-panel" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+        <p class="bedtime-eyebrow">Pass and play</p>
+        <p id="duel-panel-title" class="celebration-title">Pass the device</p>
+        <p id="duel-panel-body" class="bedtime-message"></p>
+        <div id="duel-panel-scores" class="flex flex-col gap-2 w-full"></div>
+        <p id="duel-panel-hint" class="bedtime-message"></p>
+        <button id="duel-panel-btn" type="button" class="big-btn">
+          Start counting
         </button>
       </div>
     </div>
@@ -619,6 +938,22 @@
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
         <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
         <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Counting it ends the run.</p>
+        <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
+        <label id="speed-toggle-row" class="setting-row speed-toggle-row" for="speed-toggle">
+          <span>Speed Round</span>
+          <input id="speed-toggle" type="checkbox">
+        </label>
+        <label id="duel-toggle-row" class="setting-row speed-toggle-row" for="duel-toggle">
+          <span>Pass-and-play Duel</span>
+          <input id="duel-toggle" type="checkbox">
+        </label>
+
+        <div id="difficulty-picker" role="radiogroup" aria-label="Difficulty" class="flex flex-wrap justify-center gap-2">
+          <button type="button" class="difficulty-pill" data-difficulty="easy" role="radio" aria-checked="false">Easy</button>
+          <button type="button" class="difficulty-pill" data-difficulty="normal" role="radio" aria-checked="true">Normal</button>
+          <button type="button" class="difficulty-pill" data-difficulty="hard" role="radio" aria-checked="false">Hard</button>
+          <button type="button" class="difficulty-pill" data-difficulty="expert" role="radio" aria-checked="false">Expert</button>
+        </div>
         <button id="start-counting-btn" type="button" class="big-btn">
           Start counting
         </button>
@@ -634,12 +969,28 @@
         </div>
 
         <label class="setting-row">
-          <span>Sound</span>
+          <span>Sound effects</span>
           <input id="sound-toggle" type="checkbox">
+        </label>
+
+        <label class="setting-row">
+          <span>Night Meadow</span>
+          <input id="night-toggle" type="checkbox">
+        </label>
+
+        <label class="setting-row">
+          <span>Calm mode</span>
+          <input id="calm-toggle" type="checkbox">
+        </label>
+
+        <label class="setting-row">
+          <span>Name labels</span>
+          <input id="names-toggle" type="checkbox">
         </label>
 
         <div class="stats-card">
           <div class="flex justify-between"><span>This round</span><span id="round-value" class="stat-value">1</span></div>
+          <div class="flex justify-between"><span>Difficulty</span><span id="difficulty-value" class="stat-value">Normal</span></div>
           <div class="flex justify-between"><span>Best round</span><span id="best-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="stat-value">0</span></div>
           <div class="flex justify-between"><span>Best safe streak</span><span id="best-streak-value" class="stat-value">0</span></div>
@@ -647,13 +998,114 @@
           <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="stat-value">0</span></div>
         </div>
 
+        <button id="export-btn" type="button" class="soft-btn" aria-describedby="export-status">
+          Export progress (CSV)
+        </button>
+        <p id="export-status" role="status" aria-live="polite" class="export-status" hidden></p>
+
+        <button id="leaderboard-btn" type="button" class="soft-btn">
+          Leaderboard
+        </button>
+
         <button id="start-over-btn" type="button" class="soft-btn">
           Start over at round 1
         </button>
       </div>
     </div>
+
+    <!-- Leaderboard: Global, Friends and This week, behind the same
+         grown-ups gate as the rest of the panel. -->
+    <div id="leaderboard" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+      <div class="panel-card panel-pop w-full max-w-sm p-6 flex flex-col gap-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-2xl font-black">Leaderboard</h2>
+          <button id="leaderboard-close" type="button" class="w-12 h-12 rounded-full bg-white shadow-sm text-xl font-black flex items-center justify-center" aria-label="Close">&#10005;</button>
+        </div>
+
+        <div id="leaderboard-tabs" role="tablist">
+          <button id="tab-global" type="button" role="tab" aria-selected="true">Global</button>
+          <button id="tab-friends" type="button" role="tab" aria-selected="false">Friends</button>
+          <button id="tab-weekly" type="button" role="tab" aria-selected="false">This week</button>
+        </div>
+
+        <div id="friend-add" hidden>
+          <div class="friend-input-row">
+            <label class="friend-label" for="friend-input">Add friend</label>
+            <input id="friend-input" type="text" autocomplete="off" spellcheck="false" placeholder="Type a handle" aria-label="Add friend">
+          </div>
+          <div id="friend-results"></div>
+          <p id="friend-error" hidden></p>
+        </div>
+        <button id="invite-friend-btn" type="button" class="big-btn">
+          Invite a friend
+        </button>
+
+        <div id="leaderboard-list" class="stats-card" aria-live="polite"></div>
+      </div>
+    </div>
   </div>
 
+  <style>
+    /* Difficulty pills on the Get ready card, in the dusk chrome's palette.
+       Explicit colours rather than --plum/--pink: the Bedtime tuning block
+       redefines those as cream and grey-lavender, which on a light pill
+       left the labels unreadable (1.05:1). Unselected pills match the soft
+       buttons (cream label on the dark card, about 7:1); the selected
+       level flips to a cream fill with a deep plum label (about 10:1), so
+       it stays distinct from the dark Start counting button. */
+    .difficulty-pill {
+      min-height: 2.75rem;
+      padding: 0 1.4rem;
+      border-radius: 9999px;
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      color: #f0e9de;
+      background: #ffffff12;
+      border: 2px solid #9da6af;
+      box-shadow: none;
+      touch-action: manipulation;
+    }
+    .difficulty-pill:active { transform: translateY(2px); }
+    .difficulty-pill[aria-checked="true"] {
+      color: #283448;
+      background: #f0e9de;
+      border-color: #f0e9de;
+    }
+    .difficulty-pill[aria-checked="true"]:active { box-shadow: 0 1px 0 #e35d8a; }
+
+    /* Best Round chip on the Get ready card: the same pill shape as the
+       difficulty pills, but non-interactive, filled with the celebratory
+       yellow so it reads as an achievement rather than a control. */
+    .best-round-chip {
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-height: 2.5rem;
+      padding: 0.3rem 1.2rem;
+      border-radius: 9999px;
+      background: #fff0a6;
+      color: #5d4a12;
+      font-size: 1.05rem;
+      font-weight: 900;
+      box-shadow: 0 4px 0 #f2d76a;
+    }
+    .best-round-chip .chip-label { letter-spacing: 0.02em; }
+    .best-round-chip .chip-value {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.9rem;
+      padding: 0 0.4rem;
+      border-radius: 9999px;
+      background: #fffdf3;
+      color: #8a5a00;
+      font-size: 1.15rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .best-round-chip[hidden] { display: none; }
+  </style>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

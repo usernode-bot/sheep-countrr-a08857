@@ -97,6 +97,16 @@ cannot wander in. See `README.md` for the full feature description.
   the store or network. `staticMode` also suppresses the round-complete
   auto-advance timer, so `?scene=roundcomplete` holds still long enough
   to photograph.
+- **Speed Round fixtures**: `?scene=speed` (board mid-count with the
+  countdown pill), `?scene=speedgameover` (the clock ran out), and
+  `?round=N&speed=1` (a playable timed run). All ride the existing
+  `?scene=` / `?round=` auth exemption and stay side-effect-free. The
+  Speed Round mode is run-level client state (`speedOn` in state.js,
+  saved to localStorage like soundOn); it is deliberately NOT a
+  sheep_progress column, so a deep link or screenshot run cannot flip a
+  real player's next round into a timed one. Only finished runs carry
+  the mode to the server (`sheep_runs.speed_round`), which is what the
+  weekly leaderboard's "Speed N" tag reads.
 - **`?renderer=dom` forces the DOM/card fallback** (used by the
   "No-WebGL fallback" test) even on a device that supports WebGL. It
   shares the same `onTap(index)` contract and counting logic as the 3D
