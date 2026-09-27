@@ -12,7 +12,10 @@ import {
 import {
   CALM_SPEED,
   MAX_SHEEP,
+  advanceStreak,
   calmMotion,
+  dayDistance,
+  localDayKey,
   motionForRound,
   normalizeCalm,
   paceLine,
@@ -909,4 +912,77 @@ test('the weekly history export carries the clock tag and quotes commas', () => 
   const quoted = weeklyHistoryCsv([{ endedAt: 'a,b', roundReached: 2 }]);
   assert.match(quoted, /"a,b",2,no/);
   assert.equal(weeklyHistoryCsv(null).endsWith('\r\n'), true, 'an empty week still emits the header');
+});
+
+// ---- Play streak ----
+// The flame on the Get-ready card counts consecutive local days with at
+// least one round started. A persistent (non-ephemeral) store records the
+// day on every round start; an ephemeral one, like every fixture and deep
+// link, never records. saveLocal is a no-op in a test process (no
+// localStorage), so the store-level tests run without a browser.
+
+test('a round start records the day; a deep-link store never does', () => {
+  const { store } = newStore();
+  assert.equal(store.state.streakDays, 0);
+  store.startRound(1);
+  assert.equal(store.state.streakDays, 0, 'an ephemeral fixture store never records a day');
+
+  const live = new StateStore({});
+  live.startRound(1);
+  assert.equal(live.state.streakDays, 1, 'a first day lights the streak');
+  assert.equal(live.state.bestStreakDays, 1);
+  assert.match(live.state.lastPlayedDay, /^\d{4}-\d{2}-\d{2}$/);
+  // Starting more rounds the same day stays at one.
+  live.startRound(2);
+  assert.equal(live.state.streakDays, 1);
+});
+
+test('the streak crosses days through the record seam, not a fake clock', () => {
+  const day = (offset) => localDayKey(new Date(Date.now() + offset * 86400000));
+  const store = new StateStore({});
+  store.startRound(1, { silent: true });
+  assert.equal(store.state.streakDays, 1, 'the round start recorded today');
+  // Tomorrow, and the day after: the streak grows and the best follows.
+  store.recordPlayDay(day(1));
+  store.recordPlayDay(day(2));
+  assert.equal(store.state.streakDays, 3);
+  assert.equal(store.state.bestStreakDays, 3);
+  assert.equal(store.state.lastPlayedDay, day(2));
+  // A gap resets the streak but never the best.
+  store.recordPlayDay(day(9));
+  assert.equal(store.state.streakDays, 1);
+  assert.equal(store.state.bestStreakDays, 3);
+  // The day after the gap builds a fresh streak beside the old best.
+  store.recordPlayDay(day(10));
+  assert.equal(store.state.streakDays, 2);
+  assert.equal(store.state.bestStreakDays, 3);
+});
+
+test('a mangled day key is ignored rather than corrupting the streak', () => {
+  const store = new StateStore({});
+  store.startRound(1, { silent: true });
+  store.recordPlayDay('not-a-date');
+  store.recordPlayDay(42);
+  assert.equal(store.state.streakDays, 1);
+  assert.equal(store.state.lastPlayedDay, localDayKey());
+});
+
+test('the streak survives a local save and load beside the other values', () => {
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({
+    round: 2,
+    difficulty: 'normal',
+    totalCounted: 3,
+    streakDays: 5,
+    bestStreakDays: 8,
+    lastPlayedDay: '2026-09-26',
+  });
+  assert.equal(restored.state.streakDays, 5);
+  assert.equal(restored.state.bestStreakDays, 8);
+  assert.equal(restored.state.lastPlayedDay, '2026-09-26');
+  // Old saves without streak data read as a fresh streak, not a crash.
+  const { store: fresh } = newStore();
+  fresh.loadLocalFrom({ round: 2, totalCounted: 1 });
+  assert.equal(fresh.state.streakDays, 0);
+  assert.equal(fresh.state.lastPlayedDay, null);
 });

@@ -148,6 +148,9 @@ const els = {
   countdownSkipBtn: document.getElementById('countdown-skip-btn'),
   bestRoundChip: document.getElementById('best-round-chip'),
   bestRoundValue: document.getElementById('best-round-value'),
+  streakChip: document.getElementById('streak-chip'),
+  streakValue: document.getElementById('streak-value'),
+  streakBest: document.getElementById('streak-best'),
   startCountingBtn: document.getElementById('start-counting-btn'),
   speedToggle: document.getElementById('speed-toggle'),
   duelToggle: document.getElementById('duel-toggle'),
@@ -305,8 +308,13 @@ function buildStaticState() {
   if (sceneParam === 'intro') {
     // The Get-ready card with an earned best round on it, so the chip has a
     // frozen fixture for its dapp.json check. Hardcoded only, like every
-    // other fixture here.
-    return at(1, { bestRounds: { ...base.bestRounds, [difficultyParam]: 6 } });
+    // other fixture here. The streak flame gets the same treatment: a live
+    // streak and a best one, never read from storage in a fixture.
+    return at(1, {
+      bestRounds: { ...base.bestRounds, [difficultyParam]: 6 },
+      streakDays: 4,
+      bestStreakDays: 6,
+    });
   }
   if (sceneParam === 'portrait') return at(1);
   if (sceneParam === 'empty') return at(3);
@@ -959,11 +967,26 @@ function syncRoundBadge(state) {
   els.a11yRoundProgress.textContent = `${badge}.`;
 }
 
+// The streak chip counts the consecutive days the player has played, with
+// the best streak ever reached beside it. The store records a day each
+// time a round starts, so the chip reflects the day's play the moment the
+// briefing card appears. It hides entirely when no day has been recorded
+// (storage unavailable, or a deep-link fixture without streak data), the
+// same way the Best Round chip hides until there is a record to show.
+function syncStreakChip(state) {
+  const days = Math.max(0, Math.floor(Number(state.streakDays) || 0));
+  const best = Math.max(days, Math.floor(Number(state.bestStreakDays) || 0));
+  els.streakChip.hidden = !(days > 0);
+  els.streakValue.textContent = String(days);
+  els.streakBest.textContent = `Best ${best}`;
+}
+
 function showRoundIntro(state) {
   els.roundIntroSize.textContent = roundIntroText(state.round, state.difficulty, state.speedOn);
   syncDifficultyPicker(state);
   syncSpeedToggle(state);
   syncBestRoundChip(state);
+  syncStreakChip(state);
   els.roundIntro.hidden = false;
   introOpen = true;
 }

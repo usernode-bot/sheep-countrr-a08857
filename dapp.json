@@ -48,6 +48,27 @@
       ]
     },
     {
+      "name": "Round intro shows the day streak flame",
+      "id": "round.intro-streak",
+      "visual": true,
+      "path": "/?scene=intro",
+      "expectSelector": "#streak-chip:not([hidden])",
+      "expectText": "Day streak",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Streak flame reaches the DOM fallback and its a11y card DOM",
+      "path": "/?scene=intro&renderer=dom",
+      "expectSelector": "#streak-chip:not([hidden])",
+      "expectText": "Day streak"
+    },
+    {
       "id": "round.chaotic",
       "name": "Round 8 board renders a jittery flock",
       "path": "/?round=8",

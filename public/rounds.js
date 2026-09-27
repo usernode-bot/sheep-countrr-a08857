@@ -235,3 +235,45 @@ export function weeklyScoreLabel(roundReached, speedOn = false) {
 export function successMessage() {
   return 'Great job! You found all the sheep.';
 }
+
+// ---- Play streak ----
+// The streak counts consecutive days on which the player started at least
+// one round. Day keys are LOCAL calendar dates (YYYY-MM-DD), never UTC, so
+// a family playing after dinner keeps one day per evening regardless of
+// timezone. Like the copy helpers above, the arithmetic is pure so
+// tests/game.test.mjs can pin it without a browser.
+
+// The local date's key. Padded month and day keep string compares honest.
+export function localDayKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Whole days between two day keys, computed on UTC midnights of those
+// calendar dates so no local timezone offset can skew the count.
+export function dayDistance(fromKey, toKey) {
+  const parts = (key) => [
+    Number(key.slice(0, 4)),
+    Number(key.slice(5, 7)) - 1,
+    Number(key.slice(8, 10)),
+  ];
+  const a = parts(fromKey);
+  const b = parts(toKey);
+  const from = Date.UTC(a[0], a[1], a[2]);
+  const to = Date.UTC(b[0], b[1], b[2]);
+  return Math.round((to - from) / 86400000);
+}
+
+// Fold today's play into the streak. Playing on consecutive days grows the
+// streak by one; any gap (or a first ever day) starts it at one; playing
+// again the same day changes nothing. best never goes backwards.
+export function advanceStreak(prevDays, bestDays, lastDayKey, todayKey) {
+  const prev = Math.max(0, Math.floor(Number(prevDays) || 0));
+  const best = Math.max(prev, Math.max(0, Math.floor(Number(bestDays) || 0)));
+  if (lastDayKey === todayKey) return { days: prev, best, changed: false };
+  const grew = !!lastDayKey && dayDistance(lastDayKey, todayKey) === 1;
+  const days = grew ? prev + 1 : 1;
+  return { days, best: Math.max(best, days), changed: true };
+}

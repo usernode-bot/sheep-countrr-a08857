@@ -11,6 +11,8 @@ import {
   DEFAULT_DIFFICULTY,
   MAX_SHEEP,
   SPEED_ROUND_SECONDS,
+  advanceStreak,
+  localDayKey,
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
@@ -37,6 +39,18 @@ export const ENDED_TIME_UP = 'timeUp';
 // One best round per difficulty, kept in a map so a best on Easy can never
 // masquerade as one on Hard.
 export const DIFFICULTY_KEYS = ['easy', 'normal', 'hard', 'expert'];
+
+// ---- Play streak normalization ----
+// A day key is a local calendar date, YYYY-MM-DD. Anything that is not one
+// reads as "no day recorded" rather than crashing an old or mangled save.
+function normalizeDayKey(raw) {
+  return typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}
+
+function normalizeStreakCount(raw) {
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
 
 function normalizeBestRounds(raw, fallback) {
   const out = { easy: 1, normal: 1, hard: 1, expert: 1 };
@@ -75,6 +89,14 @@ export function createDefaultState() {
     difficulty: DEFAULT_DIFFICULTY,
     speedOn: false,
     secondsLeft: null,
+    // Play streak: consecutive local days with at least one round started,
+    // the best streak ever reached, and the day key that earned the current
+    // one. Kept in localStorage beside the other run-spanning values; it
+    // never syncs to the server, so a deep link or a fixture cannot move a
+    // real player's streak.
+    streakDays: 0,
+    bestStreakDays: 0,
+    lastPlayedDay: null,
     // The renderer clock this round had reached when it was last
     // persisted, and when each sheep was counted. Restored on resume so
     // the flock is standing exactly where the player left it.
@@ -159,6 +181,9 @@ export class StateStore {
         namesOn: !!saved.namesOn,
         difficulty: normalizeDifficulty(saved.difficulty),
         speedOn: normalizeSpeedRound(saved.speedOn),
+        streakDays: normalizeStreakCount(saved.streakDays),
+        bestStreakDays: normalizeStreakCount(saved.bestStreakDays),
+        lastPlayedDay: normalizeDayKey(saved.lastPlayedDay),
       };
       // A mid-round snapshot resumes the exact board: same seed, same
       // counted sheep, same clock. Saves from before this feature (or a
@@ -195,6 +220,9 @@ export class StateStore {
         calmOn: this.state.calmOn,
         namesOn: this.state.namesOn,
         speedOn: this.state.speedOn,
+        streakDays: this.state.streakDays,
+        bestStreakDays: this.state.bestStreakDays,
+        lastPlayedDay: this.state.lastPlayedDay,
       };
       localStorage.setItem(this.storageKey, JSON.stringify({ ...meta, ...runValues }));
     } catch {
@@ -307,6 +335,10 @@ export class StateStore {
       },
     };
     this.runRecorded = false;
+    // Every round start is a play day. On a day already recorded this is
+    // a no-op; a first day or a new day after a gap updates the streak.
+    // Deep links and fixtures are ephemeral and never record.
+    this.recordPlayDay();
     if (!silent && !keepBoard) {
       // A round that just started is a board worth resuming: nothing
       // counted yet, but the seed, flock size and mode travel with it.
@@ -338,6 +370,9 @@ export class StateStore {
           namesOn: !!saved.namesOn,
           difficulty: normalizeDifficulty(saved.difficulty),
           speedOn: normalizeSpeedRound(saved.speedOn),
+          streakDays: normalizeStreakCount(saved.streakDays),
+          bestStreakDays: normalizeStreakCount(saved.bestStreakDays),
+          lastPlayedDay: normalizeDayKey(saved.lastPlayedDay),
     };
     if (
       saved.midCountdown
@@ -407,6 +442,9 @@ export class StateStore {
       secondsLeft,
     };
     this._hasMidRoundSnapshot = true;
+    // Resuming a board is playing: the streak records the day too.
+    this.recordPlayDay();
+    return this.state;
     return this.state;
   }
 
@@ -450,11 +488,39 @@ export class StateStore {
     try {
       const raw = localStorage.getItem(this.storageKey);
       const meta = raw ? JSON.parse(raw) : {};
-      delete meta.midCountdown;
+          delete meta.midCountdown;
       localStorage.setItem(this.storageKey, JSON.stringify(meta));
     } catch {
       /* storage unavailable; the run still works this session */
     }
+  }
+
+  // Fold this round start into the play streak, in the player's local
+  // timezone. The streak lives in localStorage under the same per-user key
+  // as the rest of the run-spanning state, so it survives reloads like the
+  // best rounds do. It never syncs to the server: the flame chip reads
+  // exactly what the store keeps. `dayKey` is a test seam, so the suite
+  // can step across days without faking a clock.
+  recordPlayDay(dayKey = localDayKey()) {
+    if (this.ephemeral) return;
+    const today = normalizeDayKey(dayKey);
+    if (!today) return;
+    const { days, best, changed } = advanceStreak(
+      this.state.streakDays,
+      this.state.bestStreakDays,
+      this.state.lastPlayedDay,
+      today,
+    );
+    if (!changed) return;
+    this.state = {
+      ...this.state,
+      streakDays: days,
+      bestStreakDays: best,
+      lastPlayedDay: today,
+    };
+    // Persist immediately: the advance must survive even if the session
+    // ends before any other save, or the same visit would count twice.
+    this.saveLocal();
   }
 
   // Elapsed animation time for the current round: the live renderer clock

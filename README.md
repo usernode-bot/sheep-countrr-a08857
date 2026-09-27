@@ -24,7 +24,8 @@ keeping track of who you already counted does not.
   the card and begins the round. It returns at the start of every run
   (after "Start again" or "Start over at round 1"), and later rounds in
   a run skip it since the round-complete message already previews the
-  next flock.
+  next flock. The card also carries a streak flame: how many days in a
+  row the player has played, with the best streak ever reached beside it.
 - **Finishing a round.** Tap every sheep and the round completes itself,
   or tap "Done counting" when you think you have them all. A correct
   count shows a short round-complete message and moves on.
@@ -49,7 +50,8 @@ keeping track of who you already counted does not.
   start on, best round reached, lifetime sheep counted) plus a community
   total shown in the grown-ups panel. A half-counted round is never
   restored, since returning to taps you do not remember making would end
-  the run on the next tap.
+  the run on the next tap. The play streak and its best stay on the
+  device, keyed per user, and count days in the player's local timezone.
 - **Leaderboard** (grown-ups gate): a card with three tabs. Global ranks
   the best round ever reached; This week ranks the best round achieved in
   the current week (Monday 00:00 UTC to Sunday night, the same everywhere);

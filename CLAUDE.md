@@ -107,6 +107,18 @@ cannot wander in. See `README.md` for the full feature description.
   real player's next round into a timed one. Only finished runs carry
   the mode to the server (`sheep_runs.speed_round`), which is what the
   weekly leaderboard's "Speed N" tag reads.
+- **The play streak is client-side, never a server column.** The
+  streak flame on the Get-ready card counts consecutive LOCAL calendar
+  days with at least one round started, plus a best-streak record. It
+  lives in localStorage inside the same per-user payload the store
+  already saves (`streakDays` / `bestStreakDays` / `lastPlayedDay`),
+  recorded by `recordPlayDay()` on every `startRound` (and on resuming a
+  mid-round snapshot). Ephemeral stores (all `?scene=` / `?round=` deep
+  links) never record a day, so a capture run cannot move a real
+  player's streak; the `?scene=intro` fixture hardcodes its streak in
+  `buildStaticState()` instead. The pure arithmetic (`localDayKey`,
+  `dayDistance`, `advanceStreak`) lives in `rounds.js` with the other
+  copy/curve helpers and is asserted in `tests/game.test.mjs`.
 - **`?renderer=dom` forces the DOM/card fallback** (used by the
   "No-WebGL fallback" test) even on a device that supports WebGL. It
   shares the same `onTap(index)` contract and counting logic as the 3D

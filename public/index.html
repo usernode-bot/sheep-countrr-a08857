@@ -921,6 +921,7 @@
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
         <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
         <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
+        <p id="streak-chip" class="best-round-chip" aria-live="off"><svg class="streak-flame" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 C 13 6, 17 8, 17 13 A 5 5.5 0 0 1 7 13 C 7 8, 11 6, 12 2 Z" fill="#ffb347"></path><path d="M12 8.6 C 12.8 10.8, 15 11.8, 15 14.6 A 3 3.4 0 0 1 9 14.6 C 9 11.8, 11.2 10.8, 12 8.6 Z" fill="#ff8fab"></path></svg><span class="chip-label">Day streak</span> <span id="streak-value" class="chip-value">1</span> <span id="streak-best" class="chip-label streak-best-label">Best 1</span></p>
         <label id="speed-toggle-row" class="setting-row speed-toggle-row" for="speed-toggle">
           <span>Speed Round</span>
           <input id="speed-toggle" type="checkbox">
@@ -1085,6 +1086,22 @@
       font-variant-numeric: tabular-nums;
     }
     .best-round-chip[hidden] { display: none; }
+
+    /* Day streak chip: the same achievement pill as the Best Round chip,
+       with the flame drawn from the app's own peach and pink (decorative,
+       so the label text carries the meaning for a screen reader). The best
+       streak rides along as a softer second label inside the same pill. */
+    .streak-chip .streak-flame {
+      width: 1.15em;
+      height: 1.15em;
+      flex: none;
+      margin: -0.1em 0;
+    }
+    .streak-chip .streak-best-label {
+      color: #7a6420;
+      font-weight: 800;
+      margin-left: 0.1rem;
+    }
   </style>
   <script type="module" src="/app.js"></script>
 </body>
