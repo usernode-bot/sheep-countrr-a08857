@@ -240,6 +240,20 @@
       "expectText": "Sound effects"
     },
     {
+      "id": "grownups.export",
+      "name": "Grown-ups panel offers the CSV export",
+      "path": "/?scene=grownups",
+      "expectSelector": "#export-btn",
+      "expectText": "Export progress (CSV)",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/export.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Night Meadow toggle appears in the grown-ups panel",
       "path": "/?scene=grownups",
       "expectSelector": "#night-toggle",
