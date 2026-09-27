@@ -5,6 +5,7 @@ import {
   ROUND_PASSED,
   RUN_OVER,
   ENDED_DOUBLE_TAP,
+  ENDED_WOLF,
 } from './state.js';
 import {
   normalizeRound,
@@ -14,6 +15,9 @@ import {
   sheepForRound,
   sheepPhrase,
   successMessage,
+  WOLF_BONUS,
+  wolfDisguiseTier,
+  wolfIndexForRound,
 } from './rounds.js';
 import { playTapChime, playCelebration } from './sound.js';
 
@@ -24,6 +28,9 @@ if (params.get('token')) sessionStorage.setItem('sheep-countrr:token', token);
 const sceneParam = params.get('scene');
 const rendererParam = params.get('renderer');
 const roundParam = params.get('round');
+// Deep-link-only knob: /?round=N&wolf=1 always hides a wolf, &wolf=0 never
+// does. Normal play stays chance-based.
+const wolfParam = params.get('wolf');
 
 // Screenshot-state deep links are pure UI fixtures: they must never touch
 // localStorage or the server, in any environment. ?round=N is playable but
@@ -58,6 +65,7 @@ const els = {
   nextRoundBtn: document.getElementById('next-round-btn'),
   gameOver: document.getElementById('game-over'),
   gameOverReason: document.getElementById('game-over-reason'),
+  gameOverStreak: document.getElementById('game-over-streak'),
   gameOverRound: document.getElementById('game-over-round'),
   restartBtn: document.getElementById('restart-btn'),
   grownupsBtn: document.getElementById('grownups-btn'),
@@ -68,6 +76,8 @@ const els = {
   roundValue: document.getElementById('round-value'),
   bestValue: document.getElementById('best-value'),
   totalValue: document.getElementById('total-value'),
+  bestStreakValue: document.getElementById('best-streak-value'),
+  bonusValue: document.getElementById('bonus-value'),
   communityValue: document.getElementById('community-value'),
   a11yList: document.getElementById('a11y-sheep-list'),
 };
@@ -129,8 +139,27 @@ function buildStaticState() {
   if (sceneParam === 'gameover') {
     return at(6, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
   }
+  if (sceneParam === 'wolfround') {
+    return at(5, { count: 3, counted: [0, 1, 2], wolfIndex: 4 });
+  }
+  if (sceneParam === 'wolfgameover') {
+    return at(6, {
+      count: 4,
+      counted: [0, 1, 2, 3],
+      wolfIndex: 5,
+      phase: RUN_OVER,
+      endedBy: ENDED_WOLF,
+      safeStreak: 2,
+    });
+  }
   if (sceneParam === 'grownups') {
-    return at(5, { bestRound: 7, totalCounted: 18, communityTotal: 39 });
+    return at(5, {
+      bestRound: 7,
+      totalCounted: 18 + 3 * WOLF_BONUS,
+      communityTotal: 39,
+      bestSafeStreak: 4,
+      bonusCounted: 3 * WOLF_BONUS,
+    });
   }
   return at(1);
 }
@@ -142,6 +171,17 @@ async function boot() {
     // /?round=N starts a real, playable run at that round, with the round's
     // fixed seed so the same URL always frames the same pasture.
     store.startRound(normalizeRound(roundParam), { silent: true });
+    if (wolfParam === '1') {
+      // A wolf needs a flock to hide in: round 1's single sheep stays a
+      // sheep even when the deep link asks for one.
+      store.state = {
+        ...store.state,
+        wolfIndex: store.state.sheepCount < 2 ? null
+          : (wolfIndexForRound(store.state.round, store.state.seed, store.state.sheepCount) ?? store.state.sheepCount - 1),
+      };
+    } else if (wolfParam === '0') {
+      store.state = { ...store.state, wolfIndex: null };
+    }
   } else {
     store.loadLocal();
     await store.loadRemote();
@@ -218,6 +258,11 @@ function handleTap(index) {
   if (result.outcome === 'doubleTap') {
     renderer.wiggleSheep(index);
     renderA11yList(store.state);
+    return;
+  }
+  if (result.outcome === 'wolfTap') {
+    renderer.revealWolf(index);
+    renderA11yList(store.state);
   }
 }
 
@@ -263,7 +308,8 @@ function hintFor(state) {
   if (state.phase === ROUND_PASSED) return 'Nicely counted.';
   if (state.phase === RUN_OVER) return 'Tap Start again for round 1.';
   if (state.count === 0) return state.sheepCount === 1 ? 'Tap the sheep.' : 'Tap every sheep.';
-  if (state.count >= state.sheepCount) return 'That is all of them.';
+  const wolves = state.wolfIndex != null ? 1 : 0;
+  if (state.count >= state.sheepCount - wolves) return 'That is all of them.';
   return 'Tap every sheep, then tap Done counting.';
 }
 
@@ -288,6 +334,8 @@ function updateChrome(state) {
   els.roundValue.textContent = String(state.round);
   els.bestValue.textContent = String(state.bestRound);
   els.totalValue.textContent = String(state.totalCounted);
+  els.bestStreakValue.textContent = String(state.bestSafeStreak);
+  els.bonusValue.textContent = String(state.bonusCounted || 0);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
 
@@ -306,9 +354,17 @@ function syncPanels(state) {
   }
   if (over) {
     els.gameOverRound.textContent = String(state.round);
-    els.gameOverReason.textContent = state.endedBy === ENDED_DOUBLE_TAP
-      ? 'You counted the same sheep twice.'
+    els.gameOverReason.textContent =
+      state.endedBy === ENDED_WOLF ? 'The wolf tricked you.'
+      : state.endedBy === ENDED_DOUBLE_TAP ? 'You counted the same sheep twice.'
       : `You said done with ${state.count} of ${sheepPhrase(state.sheepCount)} counted.`;
+    const dodged = state.safeStreak || 0;
+    els.gameOverStreak.hidden = !(dodged > 0);
+    if (!els.gameOverStreak.hidden) {
+      els.gameOverStreak.textContent = dodged === 1
+        ? 'You dodged 1 wolf round in a row.'
+        : `You dodged ${dodged} wolf rounds in a row.`;
+    }
   }
   els.roundComplete.hidden = !passed;
   els.gameOver.hidden = !over;
@@ -367,6 +423,8 @@ function openGrownups(state) {
   els.roundValue.textContent = String(state.round);
   els.bestValue.textContent = String(state.bestRound);
   els.totalValue.textContent = String(state.totalCounted);
+  els.bestStreakValue.textContent = String(state.bestSafeStreak);
+  els.bonusValue.textContent = String(state.bonusCounted || 0);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
   els.grownupsPanel.hidden = false;

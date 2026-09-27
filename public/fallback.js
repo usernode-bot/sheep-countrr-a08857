@@ -4,7 +4,7 @@
 // same pastel per number.
 import { NUMBER_COLORS } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { motionForRound } from './rounds.js';
+import { motionForRound, wolfDisguiseTier } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -83,6 +83,27 @@ const FLEECES = [
   { fleece: '#f8ecc9', 'fleece-light': '#fdf6e0', 'fleece-shade': '#e3d2a4' },
 ];
 
+// Wolf-only SVG cues, added to the plain sheep SVG on the wolf's card.
+// The groups carry classes so the card's data attributes and CSS decide
+// how much of the disguise shows per tier and after the reveal.
+const WOLF_CUES_SVG = `
+  <g class="wolf-cues">
+    <g class="wolf-ears">
+      <path d="M28 32 L33 12 L42 28 Z" fill="#b3ada2"/>
+      <path d="M92 32 L87 12 L78 28 Z" fill="#b3ada2"/>
+      <path d="M31 29 L34 17 L39 26 Z" fill="#a89f92"/>
+      <path d="M89 29 L86 17 L81 26 Z" fill="#a89f92"/>
+    </g>
+    <g class="wolf-tail">
+      <circle cx="97" cy="86" r="9" fill="var(--fleece-shade, #e5d7c5)"/>
+      <circle cx="103" cy="81" r="6" fill="var(--fleece-light, #ffffff)"/>
+    </g>
+    <g class="wolf-glint">
+      <circle cx="53.5" cy="57.5" r="1.6" fill="#ffb347"/>
+      <circle cx="71.5" cy="57.5" r="1.6" fill="#ffb347"/>
+    </g>
+  </g>`;
+
 export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   const field = document.createElement('div');
   field.className = 'sheep-fallback-field';
@@ -114,7 +135,16 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       for (const [name, value] of Object.entries(FLEECES[i % FLEECES.length])) {
         btn.style.setProperty(`--${name}`, value);
       }
-      btn.innerHTML = SHEEP_SVG + '<span class="sheep-card-badge" hidden></span>';
+      const isWolf = state.wolfIndex === i;
+      if (isWolf) {
+        const tier = wolfDisguiseTier(state.round);
+        btn.dataset.wolf = 'true';
+        btn.dataset.wolfTier = String(tier);
+        btn.innerHTML = SHEEP_SVG.replace('</svg>', WOLF_CUES_SVG + '\n</svg>')
+          + '<span class="sheep-card-badge" hidden></span>';
+      } else {
+        btn.innerHTML = SHEEP_SVG + '<span class="sheep-card-badge" hidden></span>';
+      }
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
       cards.push(btn);
@@ -139,7 +169,10 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       for (let i = 0; i < cards.length; i++) {
         const btn = cards[i];
         if (btn.classList.contains('is-counted')) continue;
-        const offset = wanderOffset(current.seed, i, cards.length, t, motion);
+        // Tiers 1 and 2 wander a beat out of step with the flock, matching
+        // the 3D scene; tier 3 keeps perfect time.
+        const lag = btn.dataset.wolf === 'true' && Number(btn.dataset.wolfTier) < 3 ? -0.8 : 0;
+        const offset = wanderOffset(current.seed, i, cards.length, t + lag, motion);
         btn.style.left = `${(offset.x * PX_PER_UNIT).toFixed(1)}px`;
         btn.style.top = `${(offset.z * PX_PER_UNIT * 0.6).toFixed(1)}px`;
       }
@@ -190,6 +223,15 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     );
   }
 
+  // The disguise drops: the same wiggle the double-tap uses, plus the
+  // data attribute that swings every cue to its fully-visible form.
+  function revealWolf(index) {
+    const btn = cards[index];
+    if (!btn) return;
+    btn.dataset.revealed = 'true';
+    wiggle(index);
+  }
+
   function celebrate() {}
 
   return {
@@ -202,6 +244,9 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     },
     wiggleSheep(index) {
       wiggle(index);
+    },
+    revealWolf(index) {
+      revealWolf(index);
     },
     celebrate() {
       celebrate();

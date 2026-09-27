@@ -7,7 +7,14 @@
 // round is passed; miss one and submit, or tap a sheep you already
 // counted, and the run ends.
 
-import { MAX_SHEEP, normalizeRound, roundSeed, sheepForRound } from './rounds.js';
+import {
+  MAX_SHEEP,
+  normalizeRound,
+  roundSeed,
+  sheepForRound,
+  WOLF_BONUS,
+  wolfIndexForRound,
+} from './rounds.js';
 
 const STORAGE_PREFIX = 'sheep-countrr:';
 const SYNC_DEBOUNCE_MS = 1500;
@@ -20,6 +27,7 @@ export const RUN_OVER = 'runOver';
 // Why a run ended, for the game-over copy.
 export const ENDED_DOUBLE_TAP = 'doubleTap';
 export const ENDED_MISSED = 'missed';
+export const ENDED_WOLF = 'wolf';
 
 function randomSeed() {
   return Math.floor(Math.random() * 2 ** 31);
@@ -34,7 +42,11 @@ export function createDefaultState() {
     counted: [],
     phase: COUNTING,
     endedBy: null,
+    wolfIndex: null,
+    safeStreak: 0,
     bestRound: 1,
+    bestSafeStreak: 0,
+    bonusCounted: 0,
     totalCounted: 0,
     communityTotal: 0,
     soundOn: false,
@@ -56,6 +68,7 @@ export class StateStore {
     this.deterministic = !!deterministic;
     this.state = createDefaultState();
     this.unsyncedTaps = 0;
+    this.unsyncedBonus = 0;
     this._syncTimer = null;
   }
 
@@ -80,6 +93,8 @@ export class StateStore {
         ...this.state,
         round: normalizeRound(saved.round),
         bestRound: normalizeRound(saved.bestRound || saved.round),
+        bestSafeStreak: Math.max(0, Number(saved.bestSafeStreak) || 0),
+        bonusCounted: Math.max(0, Number(saved.bonusCounted) || 0),
         totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
         soundOn: !!saved.soundOn,
       };
@@ -96,6 +111,8 @@ export class StateStore {
       localStorage.setItem(this.storageKey, JSON.stringify({
         round: this.state.round,
         bestRound: this.state.bestRound,
+        bestSafeStreak: this.state.bestSafeStreak,
+        bonusCounted: this.state.bonusCounted,
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
       }));
@@ -114,6 +131,8 @@ export class StateStore {
         ...this.state,
         round: normalizeRound(data.round),
         bestRound: normalizeRound(data.bestRound),
+        bestSafeStreak: Math.max(0, Number(data.bestSafeStreak) || 0),
+        bonusCounted: Math.max(0, Number(data.bonusCounted) || 0),
         totalCounted: Math.max(0, Number(data.totalCounted) || 0),
         communityTotal: Math.max(0, Number(data.communityTotal) || 0),
         soundOn: !!data.soundOn,
@@ -137,6 +156,8 @@ export class StateStore {
     clearTimeout(this._syncTimer);
     const taps = this.unsyncedTaps;
     this.unsyncedTaps = 0;
+    const bonus = this.unsyncedBonus;
+    this.unsyncedBonus = 0;
     try {
       await fetch('/api/state', {
         method: 'POST',
@@ -145,7 +166,9 @@ export class StateStore {
         body: JSON.stringify({
           round: this.state.round,
           bestRound: this.state.bestRound,
+          bestSafeStreak: this.state.bestSafeStreak,
           newTaps: taps,
+          newBonus: bonus,
           soundOn: this.state.soundOn,
         }),
       });
@@ -155,17 +178,25 @@ export class StateStore {
   }
 
   // Start (or restart) a round: fresh flock, nothing counted, run alive.
+  // The wolf draw happens here, from the round's seed, so a round that is
+  // never resumed mid-count always re-derives exactly what was hiding.
   startRound(round, { silent } = {}) {
     const next = normalizeRound(round);
+    const seed = this.seedFor(next);
+    const sheepCount = sheepForRound(next);
     this.state = {
       ...this.state,
       round: next,
-      sheepCount: sheepForRound(next),
-      seed: this.seedFor(next),
+      sheepCount,
+      seed,
       count: 0,
       counted: [],
       phase: COUNTING,
       endedBy: null,
+      wolfIndex: wolfIndexForRound(next, seed, sheepCount),
+      // A restart to round 1 is a new run, so the current streak resets.
+      // bestSafeStreak survives, like bestRound.
+      safeStreak: next === 1 ? 0 : this.state.safeStreak,
       bestRound: Math.max(this.state.bestRound, next),
     };
     if (!silent) {
@@ -179,6 +210,7 @@ export class StateStore {
   // A tap on a sheep. Returns what it did:
   //   { outcome: 'counted', number }  a new sheep, numbered in tap order
   //   { outcome: 'doubleTap' }        already counted, so the run ends
+  //   { outcome: 'wolfTap' }          the wolf: the run ends immediately
   //   { outcome: 'ignored' }          the run is not accepting taps
   tapSheep(index) {
     if (this.state.phase !== COUNTING) return { outcome: 'ignored' };
@@ -188,6 +220,12 @@ export class StateStore {
     if (this.state.counted.includes(index)) {
       this.endRun(ENDED_DOUBLE_TAP);
       return { outcome: 'doubleTap' };
+    }
+    if (this.state.wolfIndex != null && index === this.state.wolfIndex) {
+      // The wolf tap counts nothing anywhere: no tap, no sheep, no bonus.
+      // The run just ends, like any other run-ending mistake.
+      this.endRun(ENDED_WOLF);
+      return { outcome: 'wolfTap' };
     }
     const counted = [...this.state.counted, index];
     this.unsyncedTaps += 1;
@@ -204,7 +242,10 @@ export class StateStore {
   }
 
   isComplete() {
-    return this.state.count >= this.state.sheepCount;
+    // A round that hides a wolf auto-passes once every real sheep is
+    // counted; the impostor is the one animal left uncounted.
+    const wolves = this.state.wolfIndex != null ? 1 : 0;
+    return this.state.count >= this.state.sheepCount - wolves;
   }
 
   // The player says that is all of them. Right count passes the round;
@@ -212,7 +253,22 @@ export class StateStore {
   submitCount() {
     if (this.state.phase !== COUNTING) return { outcome: 'ignored' };
     if (this.isComplete()) {
-      this.state = { ...this.state, phase: ROUND_PASSED };
+      let { safeStreak, bestSafeStreak } = this.state;
+      if (this.state.wolfIndex != null) {
+        // Dodged: the streak grows, the best streak is kept forever, and
+        // two bonus sheep join the lifetime count.
+        safeStreak += 1;
+        bestSafeStreak = Math.max(bestSafeStreak, safeStreak);
+        this.unsyncedBonus += WOLF_BONUS;
+      }
+      this.state = {
+        ...this.state,
+        phase: ROUND_PASSED,
+        safeStreak,
+        bestSafeStreak,
+        bonusCounted: this.state.bonusCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
+        totalCounted: this.state.totalCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
+      };
       this.saveLocal();
       this.flush();
       this.onChange(this.state);

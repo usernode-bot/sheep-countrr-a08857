@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { layoutPositions, NUMBER_COLORS } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { MAX_SHEEP, motionForRound, roamRadius } from './rounds.js';
+import { MAX_SHEEP, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
 
 const COLORS = {
   wool: '#f4eadb',
@@ -31,6 +31,9 @@ const COLORS = {
   leaf: '#586e6f',
   leafLight: '#728786',
   fog: '#a1afb8',
+  wolfWool: '#cfc9bd',
+  wolfWoolShade: '#b3ada2',
+  glint: '#ffb347',
 };
 
 // One plush fleece color per sheep, repeating across bigger flocks. The
@@ -303,6 +306,75 @@ export function buildEyeGeometry() {
   ]);
   sphere.dispose();
   return geometry;
+}
+
+// The wolf's eyes: the same placement as a sheep's, with an amber glint
+// that stays visible at every tier, even the near-perfect third one.
+export function buildWolfEyeGeometry() {
+  const sphere = new THREE.SphereGeometry(1, 14, 10);
+  const geometry = mergeColored([
+    { geo: sphere, color: COLORS.pupil, matrix: placeMatrix(0, 0, 0, 0.052, 0.063, 0.035) },
+    { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(-0.013, 0.021, 0.031, 0.016) },
+    { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(0.015, -0.016, 0.033, 0.007) },
+    { geo: sphere, color: COLORS.glint, matrix: placeMatrix(0.005, 0.008, 0.04, 0.014) },
+  ]);
+  sphere.dispose();
+  return geometry;
+}
+
+// The wolf reuses the sheep's merge pipeline: same silhouette, same wool
+// locks, different disguise. Tier 1 wears grey with upright ears and a
+// tail; tier 2 keeps small grey ears and a tail peek under a flock-pastel
+// fleece; tier 3 is a sheep except for the eyes, which carry the glint.
+export function buildWolfBodyGeometry(variant, tier, fleece = FLEECES[0]) {
+  const isGrey = tier === 1;
+  const wolfFleece = isGrey
+    ? { wool: COLORS.wolfWool, woolLight: '#e2ddd2', woolShade: COLORS.wolfWoolShade }
+    : fleece;
+  const base = buildSheepBodyGeometry(variant, wolfFleece);
+  if (tier >= 3) return base;
+
+  // Small upgrades on top of the sheep silhouette, merged with the same
+  // vertex-color pipeline so the draw-call budget stays flat.
+  const parts = [];
+  const sphere = new THREE.SphereGeometry(1, 10, 8);
+  const add = (color, x, y, z, sx, sy = sx, sz = sx, rx = 0, ry = 0, rz = 0) =>
+    parts.push({ geo: sphere, color, matrix: placeMatrix(x, y, z, sx, sy, sz, rx, ry, rz) });
+
+  // Upright pointed ears, replacing the look of the sheep's low wide ones.
+  const earScale = tier === 1 ? 1 : 0.6;
+  const earGrey = isGrey ? COLORS.wolfWoolShade : '#9d968b';
+  for (const side of [-1, 1]) {
+    add(earGrey, side * 0.3, 1.28, 0.44, 0.09 * earScale, 0.3 * earScale, 0.06 * earScale, 0, 0, side * -0.18);
+    add(isGrey ? '#a89f92' : '#b5ada1', side * 0.29, 1.26, 0.47, 0.055 * earScale, 0.2 * earScale, 0.03 * earScale, 0, 0, side * -0.18);
+  }
+  // A fluffy tail. Tier 2 shows only a peek of it.
+  const tailScale = tier === 1 ? 1 : 0.5;
+  add(wolfFleece.woolShade, 0, 0.66, -0.78, 0.17 * tailScale, 0.15 * tailScale, 0.2 * tailScale, 0, 0, 0.5);
+  add(wolfFleece.woolLight, 0, 0.72, -0.84, 0.1 * tailScale, 0.09 * tailScale, 0.12 * tailScale, 0, 0, 0.5);
+
+  const upgrade = mergeColored(parts);
+  sphere.dispose();
+
+  const pos = [];
+  const nor = [];
+  const col = [];
+  for (const geo of [base, upgrade]) {
+    const p = geo.attributes.position;
+    const n = geo.attributes.normal;
+    const c = geo.attributes.color;
+    for (let i = 0; i < p.count; i++) {
+      pos.push(p.getX(i), p.getY(i), p.getZ(i));
+      nor.push(n.getX(i), n.getY(i), n.getZ(i));
+      col.push(c.getX(i), c.getY(i), c.getZ(i));
+    }
+    geo.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return out;
 }
 
 function buildRibbonGeometry() {
@@ -591,6 +663,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   // Shared sheep assets.
   const bodyGeos = FLEECES.map((fleece, i) => buildSheepBodyGeometry(i % 3, fleece));
   const eyeGeo = buildEyeGeometry();
+  const wolfEyeGeo = buildWolfEyeGeometry();
+  const wolfBodyGeos = [1, 2, 3].map((tier) =>
+    [0, 1, 2].map((variant) => buildWolfBodyGeometry(variant, tier, FLEECES[variant % FLEECES.length])));
   const ribbonGeo = buildRibbonGeometry();
   const sheepMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0 });
   const shadowGeo = new THREE.PlaneGeometry(1.5, 1.5);
@@ -628,7 +703,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   function buildFlock(state) {
     lastState = state;
     motion = motionForRound(state.round);
-    sheep.forEach((s) => { s.ribbonMat.dispose(); s.numberSprite.material.dispose(); });
+    sheep.forEach((s) => {
+      if (s.ribbonMat) s.ribbonMat.dispose();
+      if (s.numberSprite) s.numberSprite.material.dispose();
+    });
     scene.remove(sheepGroup);
     sheepGroup = new THREE.Group();
     scene.add(sheepGroup);
@@ -647,11 +725,16 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       const scale = 0.92 + seededRand(state.seed, i) * 0.16;
       g.scale.setScalar(scale);
 
-      const body = new THREE.Mesh(bodyGeos[i % bodyGeos.length], sheepMat);
+      const isWolf = state.wolfIndex === i;
+      const tier = isWolf ? wolfDisguiseTier(state.round) : 0;
+      const body = new THREE.Mesh(
+        isWolf ? wolfBodyGeos[tier - 1][i % 3] : bodyGeos[i % bodyGeos.length],
+        sheepMat
+      );
       g.add(body);
 
       const eyes = [-1, 1].map((side) => {
-        const eye = new THREE.Mesh(eyeGeo, sheepMat);
+        const eye = new THREE.Mesh(isWolf ? wolfEyeGeo : eyeGeo, sheepMat);
         eye.position.set(side * 0.123, 0.867, 0.709);
         g.add(eye);
         return eye;
@@ -662,18 +745,23 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       shadow.position.set(0, 0.012, 0.05);
       g.add(shadow);
 
-      const ribbonMat = new THREE.MeshLambertMaterial({ color: '#fff8ed' });
-      const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
-      ribbon.visible = false;
-      g.add(ribbon);
+      let ribbonMat = null;
+      let ribbon = null;
+      let numberSprite = null;
+      if (!isWolf) {
+        ribbonMat = new THREE.MeshLambertMaterial({ color: '#fff8ed' });
+        ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
+        ribbon.visible = false;
+        g.add(ribbon);
 
-      const numberSprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: numberTextures[0], transparent: true, depthTest: false, fog: false })
-      );
-      numberSprite.scale.set(0.62, 0.62, 1);
-      numberSprite.position.set(0, 1.55, 0.1);
-      numberSprite.visible = false;
-      g.add(numberSprite);
+        numberSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: numberTextures[0], transparent: true, depthTest: false, fog: false })
+        );
+        numberSprite.scale.set(0.62, 0.62, 1);
+        numberSprite.position.set(0, 1.55, 0.1);
+        numberSprite.visible = false;
+        g.add(numberSprite);
+      }
 
       // Large invisible pick target so small fingers land the tap.
       const pick = new THREE.Mesh(pickGeo, pickMat);
@@ -712,6 +800,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         nextHop: 5 + Math.random() * 8,
         hopStart: -1,
         ribbonPop: -1,
+        isWolf,
+        tier,
       });
     }
 
@@ -828,6 +918,18 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     s.bounceStart = clock.elapsedTime;
     s.bounceDur = 0.34;
     s.wiggle = true;
+  }
+
+  // The disguise drops: on reveal the wolf hops on the existing
+  // tap-reaction plumbing and, from tier 2 up, swaps to the fully grey
+  // tier-1 body so the reveal has something to show even late in the game.
+  function revealWolf(index) {
+    const s = sheep[index];
+    if (!s) return;
+    s.bounceStart = clock.elapsedTime;
+    s.bounceDur = 0.9;
+    s.wiggle = false;
+    if (s.tier >= 2) s.body.geometry = wolfBodyGeos[0][index % 3];
   }
 
   function celebrate() {
@@ -949,7 +1051,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       // Seeded, bounded wandering gets gently more varied as the flock
       // grows. Counted sheep stop where they are, ready for sleep.
       if (!reducedMotion && !s.counted) {
-        const offset = wanderOffset(lastState.seed, s.index, lastState.sheepCount, t, motion);
+        // Tiers 1 and 2 wander a beat out of step with the flock; tier 3
+        // keeps perfect time, which is exactly what makes it hard to spot.
+        const wolfLag = s.isWolf && s.tier < 3 ? -0.8 : 0;
+        const offset = wanderOffset(lastState.seed, s.index, lastState.sheepCount, t + wolfLag, motion);
         s.group.position.x = s.origin.x + offset.x;
         s.group.position.z = s.origin.z + offset.z;
         s.group.rotation.y = s.heading + offset.turn;
@@ -1007,7 +1112,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         s.numberSprite.scale.set(0.62 * k, 0.62 * k, 1);
         if (p >= 1) s.ribbonPop = -1;
       }
-      if (s.numberSprite.visible && s.ribbonPop < 0) {
+      if (s.numberSprite && s.numberSprite.visible && s.ribbonPop < 0) {
         s.numberSprite.position.y = 1.55 + (reducedMotion ? 0 : Math.sin(t * 2.2 + s.phase) * 0.035);
       }
     });
@@ -1062,6 +1167,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     },
     countSheep(index, number) {
       markCounted(index, number, true);
+    },
+    revealWolf(index) {
+      revealWolf(index);
     },
     wiggleSheep(index) {
       wiggleSheep(index);

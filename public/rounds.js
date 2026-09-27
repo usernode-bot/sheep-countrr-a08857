@@ -1,3 +1,5 @@
+import { mulberry32 } from './layout.js';
+
 // Round progression: the single source of truth for how many sheep a round
 // holds and how wildly they move. Everything here is a pure function of the
 // round number, so the /?round=N deep link reproduces exactly the same
@@ -72,6 +74,57 @@ export function roundSeed(round) {
 export function roundLabel(round) {
   return 'Round ' + normalizeRound(round);
 }
+
+// --- The wolf in the flock ---
+// Everything below is a pure function of the round number (and, for the
+// spawn draw, the round seed), so /?round=N reproduces the same wolf every
+// time it is loaded, exactly like the rest of the difficulty curve.
+//
+// Every function takes an optional trailing `mode` argument reserved for
+// the future Easy/Expert difficulty work: the existing call sites pass
+// nothing, so nothing changes until the modes land.
+
+const WOLF_BASE_CHANCE = 0.15;
+const WOLF_CHANCE_STEP = 0.05;
+const WOLF_MAX_CHANCE = 0.7;
+export const WOLF_BONUS = 2;
+
+function wolfModeFactors(mode = 'normal') {
+  if (mode === 'easy') return { chance: 0.5, tier2: 7, tier3: 10 };
+  if (mode === 'expert') return { chance: 1.5, tier2: 4, tier3: 6 };
+  return { chance: 1, tier2: 5, tier3: 8 };
+}
+
+// Round 1 is the gentle tap-to-learn round: it never hides a wolf. After
+// that the chance climbs one step per round until it caps.
+export function wolfChance(round, mode = 'normal') {
+  const r = normalizeRound(round);
+  if (r <= 1) return 0;
+  const { chance } = wolfModeFactors(mode);
+  return Math.min(WOLF_MAX_CHANCE, (WOLF_BASE_CHANCE + (r - 2) * WOLF_CHANCE_STEP) * chance);
+}
+
+// Deterministic per-round draw: one value from a seed twisted away from
+// the layout seed decides whether this round hides a wolf, and a second
+// decides which flock member it is. Returns null on a no-wolf round.
+export function wolfIndexForRound(round, seed, sheepCount, mode = 'normal') {
+  if (wolfChance(round, mode) === 0 || sheepCount < 2) return null;
+  const rand = mulberry32((seed ^ 0x9e3779b9) >>> 0);
+  if (rand() >= wolfChance(round, mode)) return null;
+  return Math.floor(rand() * sheepCount);
+}
+
+// How good the disguise is. Three stages line up with the movement ramp:
+// fair but findable, matching fleece with small grey cues, then near-perfect
+// with only an amber glint in the eyes left to spot.
+export function wolfDisguiseTier(round, mode = 'normal') {
+  const r = normalizeRound(round);
+  const { tier2, tier3 } = wolfModeFactors(mode);
+  if (r < tier2) return 1;
+  if (r < tier3) return 2;
+  return 3;
+}
+
 
 // Copy helpers live here beside the difficulty curve so the exact wording a
 // player reads can be asserted in tests/game.test.mjs without a browser.

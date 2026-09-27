@@ -6,7 +6,8 @@ const jwt = require('jsonwebtoken');
 // The platform's address, injected by the platform at deploy (#2047). Never
 // written out here: a hardcoded hostname is what broke this app when the
 // platform moved domains. Empty only outside the platform (local runs).
-const PLATFORM_ORIGIN = (process.env.USERNODE_PLATFORM_ORIGIN || '').replace(/\/+$/, '');
+const PLATFORM_ORIGIN = (process.env.USERNODE_PLATFORM_ORIGIN || process.env.PLATFORM_URL || '')
+  .replace(/\/+$/, '');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -112,7 +113,7 @@ function randomSeed() {
 app.get('/api/state', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT round, best_round, total_counted, sound_on
+      `SELECT round, best_round, best_safe_streak, bonus_counted, total_counted, sound_on
        FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
@@ -125,7 +126,7 @@ app.get('/api/state', async (req, res) => {
          ON CONFLICT (user_id) DO NOTHING`,
         [req.user.id, req.user.username, randomSeed()]
       );
-      row = { round: 1, best_round: 1, total_counted: 0, sound_on: false };
+      row = { round: 1, best_round: 1, best_safe_streak: 0, bonus_counted: 0, total_counted: 0, sound_on: false };
     }
 
     const { rows: totalRows } = await pool.query(
@@ -137,6 +138,8 @@ app.get('/api/state', async (req, res) => {
     res.json({
       round: row.round,
       bestRound: row.best_round,
+      bestSafeStreak: row.best_safe_streak,
+      bonusCounted: row.bonus_counted,
       totalCounted: row.total_counted,
       soundOn: row.sound_on,
       communityTotal,
@@ -158,11 +161,15 @@ app.post('/api/state', async (req, res) => {
   // Taps are reported as a delta since the last sync, and bounded, so no
   // single request can inflate the shared community total.
   const newTaps = clamp(parseInt(body.newTaps, 10) || 0, 0, MAX_TAPS_PER_SYNC);
+  // The bonus travels as its own delta, so one wolf round's +2 can never
+  // collide with the tap clamp above.
+  const newBonus = clamp(parseInt(body.newBonus, 10) || 0, 0, 24);
+  const claimedStreak = clamp(parseInt(body.bestSafeStreak, 10) || 0, 0, MAX_ROUND);
   const soundOn = !!body.soundOn;
 
   try {
     const { rows } = await pool.query(
-      `SELECT best_round, total_counted FROM sheep_progress WHERE user_id = $1`,
+      `SELECT best_round, best_safe_streak, bonus_counted, total_counted FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
     const prev = rows[0];
@@ -170,20 +177,25 @@ app.post('/api/state', async (req, res) => {
     // A run restarts at round 1, so the round may move backward freely;
     // only the best round ever reached is monotonic.
     const bestRound = Math.max(prev ? prev.best_round : 1, claimedBest, round);
+    // Like bestRound: the best streak ever reached is monotonic.
+    const bestSafeStreak = Math.max(prev ? prev.best_safe_streak : 0, claimedStreak);
+    const bonusCounted = (prev ? prev.bonus_counted : 0) + newBonus;
     const totalCounted = (prev ? prev.total_counted : 0) + newTaps;
 
     await pool.query(
       `INSERT INTO sheep_progress
-         (user_id, username, round, best_round, total_counted, sound_on, seed)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (user_id, username, round, best_round, best_safe_streak, bonus_counted, total_counted, sound_on, seed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (user_id) DO UPDATE SET
          username = EXCLUDED.username,
          round = EXCLUDED.round,
          best_round = EXCLUDED.best_round,
+         best_safe_streak = EXCLUDED.best_safe_streak,
+         bonus_counted = EXCLUDED.bonus_counted,
          total_counted = EXCLUDED.total_counted,
          sound_on = EXCLUDED.sound_on,
          updated_at = NOW()`,
-      [req.user.id, req.user.username, round, bestRound, totalCounted, soundOn, randomSeed()]
+      [req.user.id, req.user.username, round, bestRound, bestSafeStreak, bonusCounted, totalCounted, soundOn, randomSeed()]
     );
 
     res.json({ ok: true });
@@ -199,6 +211,14 @@ app.post('/api/state', async (req, res) => {
 // shell is served from.
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') return next();
+  // The centrally hosted bridge and the compiled Tailwind stylesheet are
+  // served by the platform edge in a real deploy. A plain boot (in-loop
+  // checks, local runs) reaches Express directly with no copy to serve, so
+  // answer 204 rather than 401: the files carry no gated data, and a console
+  // error for an asset this container is not expected to have reads as a bug.
+  if (req.path === '/tailwind.css' || req.path.startsWith('/usernode-bridge/')) {
+    return res.status(204).end();
+  }
   express.static(path.join(__dirname, 'public'))(req, res, next);
 });
 
@@ -230,7 +250,10 @@ app.get('*', (req, res) => {
     // unusual falls back to the bare link.
     const deepPath = /^\/[A-Za-z0-9\-._~!$&()*+,;=:@\/%?]*$/.test(req.originalUrl)
       ? '?path=' + encodeURIComponent(req.originalUrl) : '';
-    if (req.get('sec-fetch-dest') === 'document') {
+    // Without the platform's address (a local boot) a redirect target can't
+    // be built, and redirecting to "//app/..." would bounce back to this
+    // same route forever. Send the landing page instead.
+    if (req.get('sec-fetch-dest') === 'document' && PLATFORM_ORIGIN) {
       return res.redirect(302, (PLATFORM_ORIGIN + '/app/sheep-countrr-a08857/full') + deepPath);
     }
     return res.status(401).send(`<!doctype html><meta charset=utf-8><title>Open in Usernode</title>
@@ -253,17 +276,17 @@ app.get('*', (req, res) => {
 // while production stayed empty.
 async function seedStagingData() {
   const demoRows = [
-    { user_id: -101, username: 'Staging demo: Mabel', round: 4, best_round: 9, total_counted: 23 },
-    { user_id: -102, username: 'Staging demo: Otto', round: 2, best_round: 6, total_counted: 11 },
-    { user_id: -103, username: 'Staging demo: Pip', round: 1, best_round: 3, total_counted: 5 },
+    { user_id: -101, username: 'Staging demo: Mabel', round: 4, best_round: 9, best_safe_streak: 4, bonus_counted: 6, total_counted: 23 },
+    { user_id: -102, username: 'Staging demo: Otto', round: 2, best_round: 6, best_safe_streak: 2, bonus_counted: 3, total_counted: 11 },
+    { user_id: -103, username: 'Staging demo: Pip', round: 1, best_round: 3, best_safe_streak: 1, bonus_counted: 2, total_counted: 5 },
   ];
   for (const r of demoRows) {
     await pool.query(
       `INSERT INTO sheep_progress
-         (user_id, username, round, best_round, total_counted, sound_on, seed)
-       VALUES ($1, $2, $3, $4, $5, false, $6)
+         (user_id, username, round, best_round, best_safe_streak, bonus_counted, total_counted, sound_on, seed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8)
        ON CONFLICT (user_id) DO NOTHING`,
-      [r.user_id, r.username, r.round, r.best_round, r.total_counted, 1000 - r.user_id]
+      [r.user_id, r.username, r.round, r.best_round, r.best_safe_streak, r.bonus_counted, r.total_counted, 1000 - r.user_id]
     );
   }
 }
@@ -293,6 +316,8 @@ async function start() {
   // per-count columns stay for rows written before rounds existed; nothing
   // reads them now, so they simply keep their defaults.
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS best_round INTEGER NOT NULL DEFAULT 1`);
+  await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS best_safe_streak INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS bonus_counted INTEGER NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE sheep_progress ALTER COLUMN seed SET DEFAULT 0`);
 
   if (IS_STAGING) await seedStagingData();

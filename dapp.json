@@ -104,6 +104,43 @@
       "path": "/?scene=flock",
       "expectSelector": "#a11y-sheep-list button:nth-child(12)",
       "expectText": "Round 9"
+    },
+    {
+      "id": "wolf.round",
+      "name": "The wolf round renders a five-sheep flock with the wolf hiding",
+      "path": "/?scene=wolfround",
+      "expectSelector": "#a11y-sheep-list button:nth-child(5)",
+      "expectText": "Round 5",
+      "visual": true,
+      "impact": [
+        "public/rounds.js",
+        "public/state.js",
+        "public/scene.js",
+        "public/fallback.js",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Wolf game over names the trick",
+      "id": "wolf.gameover",
+      "path": "/?scene=wolfgameover",
+      "expectSelector": "#game-over-reason",
+      "expectText": "The wolf tricked you."
+    },
+    {
+      "name": "Wolf fallback card shows the disguise cues",
+      "id": "wolf.fallback",
+      "path": "/?scene=wolfround&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(5)",
+      "expectText": "Round 5"
+    },
+    {
+      "name": "Grown-ups panel shows the wolf record",
+      "id": "wolf.stats",
+      "path": "/?scene=grownups",
+      "expectSelector": "#grownups-panel",
+      "expectText": "Best safe streak"
     }
   ]
 }

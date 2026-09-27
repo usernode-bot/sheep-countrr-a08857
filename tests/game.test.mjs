@@ -7,6 +7,7 @@ import {
   RUN_OVER,
   ENDED_DOUBLE_TAP,
   ENDED_MISSED,
+  ENDED_WOLF,
 } from '../public/state.js';
 import {
   MAX_SHEEP,
@@ -19,6 +20,10 @@ import {
   sheepPhrase,
   normalizeRound,
   successMessage,
+  WOLF_BONUS,
+  wolfChance,
+  wolfDisguiseTier,
+  wolfIndexForRound,
 } from '../public/rounds.js';
 import { wanderOffset } from '../public/movement.js';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
@@ -193,7 +198,7 @@ test('taps counted in any order keep their tap-order numbering', () => {
   assert.equal(store.state.totalCounted, 3);
 });
 
-test('all plush sheep variants have finite geometry and stay inside the picking envelope', () => {
+test('all plush sheep and wolf variants have finite geometry and stay inside the picking envelope', () => {
   for (const geo of [0, 1, 2].map(buildSheepBodyGeometry).concat(buildEyeGeometry())) {
     geo.computeBoundingBox();
     const box = geo.boundingBox;
@@ -202,6 +207,122 @@ test('all plush sheep variants have finite geometry and stay inside the picking 
     for (const attr of Object.values(geo.attributes)) assert.ok(attr.array.every(Number.isFinite));
     geo.dispose();
   }
+});
+
+test('wolfChance starts at round 2, climbs monotonically and caps', () => {
+  assert.equal(wolfChance(1), 0);
+  assert.equal(wolfChance(2), 0.15);
+  let prev = 0;
+  for (let round = 2; round <= 24; round++) {
+    const c = wolfChance(round);
+    assert.ok(c >= prev, `round ${round} chance dropped`);
+    assert.ok(c <= 0.7, `round ${round} chance over cap`);
+    prev = c;
+  }
+  assert.equal(wolfChance(13), 0.7);
+  assert.equal(wolfChance(24), 0.7);
+});
+
+test('wolfIndexForRound is deterministic, in range, and null on no-wolf rounds', () => {
+  assert.equal(wolfIndexForRound(1, roundSeed(1), sheepForRound(1)), null);
+  const n = sheepForRound(5);
+  const a = wolfIndexForRound(5, roundSeed(5), n);
+  const b = wolfIndexForRound(5, roundSeed(5), n);
+  assert.deepEqual(a, b);
+  if (a !== null) {
+    assert.ok(Number.isInteger(a) && a >= 0 && a < n, `index ${a} out of range`);
+  }
+  // The draw itself decides: across many rounds both outcomes occur.
+  const draws = new Set();
+  for (let round = 2; round <= 24; round++) {
+    draws.add(wolfIndexForRound(round, roundSeed(round), sheepForRound(round)) === null ? 'none' : 'wolf');
+  }
+  assert.ok(draws.has('wolf'), 'no round ever drew a wolf');
+  assert.ok(draws.has('none'), 'no round ever drew a plain flock');
+});
+
+test('wolfDisguiseTier never regresses and follows the ramp', () => {
+  assert.equal(wolfDisguiseTier(1), 1);
+  assert.equal(wolfDisguiseTier(2), 1);
+  assert.equal(wolfDisguiseTier(4), 1);
+  assert.equal(wolfDisguiseTier(5), 2);
+  assert.equal(wolfDisguiseTier(7), 2);
+  assert.equal(wolfDisguiseTier(8), 3);
+  assert.equal(wolfDisguiseTier(24), 3);
+  let prev = 1;
+  for (let round = 2; round <= 24; round++) {
+    const t = wolfDisguiseTier(round);
+    assert.ok(t >= prev, `round ${round} tier regressed`);
+    prev = t;
+  }
+});
+
+test('a forced wolf round ends on the wolf tap and accepts nothing after', () => {
+  const store = newStore();
+  store.startRound(5, { silent: true });
+  const wolfIndex = store.state.sheepCount - 1;
+  store.state = { ...store.state, wolfIndex };
+  assert.deepEqual(store.tapSheep(wolfIndex), { outcome: 'wolfTap' });
+  assert.equal(store.state.phase, RUN_OVER);
+  assert.equal(store.state.endedBy, ENDED_WOLF);
+  assert.equal(store.state.count, 0);
+  assert.equal(store.state.totalCounted, 0);
+  assert.deepEqual(store.tapSheep(0), { outcome: 'ignored' });
+  assert.deepEqual(store.submitCount(), { outcome: 'ignored' });
+});
+
+test('completing a wolf round passes, grows the streak and pays the bonus', () => {
+  const store = newStore();
+  store.startRound(5, { silent: true });
+  const wolfIndex = 2;
+  store.state = { ...store.state, wolfIndex };
+  const n = store.state.sheepCount;
+  const realSheep = [...Array(n).keys()].filter((i) => i !== wolfIndex);
+  for (const i of realSheep) {
+    assert.equal(store.tapSheep(i).outcome, 'counted');
+  }
+  assert.ok(store.isComplete());
+  assert.deepEqual(store.submitCount(), { outcome: 'passed', round: 5 });
+  assert.equal(store.state.safeStreak, 1);
+  assert.equal(store.state.bestSafeStreak, 1);
+  assert.equal(store.state.bonusCounted, WOLF_BONUS);
+  assert.equal(store.state.totalCounted, n - 1 + WOLF_BONUS);
+  // The bonus rides its own accumulator, so one sync carries both.
+  assert.equal(store.unsyncedBonus, WOLF_BONUS);
+  assert.equal(store.unsyncedTaps, n - 1);
+});
+
+test('a missed run resets the current streak but keeps the best', () => {
+  const store = newStore();
+  store.startRound(5, { silent: true });
+  store.state = { ...store.state, wolfIndex: 2 };
+  for (const i of [0, 1, 3, 4, 5, 6]) store.tapSheep(i);
+  store.submitCount();
+  assert.equal(store.state.safeStreak, 1);
+  store.nextRound();
+  assert.equal(store.state.safeStreak, 1, 'a plain round keeps the streak');
+  store.state = { ...store.state, wolfIndex: 3 };
+  for (const i of [0, 1, 2, 4, 5, 6, 7]) store.tapSheep(i);
+  store.submitCount();
+  assert.equal(store.state.safeStreak, 2);
+  assert.equal(store.state.bestSafeStreak, 2);
+  store.endRun(ENDED_MISSED);
+  assert.equal(store.state.safeStreak, 2, 'the run-over card still shows the run streak');
+  store.restartRun();
+  assert.equal(store.state.safeStreak, 0);
+  assert.equal(store.state.bestSafeStreak, 2);
+});
+
+test('the wolf copy carries no em dash', () => {
+  const strings = [
+    'The wolf tricked you.',
+    'You dodged 1 wolf round in a row.',
+    'You dodged 3 wolf rounds in a row.',
+    'One of the flock might be a wolf. Counting it ends the run.',
+    'Best safe streak',
+    'Bonus sheep',
+  ];
+  for (const s of strings) assert.ok(!s.includes('\u2014'), s);
 });
 
 test('the pre-round briefing names the round, its flock, and how it moves', () => {

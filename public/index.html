@@ -451,6 +451,22 @@
       box-shadow: 0 4px 0 rgba(74, 59, 92, 0.15);
     }
 
+    /* ---- The wolf in the flock ---- */
+    /* Cues scale with the disguise tier and swing fully visible on reveal. */
+    .wolf-cues { transform-box: fill-box; }
+    .wolf-ears, .wolf-tail, .wolf-glint { transition: transform 0.3s ease, opacity 0.3s ease; }
+    .sheep-card[data-wolf-tier="1"] .wolf-ears { opacity: 1; }
+    .sheep-card[data-wolf-tier="1"] .wolf-tail { opacity: 1; }
+    .sheep-card[data-wolf-tier="2"] .wolf-ears { transform: scale(0.6); transform-origin: 60px 30px; }
+    .sheep-card[data-wolf-tier="2"] .wolf-tail { transform: scale(0.5); transform-origin: 97px 86px; }
+    .sheep-card[data-wolf-tier="3"] .wolf-ears,
+    .sheep-card[data-wolf-tier="3"] .wolf-tail { opacity: 0; }
+    .sheep-card[data-wolf-tier="3"] .wolf-glint { opacity: 0.75; }
+    .sheep-card[data-wolf-tier="1"] { --fleece: #cfc9bd; --fleece-light: #e2ddd2; --fleece-shade: #b3ada2; }
+    .sheep-card[data-revealed] .wolf-ears,
+    .sheep-card[data-revealed] .wolf-tail { transform: none; opacity: 1; }
+    .sheep-card[data-revealed] { --fleece: #cfc9bd; --fleece-light: #e2ddd2; --fleece-shade: #b3ada2; }
+
     .visually-hidden {
       position: absolute;
       width: 1px; height: 1px;
@@ -585,6 +601,7 @@
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
         <p class="bedtime-eyebrow">The flock scattered</p>
         <p id="game-over-reason" class="bedtime-message">Some sheep were left uncounted.</p>
+        <p id="game-over-streak" class="bedtime-message" hidden>You dodged some wolf rounds in a row.</p>
         <p class="celebration-title">You reached round <span id="game-over-round" class="celebration-total">1</span>.</p>
         <button id="restart-btn" type="button" class="big-btn">
           Start again
@@ -601,6 +618,7 @@
         <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
         <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
+        <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Counting it ends the run.</p>
         <button id="start-counting-btn" type="button" class="big-btn">
           Start counting
         </button>
@@ -624,6 +642,8 @@
           <div class="flex justify-between"><span>This round</span><span id="round-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Best round</span><span id="best-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="stat-value">0</span></div>
+          <div class="flex justify-between"><span>Best safe streak</span><span id="best-streak-value" class="stat-value">0</span></div>
+          <div class="flex justify-between"><span>Bonus sheep</span><span id="bonus-value" class="stat-value">0</span></div>
           <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="stat-value">0</span></div>
         </div>
 
