@@ -139,6 +139,25 @@
       "expectText": "Speed Round, 30 seconds left"
     },
     {
+      "name": "Countdown mirrors into the accessible sheep list",
+      "path": "/?scene=countdown&renderer=dom",
+      "expectSelector": "#a11y-countdown-status",
+      "expectText": "Get ready, round starting."
+    },
+    {
+      "id": "round.countdown",
+      "name": "Countdown overlay waits before the round starts",
+      "path": "/?scene=countdown",
+      "expectSelector": "#countdown-overlay:not([hidden]) #countdown-skip-btn",
+      "expectText": "3",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Speed Round play screen keeps the same count plate",
       "path": "/?round=2&speed=1",
       "expectSelector": "#count-display",
@@ -336,6 +355,44 @@
       "allowConsoleErrors": true
     },
     {
+      "name": "Grown-ups panel shows the Name labels toggle",
+      "path": "/?scene=grownups",
+      "expectSelector": "#names-toggle",
+      "expectText": "Name labels"
+    },
+    {
+      "id": "names.canvas",
+      "name": "Name labels float above the canvas flock",
+      "path": "/?round=5&names=1",
+      "expectSelector": "canvas.sheep-canvas",
+      "expectText": "is grazing",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/scene.js",
+        "public/layout.js",
+        "public/state.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "names.dom",
+      "name": "Name labels appear on the DOM fallback cards",
+      "path": "/?round=5&renderer=dom&names=1",
+      "expectSelector": ".sheep-name-label:not([hidden])",
+      "expectText": "is grazing",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/fallback.js",
+        "public/layout.js",
+        "public/state.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "No-WebGL fallback renders the same round",
       "path": "/?round=8&renderer=dom",
       "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(11)",
@@ -396,6 +453,73 @@
       "expectSelector": "#friend-add",
       "expectText": "Add friend",
       "allowConsoleErrors": true
+    },
+    {
+      "id": "duel.handoff",
+      "name": "Pass-and-play Duel shows the pass-the-device card",
+      "path": "/?scene=duelhandoff",
+      "expectSelector": "#duel-panel",
+      "expectText": "Pass the device",
+      "visual": true,
+      "impact": [
+        "public/app.js",
+        "public/index.html",
+        "public/state.js",
+        "tests/game.test.mjs",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "duel.result",
+      "name": "Pass-and-play Duel shows both miss counts and the winner",
+      "path": "/?scene=duelresult",
+      "expectSelector": "#duel-panel-scores",
+      "expectText": "Sheep counter 1 wins",
+      "visual": true,
+      "impact": [
+        "public/app.js",
+        "public/index.html",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "round.resume",
+      "name": "A saved mid-round board restores on return",
+      "path": "/?resume=1&snapshot=%7B%22midCountdown%22%3A%7B%22round%22%3A5%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22phase%22%3A%22counting%22%7D%7D",
+      "expectSelector": "#a11y-sheep-list button:nth-child(3)",
+      "expectText": "Sheep 3, counted",
+      "visual": true,
+      "impact": [
+        "public/state.js",
+        "public/app.js",
+        "public/scene.js",
+        "public/fallback.js",
+        "server.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Duel turn clock shows on a live duel board",
+      "path": "/?round=1&duel=1",
+      "expectSelector": "#duel-turn-clock:not([hidden])",
+      "expectText": "Pass and play"
+    },
+    {
+      "name": "Duel toggle appears on the briefing card",
+      "path": "/?scene=intro",
+      "expectSelector": "#duel-toggle",
+      "expectText": "Pass-and-play Duel"
+    },
+    {
+      "name": "Duel board renders the DOM fallback with the shared flock",
+      "path": "/?round=2&duel=1&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(2)"
+    },
+    {
+      "name": "Resumed board restores on the no-WebGL fallback too",
+      "path": "/?resume=1&renderer=dom&snapshot=%7B%22midCountdown%22%3A%7B%22round%22%3A5%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22phase%22%3A%22counting%22%7D%7D",
+      "expectSelector": ".sheep-fallback-grid .sheep-card.is-counted:nth-child(3)",
+      "expectText": "Sheep 3, counted"
     }
   ]
 }

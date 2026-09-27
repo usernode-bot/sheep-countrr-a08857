@@ -19,6 +19,27 @@ export function mulberry32(seed) {
   };
 }
 
+// Playful name labels for the optional "Name labels" toggle. Purely
+// cosmetic: a deterministic, seeded pick per sheep, so the same round and
+// the same slot always carries the same name in every renderer, the a11y
+// list and a /?round=N deep link. Names are hardcoded copy, never fetched,
+// and the on/off choice lives in localStorage next to the other toggles.
+const SHEEP_NAMES = [
+  'Woolly', 'Baa-bara', 'Cloud', 'Puffy', 'Snuggles', 'Marshmallow',
+  'Fleecy', 'Mopsy', 'Nibbles', 'Pip', 'Dandy', 'Baa-bette', 'Cotton',
+  'Muffin', 'Wobble', 'Dolly', 'Shearlock', 'Meadow', 'Snooze', 'Bumble',
+  'Twinkle', 'Doodles', 'Popcorn', 'Cinnamon',
+];
+
+// A name per slot: index picks the base name, the round seed permutes the
+// order (an XOR with a seeded shuffle offset), so round 3's sheep 0 is not
+// always round 1's sheep 0 with a new number. Deterministic and pure, like
+// every other layout helper here.
+export function sheepName(seed, index) {
+  const i = ((index >>> 0) + (seed >>> 0)) % SHEEP_NAMES.length;
+  return SHEEP_NAMES[i];
+}
+
 // Rejection-sampled positions within a rectangular field, so counted
 // sheep read as visually distinct rather than clumped together.
 export function layoutPositions(seed, n, { width = 8, depth = 5, minSeparation = 1.6 } = {}) {
