@@ -367,6 +367,46 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
+// The grown-ups CSV export: the signed-in player's own best round at every
+// difficulty and every finished run inside the current ISO week (the same
+// rows the weekly leaderboard ranks). Only fields the app already shows in
+// the grown-ups panel and the leaderboard leave the database; the route is
+// authenticated like every other /api read.
+app.get('/api/export', async (req, res) => {
+  try {
+    const { rows: progressRows } = await pool.query(
+      `SELECT best_rounds FROM sheep_progress WHERE user_id = $1`,
+      [req.user.id]
+    );
+    const stored = (progressRows[0] && progressRows[0].best_rounds) || {};
+    const bestRounds = {
+      easy: stored.easy || 1,
+      normal: stored.normal || 1,
+      hard: stored.hard || 1,
+      expert: stored.expert || 1,
+    };
+
+    const { rows: runRows } = await pool.query(
+      `SELECT round_reached AS "roundReached", speed_round AS "speedRound", ended_at AS "endedAt"
+       FROM sheep_runs
+       WHERE user_id = $1 AND ended_at >= date_trunc('week', NOW())
+       ORDER BY ended_at DESC, id DESC`,
+      [req.user.id]
+    );
+
+    res.json({
+      bestRounds,
+      weeklyRuns: runRows.map((r) => ({
+        roundReached: r.roundReached,
+        speedRound: r.speedRound,
+        endedAt: r.endedAt,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // The caller's own friend list.
 app.get('/api/friends', async (req, res) => {
   try {
@@ -438,7 +478,7 @@ function randomSeed() {
 app.get('/api/state', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT round, best_round, total_counted, sound_on, night_on
+      `SELECT round, best_round, total_counted, sound_on, night_on, calm_on
        FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
@@ -451,7 +491,7 @@ app.get('/api/state', async (req, res) => {
          ON CONFLICT (user_id) DO NOTHING`,
         [req.user.id, req.user.username, randomSeed()]
       );
-      row = { round: 1, best_round: 1, total_counted: 0, sound_on: false, night_on: false, difficulty: 'normal', best_rounds: {} };
+      row = { round: 1, best_round: 1, total_counted: 0, sound_on: false, night_on: false, calm_on: false, difficulty: 'normal', best_rounds: {} };
     }
 
     const { rows: totalRows } = await pool.query(
@@ -472,6 +512,7 @@ app.get('/api/state', async (req, res) => {
       totalCounted: row.total_counted,
       soundOn: row.sound_on,
       nightOn: row.night_on,
+      calmOn: row.calm_on,
       communityTotal,
     });
   } catch (err) {
@@ -493,12 +534,13 @@ app.post('/api/state', async (req, res) => {
   const newTaps = clamp(parseInt(body.newTaps, 10) || 0, 0, MAX_TAPS_PER_SYNC);
   const soundOn = !!body.soundOn;
   const nightOn = !!body.nightOn;
+  const calmOn = !!body.calmOn;
   // An unrecognised difficulty is never stored; it reads back as Normal.
   const difficulty = DIFFICULTIES.has(body.difficulty) ? body.difficulty : 'normal';
 
   try {
     const { rows } = await pool.query(
-      `SELECT best_round, best_rounds FROM sheep_progress WHERE user_id = $1`,
+      `SELECT best_round, best_rounds, total_counted FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
     const prev = rows[0];
@@ -516,8 +558,8 @@ app.post('/api/state', async (req, res) => {
 
     await pool.query(
       `INSERT INTO sheep_progress
-         (user_id, username, round, best_round, best_rounds, difficulty, total_counted, sound_on, night_on, seed)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (user_id, username, round, best_round, best_rounds, difficulty, total_counted, sound_on, night_on, calm_on, seed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (user_id) DO UPDATE SET
          username = EXCLUDED.username,
          round = EXCLUDED.round,
@@ -527,8 +569,9 @@ app.post('/api/state', async (req, res) => {
          total_counted = EXCLUDED.total_counted,
          sound_on = EXCLUDED.sound_on,
          night_on = EXCLUDED.night_on,
+         calm_on = EXCLUDED.calm_on,
          updated_at = NOW()`,
-      [req.user.id, req.user.username, round, bestRound, JSON.stringify(bestRounds), difficulty, totalCounted, soundOn, nightOn, randomSeed()]
+      [req.user.id, req.user.username, round, bestRound, JSON.stringify(bestRounds), difficulty, totalCounted, soundOn, nightOn, calmOn, randomSeed()]
     );
 
     res.json({ ok: true });
@@ -556,10 +599,12 @@ app.use((req, res, next) => {
 // of a redirect, so the platform shell is never loaded INSIDE its own
 // app iframe and stray visits still don't reveal the app.
 //
-// The screenshot-state deep links are the one exception: `?scene=`
-// fixtures render hardcoded demo data, and `?round=N` starts a playable
-// run from a fixed seed. Both branches in app.js are ephemeral, so they
-// never touch localStorage or the server and carry nothing worth gating.
+  // The screenshot-state deep links are the one exception: `?scene=`
+  // fixtures render hardcoded demo data, `?round=N` starts a playable
+  // run from a fixed seed, and `?resume=1` plays the save/resume loop
+  // under a fixed demo namespace. All three branches are deliberately
+  // isolated (ephemeral or namespaced), so they never touch a real
+  // player's progress and carry nothing worth auth-gating.
 // They stay reachable with no token so the platform's checks/screenshots
 // (and this repo's own usernode-run-checks) can navigate straight to them,
 // since neither can mint a real platform-signed token.
@@ -569,7 +614,7 @@ app.get('*', (req, res) => {
   // public data endpoints, so they must not depend on the chromeless shell
   // minting a token for them. Skipping the chromeless redirect here also
   // removes any redirect-loop risk if it ever fired on the same path.
-  if (!req.user && !req.query.scene && !req.query.round) {
+  if (!req.user && !req.query.scene && !req.query.round && !req.query.duel && !req.query.resume) {
     if (req.path.startsWith('/s/') || req.path.startsWith('/invite/')) {
       return res.sendFile(path.join(__dirname, 'public', 'index.html'));
     }
@@ -695,6 +740,8 @@ async function start() {
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS difficulty VARCHAR(255) NOT NULL DEFAULT 'normal'`);
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS best_rounds JSONB NOT NULL DEFAULT '{}'`);
   await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS night_on BOOLEAN NOT NULL DEFAULT false`);
+  // Calm mode: a comfort setting stored with the other grown-up toggles.
+  await pool.query(`ALTER TABLE sheep_progress ADD COLUMN IF NOT EXISTS calm_on BOOLEAN NOT NULL DEFAULT false`);
   await pool.query(`ALTER TABLE sheep_progress ALTER COLUMN seed SET DEFAULT 0`);
 
   // Finished runs, one row per run end: what the This week tab ranks. The
