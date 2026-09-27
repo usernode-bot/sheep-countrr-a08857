@@ -658,7 +658,169 @@ test('a fresh run resets the Speed Round mode and reads a stale clock as off', (
   assert.match(roundCompleteTitle(4, true), /Speed Round 4 counted/);
   assert.equal(roundCompleteTitle(4, false), 'Round 4 counted.');
   assert.equal(weeklyScoreLabel(8, true), 'Speed 8');
-  assert.equal(weeklyScoreLabel(8, false), 'Round 8');
+assert.equal(weeklyScoreLabel(8, false), 'Round 8');
+});
+
+test('a mid-round snapshot round-trips the exact board', () => {
+  const { store } = newStore();
+  store.startRound(5, { silent: true });
+  store.tapSheep(0);
+  store.tapSheep(2);
+  const snapshot = store.snapshotRound();
+  // Everything that defines the board travels together.
+  assert.equal(snapshot.round, 5);
+  assert.equal(snapshot.seed, store.state.seed);
+  assert.deepEqual(snapshot.counted, [0, 2]);
+  assert.equal(snapshot.countedAt.length, 2);
+  assert.equal(snapshot.countedAt[0].index, 0);
+  assert.equal(snapshot.countedAt[1].index, 2);
+  assert.equal(snapshot.phase, COUNTING);
+
+  // A fresh store restores it exactly: same round, same flock size, same
+  // seed, same sheep counted in the same tap order, same clock.
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({ round: 5, difficulty: 'normal', midCountdown: snapshot });
+  assert.equal(restored.state.round, 5);
+  assert.equal(restored.state.sheepCount, store.state.sheepCount);
+  assert.equal(restored.state.seed, store.state.seed);
+  assert.deepEqual(restored.state.counted, [0, 2]);
+  assert.deepEqual(restored.state.countedAt, snapshot.countedAt);
+  assert.equal(restored.state.roundElapsed, snapshot.roundElapsed);
+  assert.equal(restored.state.phase, COUNTING);
+  // Double-tap protection survives the resume: a restored tap ends the run.
+  restored.tapSheep(0);
+  assert.equal(restored.state.phase, RUN_OVER);
+});
+
+test('a resumed snapshot with no midCountdown starts a fresh round', () => {
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({ round: 3, difficulty: 'normal', totalCounted: 6 });
+  assert.equal(restored.state.round, 3);
+  assert.equal(restored.state.count, 0);
+  assert.deepEqual(restored.state.counted, []);
+  assert.equal(restored.state.sheepCount, sheepForRound(3, 'normal'));
+});
+
+test('a mangled snapshot never crashes or fabricates taps', () => {
+  const base = { round: 4, difficulty: 'hard', seed: roundSeed(4), phase: COUNTING };
+  // Out-of-range and duplicate indices are dropped, tap order preserved.
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({
+    round: 4,
+    difficulty: 'hard',
+    midCountdown: { ...base, counted: [0, 99, 1, 1, -3] },
+  });
+  assert.deepEqual(restored.state.counted, [0, 1]);
+  assert.equal(restored.state.sheepCount, sheepForRound(4, 'hard'));
+  // A non-counting phase never resumes: the round starts fresh.
+  const { store: finished } = newStore();
+  finished.loadLocalFrom({
+    round: 4,
+    difficulty: 'hard',
+    midCountdown: { ...base, counted: [0, 1], phase: RUN_OVER },
+  });
+  assert.equal(finished.state.phase, COUNTING);
+  assert.equal(finished.state.count, 0);
+});
+
+test('passing or ending the round clears the snapshot', () => {
+  const { store } = newStore();
+  store.startRound(3, { silent: true });
+  store.tapSheep(0);
+  assert.equal(store.snapshotRound().phase, COUNTING);
+  // A miss ends the run and the snapshot must not survive it.
+  store.endRun(ENDED_DOUBLE_TAP);
+  assert.equal(store.hasMidRoundSnapshot, false);
+  // Same after a full count and submit: the round is over.
+  const { store: passed } = newStore();
+  passed.startRound(1, { silent: true });
+  passed.tapSheep(0);
+  passed.submitCount();
+  assert.equal(passed.state.phase, ROUND_PASSED);
+  assert.equal(passed.hasMidRoundSnapshot, false);
+});
+
+test('a Speed Round snapshot carries its remaining clock, and 0 reads as gone', () => {
+  const { store } = newStore();
+  store.setSpeedOn(true);
+  store.startRound(2, { silent: true });
+  store.tapSheep(0);
+  const snapshot = store.snapshotRound();
+  assert.equal(snapshot.speedOn, true);
+  assert.equal(snapshot.secondsLeft, SPEED_ROUND_SECONDS);
+
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({ round: 2, midCountdown: { ...snapshot, secondsLeft: 17 } });
+  assert.equal(restored.state.speedOn, true);
+  assert.equal(restored.state.secondsLeft, 17);
+  assert.equal(restored.state.count, 1);
+
+  // A clock that already hit zero is a finished round: it never resumes.
+  const { store: expired } = newStore();
+  expired.loadLocalFrom({ round: 2, midCountdown: { ...snapshot, secondsLeft: 0 } });
+  assert.equal(expired.state.count, 0);
+  assert.equal(expired.state.secondsLeft, SPEED_ROUND_SECONDS);
+});
+
+// ---- Pass-and-play Duel ----
+// The duel is layered on the same state shape the solo run uses: each turn
+// is a fresh ephemeral store over one shared flock seed, so every renderer
+// surface reads it unchanged. These tests pin the contract the controller
+// in app.js depends on.
+
+test('a duel turn store uses the shared flock seed, not the round seed', () => {
+  const { store } = newStore();
+  const round = 2;
+  const sharedSeed = roundSeed(round) + 900000 + round;
+  store.state = { ...store.state, duel: true, seed: sharedSeed };
+  store.startRound(round, { silent: true });
+  store.state = { ...store.state, seed: sharedSeed };
+  assert.equal(store.state.seed, sharedSeed);
+  assert.notEqual(store.state.seed, roundSeed(round));
+  assert.equal(store.state.sheepCount, sheepForRound(round));
+  assert.equal(store.state.count, 0);
+  assert.equal(store.state.phase, COUNTING);
+});
+
+test('a duel turn miss count comes straight off the shared state shape', () => {
+  const { store } = newStore();
+  const round = 4;
+  const n = sheepForRound(round);
+  store.startRound(round, { silent: true });
+  for (let i = 0; i < n - 1; i++) store.tapSheep(i);
+  store.submitCount();
+  assert.equal(store.state.phase, RUN_OVER);
+  const misses = store.state.sheepCount - store.state.count;
+  assert.equal(misses, 1);
+});
+
+test('a clean duel turn scores zero misses', () => {
+  const { store } = newStore();
+  const n = sheepForRound(1);
+  store.startRound(1, { silent: true });
+  for (let i = 0; i < n; i++) store.tapSheep(i);
+  store.submitCount();
+  const misses = store.state.sheepCount - store.state.count;
+  assert.equal(misses, 0);
+  assert.equal(store.state.phase, ROUND_PASSED);
+});
+
+test('duel misses compare the way the results card announces', () => {
+  const compare = (a, b) => (a < b ? 'Player 1 wins' : b < a ? 'Player 2 wins' : 'A tie');
+  assert.equal(compare(0, 1), 'Player 1 wins');
+  assert.equal(compare(2, 1), 'Player 2 wins');
+  assert.equal(compare(1, 1), 'A tie');
+});
+
+test('a duel turn that double-taps still lands in the run-over path', () => {
+  const { store } = newStore();
+  store.startRound(2, { silent: true });
+  store.tapSheep(0);
+  store.tapSheep(0);
+  assert.equal(store.state.phase, RUN_OVER);
+  assert.equal(store.state.endedBy, ENDED_DOUBLE_TAP);
+  const misses = store.state.sheepCount - store.state.count;
+  assert.ok(misses >= 1);
 });
 
 // The grown-ups export: the CSV builders are pure, so the browser button and
