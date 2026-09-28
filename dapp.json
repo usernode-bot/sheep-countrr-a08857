@@ -1,8 +1,6 @@
 {
   "name": "Sheep countrr",
-  "icon": {
-    "emoji": "🐑"
-  },
+  "icon": { "image": "brand/icon.png", "emoji": "🐑" },
   "secrets": [],
   "tests": [
     {
