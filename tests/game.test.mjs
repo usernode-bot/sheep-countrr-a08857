@@ -270,18 +270,11 @@ test('all plush sheep and wolf variants have finite geometry and stay inside the
   }
 });
 
-test('wolfChance starts at round 2, climbs monotonically and caps', () => {
+test('wolfChance follows the every-fifth-round schedule', () => {
   assert.equal(wolfChance(1), 0);
-  assert.equal(wolfChance(2), 0.15);
-  let prev = 0;
-  for (let round = 2; round <= 24; round++) {
-    const c = wolfChance(round);
-    assert.ok(c >= prev, `round ${round} chance dropped`);
-    assert.ok(c <= 0.7, `round ${round} chance over cap`);
-    prev = c;
-  }
-  assert.equal(wolfChance(13), 0.7);
-  assert.equal(wolfChance(24), 0.7);
+  for (const round of [2, 3, 4, 6, 7, 8, 9]) assert.equal(wolfChance(round), 0);
+  assert.ok(wolfChance(5) > 0);
+  assert.ok(wolfChance(10) > 0);
 });
 
 test('wolfIndexForRound is deterministic, in range, and null on no-wolf rounds', () => {
@@ -293,13 +286,16 @@ test('wolfIndexForRound is deterministic, in range, and null on no-wolf rounds',
   if (a !== null) {
     assert.ok(Number.isInteger(a) && a >= 0 && a < n, `index ${a} out of range`);
   }
-  // The draw itself decides: across many rounds both outcomes occur.
-  const draws = new Set();
-  for (let round = 2; round <= 24; round++) {
-    draws.add(wolfIndexForRound(round, roundSeed(round), sheepForRound(round)) === null ? 'none' : 'wolf');
+  // The schedule decides: wolf rounds are fixed, all other rounds plain.
+  for (const round of [2, 3, 4, 6, 7, 8, 9]) {
+    assert.equal(wolfIndexForRound(round, roundSeed(round), sheepForRound(round)), null,
+      `round ${round} unexpectedly hid a wolf`);
   }
-  assert.ok(draws.has('wolf'), 'no round ever drew a wolf');
-  assert.ok(draws.has('none'), 'no round ever drew a plain flock');
+  for (const round of [5, 10]) {
+    const idx = wolfIndexForRound(round, roundSeed(round), sheepForRound(round));
+    const n = sheepForRound(round);
+    assert.ok(Number.isInteger(idx) && idx >= 0 && idx < n, `round ${round} wolf index ${idx} out of range`);
+  }
 });
 
 test('wolfDisguiseTier never regresses and follows the ramp', () => {

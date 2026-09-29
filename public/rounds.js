@@ -183,9 +183,6 @@ export function roundLabel(round) {
 // the future Easy/Expert difficulty work: the existing call sites pass
 // nothing, so nothing changes until the modes land.
 
-const WOLF_BASE_CHANCE = 0.15;
-const WOLF_CHANCE_STEP = 0.05;
-const WOLF_MAX_CHANCE = 0.7;
 export const WOLF_BONUS = 2;
 
 function wolfModeFactors(mode = 'normal') {
@@ -195,12 +192,13 @@ function wolfModeFactors(mode = 'normal') {
 }
 
 // Round 1 is the gentle tap-to-learn round: it never hides a wolf. After
-// that the chance climbs one step per round until it caps.
+// that a wolf appears on a fixed schedule, roughly every fifth round
+// (rounds 5, 10, 15, ...), so the spawn is never left to a chance draw.
 export function wolfChance(round, mode = 'normal') {
   const r = normalizeRound(round);
   if (r <= 1) return 0;
-  const { chance } = wolfModeFactors(mode);
-  return Math.min(WOLF_MAX_CHANCE, (WOLF_BASE_CHANCE + (r - 2) * WOLF_CHANCE_STEP) * chance);
+  if (r < 5) return 0;
+  return r % 5 === 0 ? 1 : 0;
 }
 
 // Deterministic per-round draw: one value from a seed twisted away from
