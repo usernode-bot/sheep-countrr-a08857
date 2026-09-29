@@ -18,6 +18,7 @@ import {
   dayDistance,
   localDayKey,
   motionForRound,
+  normalizeDifficulty,
   normalizeCalm,
   paceLine,
   roamRadius,
@@ -282,6 +283,9 @@ test('wolfChance starts at round 2, climbs monotonically and caps', () => {
   }
   assert.equal(wolfChance(13), 0.7);
   assert.equal(wolfChance(24), 0.7);
+  // The wolf reads the level: Insane hunts more often than Expert from the
+  // first wolf-eligible round.
+  assert.ok(wolfChance(2, 'insane') > wolfChance(2, 'expert'), 'insane round 2 wolf chance');
 });
 
 test('wolfIndexForRound is deterministic, in range, and null on no-wolf rounds', () => {
@@ -428,7 +432,7 @@ test('sheep phrases and pace lines read naturally at their edges', () => {
   }
 });
 test('every difficulty keeps round 1 as one motionless sheep', () => {
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of ['easy', 'normal', 'hard', 'expert', 'insane']) {
     assert.equal(sheepForRound(1, d), 1, `${d} round 1 flock`);
     const m = motionForRound(1, d);
     assert.equal(m.speed, 0, `${d} round 1 speed`);
@@ -450,13 +454,15 @@ test('each difficulty grows its flock on its own curve, capped', () => {
   assert.equal(sheepForRound(5, 'normal'), 7);
   assert.equal(sheepForRound(5, 'hard'), 9);
   assert.equal(sheepForRound(5, 'expert'), 11);
+  assert.equal(sheepForRound(5, 'insane'), 12);
+  assert.ok(sheepForRound(5, 'insane') > sheepForRound(5, 'expert'), 'insane round 5 exceeds expert');
   // Easy stops at 6 sheep; the others at the shared MAX_SHEEP cap.
   assert.equal(sheepForRound(30, 'easy'), 6);
-  for (const d of ['normal', 'hard', 'expert']) {
+  for (const d of ['normal', 'hard', 'expert', 'insane']) {
     assert.equal(sheepForRound(30, d), MAX_SHEEP, `${d} cap`);
   }
   // A level never shrinks its flock as rounds go on.
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of ['easy', 'normal', 'hard', 'expert', 'insane']) {
     let prev = sheepForRound(1, d);
     for (let round = 2; round <= 20; round++) {
       const n = sheepForRound(round, d);
@@ -467,7 +473,7 @@ test('each difficulty grows its flock on its own curve, capped', () => {
 });
 
 test('later rounds never tame down, at any difficulty', () => {
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of ['easy', 'normal', 'hard', 'expert', 'insane']) {
     let prev = motionForRound(1, d);
     for (let round = 2; round <= 24; round++) {
       const m = motionForRound(round, d);
@@ -481,18 +487,19 @@ test('later rounds never tame down, at any difficulty', () => {
   }
   // The levels are meaningfully apart where the ramps bite.
   assert.ok(motionForRound(5, 'expert').speed > motionForRound(5, 'normal').speed * 1.5);
+  assert.ok(motionForRound(5, 'insane').speed > motionForRound(5, 'expert').speed, 'insane round 5 outruns expert');
   assert.ok(motionForRound(5, 'easy').speed < motionForRound(5, 'normal').speed);
 });
 
 test('wandering stays deterministic, bounded and continuous at every difficulty', () => {
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of ['easy', 'normal', 'hard', 'expert', 'insane']) {
     // A sheep must stay followable by eye, never warping. The drift term
     // has a corner at each reversal, so a single frame at the corner is
     // allowed to move up to DRIFT_MAX; everything above that is a warp. The
     // bound scales with the level: a faster difficulty legitimately covers
     // more ground in the same 1/30th of a second.
     const DRIFT_MAX = 0.5;
-    const JUMP_LIMIT = { easy: DRIFT_MAX, normal: DRIFT_MAX * 1.2, hard: DRIFT_MAX * 1.5, expert: DRIFT_MAX * 2 }[d];
+    const JUMP_LIMIT = { easy: DRIFT_MAX, normal: DRIFT_MAX * 1.2, hard: DRIFT_MAX * 1.5, expert: DRIFT_MAX * 2, insane: DRIFT_MAX * 2.5 }[d];
     for (let round = 1; round <= 16; round++) {
       const m = motionForRound(round, d);
       const bound = Math.max(roamRadius(round, d), 0.35);
@@ -534,6 +541,11 @@ test('omitting the difficulty means normal, everywhere', () => {
     JSON.stringify(motionForRound(5, 'bogus')),
     JSON.stringify(motionForRound(5, 'normal'))
   );
+  // Every named level round-trips through the normalizer.
+  for (const d of ['easy', 'normal', 'hard', 'expert', 'insane']) {
+    assert.equal(normalizeDifficulty(d), d, `${d} round-trip`);
+  }
+  assert.equal(normalizeDifficulty('INSANE'), 'normal', 'unknown value falls back to normal');
 });
 
 test('the briefing names the right flock per difficulty', () => {
@@ -542,8 +554,9 @@ test('the briefing names the right flock per difficulty', () => {
   assert.equal(roundIntroText(5, 'hard'), 'Round 5 has 9 sheep. They bounce off in all directions.');
   assert.equal(roundIntroText(3, 'easy'), 'Round 3 has 3 sheep. They start to wander.');
   assert.equal(roundIntroText(1, 'expert'), 'Round 1 has 1 sheep. This one stands still.');
+  assert.equal(roundIntroText(1, 'insane'), 'Round 1 has 1 sheep. This one stands still.');
   // No em dashes in anything the player reads, at any level.
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of ['easy', 'normal', 'hard', 'expert', 'insane']) {
     for (const round of [1, 5, 12]) {
       assert.ok(!roundIntroText(round, d).includes('\u2014'), `em dash in ${d} round ${round}`);
       assert.ok(!paceLine(round, d).includes('\u2014'), `em dash in pace ${d} round ${round}`);
@@ -619,7 +632,7 @@ test('the per-difficulty best map survives a local save and load', () => {
   const saved = {
     round: 2,
     difficulty: 'hard',
-    bestRounds: { easy: 3, normal: 9, hard: 6, expert: 1 },
+    bestRounds: { easy: 3, normal: 9, hard: 6, expert: 1, insane: 4 },
     totalCounted: 12,
     soundOn: true,
   };
@@ -629,6 +642,7 @@ test('the per-difficulty best map survives a local save and load', () => {
   assert.equal(restored.bestRound, 6);
   assert.equal(restored.state.bestRounds.normal, 9);
   assert.equal(restored.state.bestRounds.easy, 3);
+  assert.equal(restored.state.bestRounds.insane, 4);
   assert.equal(restored.state.totalCounted, 12);
   assert.equal(restored.state.soundOn, true);
 });
@@ -787,9 +801,23 @@ test('a passed Speed Round advances with a fresh clock and keeps the mode', () =
   assert.equal(store.state.phase, COUNTING);
 });
 
+test('switching to insane resets the run and keeps other levels bests', () => {
+  const { store } = newStore();
+  store.startRound(5, { silent: true });
+  store.tapSheep(0);
+  store.setDifficulty('insane');
+  assert.equal(store.state.difficulty, 'insane');
+  assert.equal(store.state.round, 1);
+  assert.equal(store.state.sheepCount, sheepForRound(1, 'insane'));
+  assert.equal(store.state.bestRounds.insane, 1);
+  // Other levels' bests are untouched by the switch.
+  assert.equal(store.state.bestRounds.normal, 5);
+  assert.equal(store.state.bestRounds.expert, 1);
+});
+
 test('calm mode slows the flock without changing what the round asks for', () => {
   // The motion profile keeps its shape: same roam radius, a slower clock.
-  for (const difficulty of ['easy', 'normal', 'hard', 'expert']) {
+  for (const difficulty of ['easy', 'normal', 'hard', 'expert', 'insane']) {
     const raw = motionForRound(6, difficulty);
     const calm = calmMotion(6, difficulty);
     assert.ok(calm.speed < raw.speed, `${difficulty} calm speed did not slow`);
@@ -1017,10 +1045,10 @@ test('a duel turn that double-taps still lands in the run-over path', () => {
 // The grown-ups export: the CSV builders are pure, so the browser button and
 // these assertions share one source of truth for the file's exact shape.
 test('the best-rounds export names every difficulty and folds legacy data', () => {
-  const csv = bestRoundsCsv({ bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2 } });
+  const csv = bestRoundsCsv({ bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2, insane: 6 } });
   assert.equal(
     csv,
-    'difficulty,best_round\r\neasy,3\r\nnormal,7\r\nhard,5\r\nexpert,2\r\n',
+    'difficulty,best_round\r\neasy,3\r\nnormal,7\r\nhard,5\r\nexpert,2\r\ninsane,6\r\n',
     'one header and one row per level, CRLF-terminated'
   );
   const legacy = bestRoundsCsv({});

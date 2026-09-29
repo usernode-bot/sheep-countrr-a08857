@@ -965,7 +965,7 @@ function dismissDuelPanel() {
 // button starts counting. The difficulty picker lives on the card. Selecting a level
 // immediately rewrites the briefing line, so the player can see what each
 // level means before committing to Start counting.
-const DIFFICULTY_LABELS = { easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert' };
+const DIFFICULTY_LABELS = { easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert', insane: 'Insane' };
 
 function syncDifficultyPicker(state) {
   for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {

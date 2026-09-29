@@ -96,7 +96,7 @@ const MAX_TAPS_PER_SYNC = 12;
 
 // The difficulty levels the client may report. Anything else falls back to
 // 'normal', matching public/rounds.js's normalizeDifficulty.
-const DIFFICULTIES = new Set(['easy', 'normal', 'hard', 'expert']);
+const DIFFICULTIES = new Set(['easy', 'normal', 'hard', 'expert', 'insane']);
 
 // URL-safe code shapes. The client copies full URLs, but the key/code itself
 // never carries anything else, so a strict charset check is all the input
@@ -385,6 +385,7 @@ app.get('/api/export', async (req, res) => {
       normal: stored.normal || 1,
       hard: stored.hard || 1,
       expert: stored.expert || 1,
+      insane: stored.insane || 1,
     };
 
     const { rows: runRows } = await pool.query(

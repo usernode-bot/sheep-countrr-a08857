@@ -41,7 +41,7 @@ export const ENDED_TIME_UP = 'timeUp';
 
 // One best round per difficulty, kept in a map so a best on Easy can never
 // masquerade as one on Hard.
-export const DIFFICULTY_KEYS = ['easy', 'normal', 'hard', 'expert'];
+export const DIFFICULTY_KEYS = ['easy', 'normal', 'hard', 'expert', 'insane'];
 
 // ---- Play streak normalization ----
 // A day key is a local calendar date, YYYY-MM-DD. Anything that is not one
@@ -56,7 +56,7 @@ function normalizeStreakCount(raw) {
 }
 
 function normalizeBestRounds(raw, fallback) {
-  const out = { easy: 1, normal: 1, hard: 1, expert: 1 };
+  const out = { easy: 1, normal: 1, hard: 1, expert: 1, insane: 1 };
   const source = raw && typeof raw === 'object' ? raw : {};
   for (const key of DIFFICULTY_KEYS) {
     out[key] = normalizeRound(source[key] || 1);
@@ -86,7 +86,7 @@ export function createDefaultState() {
     safeStreak: 0,
     bestSafeStreak: 0,
     bonusCounted: 0,
-    bestRounds: { easy: 1, normal: 1, hard: 1, expert: 1 },
+    bestRounds: { easy: 1, normal: 1, hard: 1, expert: 1, insane: 1 },
     totalCounted: 0,
     communityTotal: 0,
     soundOn: false,

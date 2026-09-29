@@ -59,6 +59,14 @@ export const DIFFICULTIES = {
     overRate: 0.12,
     jitterScale: 0.4,
   },
+  insane: {
+    growth: 3.0,
+    maxSheep: 12,
+    rampRounds: 3,
+    speedRamp: 2.6,
+    overRate: 0.15,
+    jitterScale: 0.45,
+  },
 };
 
 // Anything unrecognised (a hostile /api/state body, a mangled deep link,
@@ -191,6 +199,7 @@ export const WOLF_BONUS = 2;
 function wolfModeFactors(mode = 'normal') {
   if (mode === 'easy') return { chance: 0.5, tier2: 7, tier3: 10 };
   if (mode === 'expert') return { chance: 1.5, tier2: 4, tier3: 6 };
+  if (mode === 'insane') return { chance: 2, tier2: 3, tier3: 6 };
   return { chance: 1, tier2: 5, tier3: 8 };
 }
 
