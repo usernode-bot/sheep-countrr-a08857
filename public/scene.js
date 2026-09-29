@@ -23,13 +23,13 @@ const COLORS = {
   hoof: '#8a6558',
   eyeWhite: '#fff8ed',
   pupil: '#2b2530',
-  ground: '#6b9150',
-  hillA: '#5e8a49',
-  hillB: '#527b42',
-  hillC: '#476d3e',
+  ground: '#667d79',
+  hillA: '#738886',
+  hillB: '#5f7879',
+  hillC: '#4f686c',
   trunk: '#7b7773',
-  leaf: '#4e7a3f',
-  leafLight: '#6a9352',
+  leaf: '#586e6f',
+  leafLight: '#728786',
   fog: '#a1afb8',
   wolfWool: '#cfc9bd',
   wolfWoolShade: '#b3ada2',
@@ -42,9 +42,9 @@ const COLORS = {
 // number plates keep their exact contrast.
 const CALM_COLORS = {
   ground: '#8fbf8a',
-  hillA: '#87a982',
-  hillB: '#75957a',
-  hillC: '#66846c',
+  hillA: '#8aa89f',
+  hillB: '#75918f',
+  hillC: '#64807f',
   fog: '#b3c2c8',
 };
 
@@ -698,11 +698,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   fill.position.set(6, 4, -4);
   scene.add(fill);
 
-  // Ground: a big gently rolling plane. Vertex colors mottle it with soft
-  // grass patches so it reads as a real meadow instead of one flat swatch;
-  // material.color still carries the day/calm/night tint, and multiplies
-  // these near-white variations, so palette switching keeps working.
-  const groundGeo = new THREE.PlaneGeometry(70, 70, 48, 48);
+  // Ground: a big gently rolling plane.
+  const groundGeo = new THREE.PlaneGeometry(70, 70, 36, 36);
   const gp = groundGeo.attributes.position;
   for (let i = 0; i < gp.count; i++) {
     const x = gp.getX(i);
@@ -711,25 +708,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     gp.setZ(i, Math.sin(x * 0.45) * 0.08 + Math.cos(y * 0.5) * 0.08 + far * far * 0.4);
   }
   groundGeo.computeVertexNormals();
-  {
-    const shades = new Float32Array(gp.count * 3);
-    for (let i = 0; i < gp.count; i++) {
-      const x = gp.getX(i);
-      const y = gp.getY(i);
-      // Two smooth octaves: broad patches plus a finer mottle, both fixed
-      // (not round-seeded) so the meadow looks the same every round.
-      const broad = Math.sin(x * 0.32 + 1.7) * Math.cos(y * 0.41 + 0.6)
-        + 0.6 * Math.sin(x * 0.71 + y * 0.53 + 2.1);
-      const fine = Math.sin(x * 1.9 + 4.2) * Math.sin(y * 2.3 + 1.3) * 0.35;
-      const t = Math.max(0, Math.min(1, 0.5 + (broad + fine) * 0.28));
-      // Dry sunlit patches lean warm; shaded patches lean deep green.
-      shades[i * 3] = 0.84 + t * 0.26;
-      shades[i * 3 + 1] = 0.92 + t * 0.12;
-      shades[i * 3 + 2] = 0.88 + t * 0.1;
-    }
-    groundGeo.setAttribute('color', new THREE.BufferAttribute(shades, 3));
-  }
-  const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ color: COLORS.ground, vertexColors: true }));
+  const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ color: COLORS.ground }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.03;
   scene.add(ground);
