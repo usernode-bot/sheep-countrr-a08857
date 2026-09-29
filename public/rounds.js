@@ -14,17 +14,18 @@ export const MAX_SHEEP = 12;
 // Round at which the movement ramp reaches full chaos.
 export const DEFAULT_DIFFICULTY = 'normal';
 
-// The ladder's length. The round pill reads "Round 5 of 9" so a player
+// The ladder's length. The round pill reads "Round 5 of 20" so a player
 // always knows how far the run goes; the flock keeps its shape past the
 // top (see sheepForRound's cap) and the suffix drops off there, so the
 // pill never claims a round the flock does not have.
-export const TOTAL_ROUNDS = 9;
+export const TOTAL_ROUNDS = 20;
 
 // The difficulty dials. Normal is today's curve exactly; Easy stretches the
 // same character arc out and calms it down, Hard and Expert compress it and
 // push it further. growth is the sheep-per-round multiplier, rampRounds how
 // long the movement ramp takes to reach full chaos, speedRamp the extra
-// speed at full ramp, overRate the post-ramp speed creep per round, and
+// speed at full ramp, overRate the post-ramp speed creep per round,
+// overCap the most that creep can add once the ramp is done, and
 // jitterScale how nervy the late wobble gets.
 export const DIFFICULTIES = {
   easy: {
@@ -32,7 +33,8 @@ export const DIFFICULTIES = {
     maxSheep: 6,
     rampRounds: 12,
     speedRamp: 1.1,
-    overRate: 0.03,
+    overRate: 0.04,
+    overCap: 1.2,
     jitterScale: 0.25,
   },
   normal: {
@@ -40,7 +42,8 @@ export const DIFFICULTIES = {
     maxSheep: 12,
     rampRounds: 8,
     speedRamp: 1.5,
-    overRate: 0.06,
+    overRate: 0.07,
+    overCap: 1.4,
     jitterScale: 0.3,
   },
   hard: {
@@ -48,7 +51,11 @@ export const DIFFICULTIES = {
     maxSheep: 12,
     rampRounds: 6,
     speedRamp: 1.8,
-    overRate: 0.09,
+    overRate: 0.095,
+    // 1.35 rather than 1.4: probing the wander math through round 30 shows
+    // 1.4 lets a hard sheep's worst per-frame jump clip the followability
+    // limit, while 1.35 clears it with room to spare.
+    overCap: 1.35,
     jitterScale: 0.35,
   },
   expert: {
@@ -56,7 +63,8 @@ export const DIFFICULTIES = {
     maxSheep: 12,
     rampRounds: 4,
     speedRamp: 2.2,
-    overRate: 0.12,
+    overRate: 0.13,
+    overCap: 1.6,
     jitterScale: 0.4,
   },
 };
@@ -128,8 +136,9 @@ export function motionForRound(round, difficulty = DEFAULT_DIFFICULTY) {
   }
   const d = DIFFICULTIES[normalizeDifficulty(difficulty)];
   const ramp = Math.min(1, (r - 2) / d.rampRounds);
-  // Past the ramp the sheep keep getting quicker, slowly and forever.
-  const over = Math.min(1.2, Math.max(0, r - 2 - d.rampRounds) * d.overRate);
+  // Past the ramp the sheep keep getting quicker, slowly and forever,
+  // until the level's own headroom is used up.
+  const over = Math.min(d.overCap, Math.max(0, r - 2 - d.rampRounds) * d.overRate);
   return {
     speed: 0.4 + ramp * d.speedRamp + over,
     radius: 0.3 + ramp * 1.0,
@@ -224,8 +233,8 @@ export function wolfDisguiseTier(round, mode = 'normal') {
   return 3;
 }
 
-// The on-screen round text: "Round 5 of 9" while the ladder has more
-// rungs above it, and plain "Round 9" once the flock has reached its cap
+// The on-screen round text: "Round 5 of 20" while the ladder has more
+// rungs above it, and plain "Round 20" once the flock has reached its cap
 // and the ladder has no further rung to name. The Speed Round keeps its
 // mode prefix so the badge stays honest about what is being played.
 export function roundBadgeText(round, speedOn = false) {

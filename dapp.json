@@ -93,7 +93,7 @@
       "visual": true,
       "path": "/?round=5",
       "expectSelector": "#round-badge",
-      "expectText": "Round 5 of 9",
+      "expectText": "Round 5 of 20",
       "impact": [
         "public/index.html",
         "public/app.js",
@@ -105,7 +105,7 @@
       "name": "Round ladder is mirrored in the accessibility layer",
       "path": "/?round=5&renderer=dom",
       "expectSelector": "#a11y-round-progress",
-      "expectText": "Round 5 of 9"
+      "expectText": "Round 5 of 20"
     },
     {
       "name": "Round 5 counts in with no sheep tapped",

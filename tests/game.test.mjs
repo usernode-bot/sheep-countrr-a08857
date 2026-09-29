@@ -16,6 +16,7 @@ import {
   advanceStreak,
   calmMotion,
   dayDistance,
+  DIFFICULTIES,
   localDayKey,
   motionForRound,
   normalizeCalm,
@@ -78,21 +79,21 @@ test('each round adds one or two sheep up to a bounded flock', () => {
     if (prev < MAX_SHEEP) assert.ok(added >= 1, `round ${round} did not grow`);
     prev = n;
   }
-  assert.equal(sheepForRound(9), MAX_SHEEP);
+  assert.equal(sheepForRound(20), MAX_SHEEP);
 });
 
 test('the round badge names the round and the ladder length', () => {
-  // The ladder has nine rungs, and the badge says so until the top.
-  assert.equal(roundBadgeText(1), 'Round 1 of 9');
-  assert.equal(roundBadgeText(8), 'Round 8 of 9');
+  // The ladder has twenty rungs, and the badge says so until the top.
+  assert.equal(roundBadgeText(1), 'Round 1 of 20');
+  assert.equal(roundBadgeText(19), 'Round 19 of 20');
   // At the top there is no further rung to name, so the suffix drops.
-  assert.equal(roundBadgeText(9), 'Round 9');
-  assert.equal(roundBadgeText(10), 'Round 10');
+  assert.equal(roundBadgeText(20), 'Round 20');
+  assert.equal(roundBadgeText(21), 'Round 21');
   // A Speed Round keeps its mode prefix on every rung.
-  assert.equal(roundBadgeText(1, true), 'Speed round 1 of 9');
-  assert.equal(roundBadgeText(9, true), 'Speed round 9');
+  assert.equal(roundBadgeText(1, true), 'Speed round 1 of 20');
+  assert.equal(roundBadgeText(20, true), 'Speed round 20');
   // Deep-link normalization: a bogus round reads as round 1.
-  assert.equal(roundBadgeText('bogus'), 'Round 1 of 9');
+  assert.equal(roundBadgeText('bogus'), 'Round 1 of 20');
 });
 
 test('rounds get faster and more erratic, and never tame down', () => {
@@ -107,8 +108,8 @@ test('rounds get faster and more erratic, and never tame down', () => {
     prev = m;
   }
   // The late rounds are meaningfully harder than the first moving one.
-  assert.ok(motionForRound(12).speed > motionForRound(2).speed * 3);
-  assert.ok(motionForRound(12).jitterAmp > 0.12);
+  assert.ok(motionForRound(20).speed > motionForRound(2).speed * 3);
+  assert.ok(motionForRound(20).jitterAmp > 0.12);
 });
 
 test('wandering is deterministic, bounded by roamRadius, and never teleports', () => {
@@ -469,7 +470,7 @@ test('each difficulty grows its flock on its own curve, capped', () => {
 test('later rounds never tame down, at any difficulty', () => {
   for (const d of ['easy', 'normal', 'hard', 'expert']) {
     let prev = motionForRound(1, d);
-    for (let round = 2; round <= 24; round++) {
+    for (let round = 2; round <= 30; round++) {
       const m = motionForRound(round, d);
       assert.ok(m.speed >= prev.speed, `${d} round ${round} slowed down`);
       assert.ok(m.radius >= prev.radius, `${d} round ${round} roams less`);
@@ -482,6 +483,36 @@ test('later rounds never tame down, at any difficulty', () => {
   // The levels are meaningfully apart where the ramps bite.
   assert.ok(motionForRound(5, 'expert').speed > motionForRound(5, 'normal').speed * 1.5);
   assert.ok(motionForRound(5, 'easy').speed < motionForRound(5, 'normal').speed);
+  // The late-round ordering holds past the old nine-round top.
+  assert.ok(motionForRound(20, 'expert').speed > motionForRound(20, 'normal').speed);
+  assert.ok(motionForRound(20, 'normal').speed > motionForRound(20, 'easy').speed);
+});
+
+test('the post-ramp speed creep keeps its pinned per-level headroom', () => {
+  // overCap bounds how far past the ramp the speed can keep growing, so
+  // the late-round pace is pinned exactly like growth and rampRounds.
+  const OVER_CAPS = { easy: 1.2, normal: 1.4, hard: 1.35, expert: 1.6 };
+  // The over term each level actually reaches at round 20 (Expert has
+  // already used up its headroom there; the rest still have some left).
+  const OVER_AT_20 = { easy: 0.24, normal: 0.7, hard: 1.14, expert: 1.6 };
+  for (const [d, cap] of Object.entries(OVER_CAPS)) {
+    assert.equal(DIFFICULTIES[d].overCap, cap, `${d} overCap`);
+    const d20 = motionForRound(20, d);
+    const ramp = Math.min(1, (20 - 2) / DIFFICULTIES[d].rampRounds);
+    assert.ok(
+      Math.abs(d20.speed - (0.4 + ramp * DIFFICULTIES[d].speedRamp + OVER_AT_20[d])) < 1e-9,
+      `${d} round 20 speed`
+    );
+    for (let round = 2; round <= 40; round++) {
+      const m = motionForRound(round, d);
+      const rOver = Math.min(cap, Math.max(0, round - 2 - DIFFICULTIES[d].rampRounds) * DIFFICULTIES[d].overRate);
+      const rRamp = Math.min(1, (round - 2) / DIFFICULTIES[d].rampRounds);
+      assert.ok(
+        Math.abs(m.speed - (0.4 + rRamp * DIFFICULTIES[d].speedRamp + rOver)) < 1e-9,
+        `${d} round ${round} speed`
+      );
+    }
+  }
 });
 
 test('wandering stays deterministic, bounded and continuous at every difficulty', () => {
@@ -493,7 +524,9 @@ test('wandering stays deterministic, bounded and continuous at every difficulty'
     // more ground in the same 1/30th of a second.
     const DRIFT_MAX = 0.5;
     const JUMP_LIMIT = { easy: DRIFT_MAX, normal: DRIFT_MAX * 1.2, hard: DRIFT_MAX * 1.5, expert: DRIFT_MAX * 2 }[d];
-    for (let round = 1; round <= 16; round++) {
+    // The sweep runs well past the old nine-round top so the new late-game
+    // creep cannot push a sheep past its followability limit.
+    for (let round = 1; round <= 30; round++) {
       const m = motionForRound(round, d);
       const bound = Math.max(roamRadius(round, d), 0.35);
       const seed = roundSeed(round);
