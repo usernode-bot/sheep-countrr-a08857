@@ -93,7 +93,7 @@
       "visual": true,
       "path": "/?round=5",
       "expectSelector": "#round-badge",
-      "expectText": "Round 5 of 9",
+      "expectText": "Round 5 of 15",
       "impact": [
         "public/index.html",
         "public/app.js",
@@ -105,7 +105,7 @@
       "name": "Round ladder is mirrored in the accessibility layer",
       "path": "/?round=5&renderer=dom",
       "expectSelector": "#a11y-round-progress",
-      "expectText": "Round 5 of 9"
+      "expectText": "Round 5 of 15"
     },
     {
       "name": "Round 5 counts in with no sheep tapped",
@@ -434,15 +434,15 @@
     {
       "name": "Largest flock still fits the board",
       "path": "/?scene=flock",
-      "expectSelector": "#a11y-sheep-list button:nth-child(12)",
-      "expectText": "Round 9"
+      "expectSelector": "#a11y-sheep-list button:nth-child(16)",
+      "expectText": "Round 12 of 15"
     },
     {
       "id": "wolf.round",
       "name": "The wolf round renders a five-sheep flock with the wolf hiding",
       "path": "/?scene=wolfround",
       "expectSelector": "#a11y-sheep-list button:nth-child(5)",
-      "expectText": "Round 5",
+      "expectText": "Round 5 of 15",
       "visual": true,
       "impact": [
         "public/rounds.js",

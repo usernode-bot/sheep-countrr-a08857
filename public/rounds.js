@@ -9,7 +9,7 @@ import { mulberry32 } from './layout.js';
 
 // Upper bound on flock size. Past this round the sheep stop multiplying and
 // only the movement keeps escalating, so taps stay physically landable.
-export const MAX_SHEEP = 12;
+export const MAX_SHEEP = 16;
 
 // Round at which the movement ramp reaches full chaos.
 export const DEFAULT_DIFFICULTY = 'normal';
@@ -18,7 +18,7 @@ export const DEFAULT_DIFFICULTY = 'normal';
 // always knows how far the run goes; the flock keeps its shape past the
 // top (see sheepForRound's cap) and the suffix drops off there, so the
 // pill never claims a round the flock does not have.
-export const TOTAL_ROUNDS = 9;
+export const TOTAL_ROUNDS = 15;
 
 // The difficulty dials. Normal is today's curve exactly; Easy stretches the
 // same character arc out and calms it down, Hard and Expert compress it and
@@ -37,7 +37,7 @@ export const DIFFICULTIES = {
   },
   normal: {
     growth: 1.5,
-    maxSheep: 12,
+    maxSheep: 16,
     rampRounds: 8,
     speedRamp: 1.5,
     overRate: 0.06,
@@ -45,7 +45,7 @@ export const DIFFICULTIES = {
   },
   hard: {
     growth: 2.0,
-    maxSheep: 12,
+    maxSheep: 16,
     rampRounds: 6,
     speedRamp: 1.8,
     overRate: 0.09,
@@ -53,7 +53,7 @@ export const DIFFICULTIES = {
   },
   expert: {
     growth: 2.5,
-    maxSheep: 12,
+    maxSheep: 16,
     rampRounds: 4,
     speedRamp: 2.2,
     overRate: 0.12,

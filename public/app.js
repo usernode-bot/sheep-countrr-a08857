@@ -308,7 +308,9 @@ function buildStaticState() {
     bestRounds: { ...base.bestRounds, [difficultyParam]: Math.max(round, base.bestRounds[difficultyParam]) },
     ...extra,
   });
-  if (sceneParam === 'flock') return at(9);
+  // The largest-flock fixture: round 12 on Normal is past the 16-sheep cap,
+  // so the check really exercises the full flock.
+  if (sceneParam === 'flock') return at(12);
   if (sceneParam === 'countdown') {
     // The 3-2-1 countdown overlay, frozen with the first number on it.
     // Everything else reads like a live round-1 board, so the card's

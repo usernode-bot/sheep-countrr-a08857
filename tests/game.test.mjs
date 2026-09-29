@@ -22,6 +22,7 @@ import {
   paceLine,
   roamRadius,
   roundCompleteTitle,
+  TOTAL_ROUNDS,
   roundIntroText,
   roundBadgeText,
   roundSeed,
@@ -78,21 +79,22 @@ test('each round adds one or two sheep up to a bounded flock', () => {
     if (prev < MAX_SHEEP) assert.ok(added >= 1, `round ${round} did not grow`);
     prev = n;
   }
-  assert.equal(sheepForRound(9), MAX_SHEEP);
+  // The cap lands mid-ladder now: Normal reaches 16 sheep at round 11.
+  assert.equal(sheepForRound(11), MAX_SHEEP);
 });
 
 test('the round badge names the round and the ladder length', () => {
-  // The ladder has nine rungs, and the badge says so until the top.
-  assert.equal(roundBadgeText(1), 'Round 1 of 9');
-  assert.equal(roundBadgeText(8), 'Round 8 of 9');
+  // The ladder has fifteen rungs, and the badge says so until the top.
+  assert.equal(roundBadgeText(1), 'Round 1 of 15');
+  assert.equal(roundBadgeText(8), 'Round 8 of 15');
   // At the top there is no further rung to name, so the suffix drops.
-  assert.equal(roundBadgeText(9), 'Round 9');
-  assert.equal(roundBadgeText(10), 'Round 10');
+  assert.equal(roundBadgeText(15), 'Round 15');
+  assert.equal(roundBadgeText(16), 'Round 16');
   // A Speed Round keeps its mode prefix on every rung.
-  assert.equal(roundBadgeText(1, true), 'Speed round 1 of 9');
-  assert.equal(roundBadgeText(9, true), 'Speed round 9');
+  assert.equal(roundBadgeText(1, true), 'Speed round 1 of 15');
+  assert.equal(roundBadgeText(15, true), 'Speed round 15');
   // Deep-link normalization: a bogus round reads as round 1.
-  assert.equal(roundBadgeText('bogus'), 'Round 1 of 9');
+  assert.equal(roundBadgeText('bogus'), 'Round 1 of 15');
 });
 
 test('rounds get faster and more erratic, and never tame down', () => {
@@ -109,14 +111,22 @@ test('rounds get faster and more erratic, and never tame down', () => {
   // The late rounds are meaningfully harder than the first moving one.
   assert.ok(motionForRound(12).speed > motionForRound(2).speed * 3);
   assert.ok(motionForRound(12).jitterAmp > 0.12);
+  // The new top of the ladder keeps escalating past the old round-9 stop.
+  assert.ok(motionForRound(15).speed > motionForRound(9).speed);
+  assert.ok(motionForRound(15).jitterAmp > motionForRound(9).jitterAmp);
 });
 
 test('wandering is deterministic, bounded by roamRadius, and never teleports', () => {
-  for (let round = 1; round <= 14; round++) {
+  for (let round = 1; round <= TOTAL_ROUNDS; round++) {
     const m = motionForRound(round);
     const bound = roamRadius(round);
     const seed = roundSeed(round);
     const herd = sheepForRound(round);
+    // The frame-to-frame step cap scales with the round's pace: a faster
+    // round legitimately covers more ground in the same 1/30th of a
+    // second, so a late-round jump limit that still reads as followable.
+    // The floor keeps the still round-1 board (speed 0) testable.
+    const stepCap = 0.24 * Math.max(1, m.speed);
     for (let i = 0; i < herd; i++) {
       let last = wanderOffset(seed, i, herd, 0, m);
       for (let t = 0; t <= 120; t += 1 / 30) {
@@ -129,7 +139,7 @@ test('wandering is deterministic, bounded by roamRadius, and never teleports', (
         );
         // Continuous motion: a sheep is followable by eye, not warping.
         assert.ok(
-          Math.hypot(point.x - last.x, point.z - last.z) < 0.35,
+          Math.hypot(point.x - last.x, point.z - last.z) < stepCap,
           `round ${round} sheep ${i} jumped at t=${t}`
         );
         assert.deepEqual(point, wanderOffset(seed, i, herd, t, m));
@@ -469,7 +479,7 @@ test('each difficulty grows its flock on its own curve, capped', () => {
 test('later rounds never tame down, at any difficulty', () => {
   for (const d of ['easy', 'normal', 'hard', 'expert']) {
     let prev = motionForRound(1, d);
-    for (let round = 2; round <= 24; round++) {
+    for (let round = 2; round <= TOTAL_ROUNDS; round++) {
       const m = motionForRound(round, d);
       assert.ok(m.speed >= prev.speed, `${d} round ${round} slowed down`);
       assert.ok(m.radius >= prev.radius, `${d} round ${round} roams less`);
@@ -482,6 +492,12 @@ test('later rounds never tame down, at any difficulty', () => {
   // The levels are meaningfully apart where the ramps bite.
   assert.ok(motionForRound(5, 'expert').speed > motionForRound(5, 'normal').speed * 1.5);
   assert.ok(motionForRound(5, 'easy').speed < motionForRound(5, 'normal').speed);
+  // Every level's new top rung is strictly faster and jitterier than its
+  // old round-9 stop.
+  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+    assert.ok(motionForRound(15, d).speed > motionForRound(9, d).speed, `${d} top speed`);
+    assert.ok(motionForRound(15, d).jitterAmp > motionForRound(9, d).jitterAmp, `${d} top jitter`);
+  }
 });
 
 test('wandering stays deterministic, bounded and continuous at every difficulty', () => {
@@ -493,7 +509,7 @@ test('wandering stays deterministic, bounded and continuous at every difficulty'
     // more ground in the same 1/30th of a second.
     const DRIFT_MAX = 0.5;
     const JUMP_LIMIT = { easy: DRIFT_MAX, normal: DRIFT_MAX * 1.2, hard: DRIFT_MAX * 1.5, expert: DRIFT_MAX * 2 }[d];
-    for (let round = 1; round <= 16; round++) {
+    for (let round = 1; round <= TOTAL_ROUNDS; round++) {
       const m = motionForRound(round, d);
       const bound = Math.max(roamRadius(round, d), 0.35);
       const seed = roundSeed(round);
@@ -519,7 +535,7 @@ test('wandering stays deterministic, bounded and continuous at every difficulty'
 });
 
 test('omitting the difficulty means normal, everywhere', () => {
-  for (let round = 1; round <= 14; round++) {
+  for (let round = 1; round <= TOTAL_ROUNDS; round++) {
     assert.equal(
       JSON.stringify(motionForRound(round)),
       JSON.stringify(motionForRound(round, 'normal')),
