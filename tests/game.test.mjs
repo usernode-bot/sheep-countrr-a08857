@@ -251,6 +251,9 @@ test('restarting returns to round 1 and keeps the best round reached', () => {
 test('taps counted in any order keep their tap-order numbering', () => {
   const { store } = newStore();
   store.startRound(5, { silent: true });
+  // The tap-order numbering is what's under test here, not the wolf: pin
+  // this round wolf-free.
+  store.state = { ...store.state, wolfIndex: null };
   assert.equal(store.tapSheep(4).number, 1);
   assert.equal(store.tapSheep(0).number, 2);
   assert.equal(store.tapSheep(2).number, 3);
@@ -270,18 +273,32 @@ test('all plush sheep and wolf variants have finite geometry and stay inside the
   }
 });
 
-test('wolfChance starts at round 2, climbs monotonically and caps', () => {
+test('the wolf appears on a steady 5-round cadence, first in rounds 5-7', () => {
   assert.equal(wolfChance(1), 0);
-  assert.equal(wolfChance(2), 0.15);
-  let prev = 0;
+  // With the real roundSeed values, the first wolf lands in rounds 5-7 and
+  // consecutive wolf rounds sit exactly 5 apart: a steady rhythm, not a
+  // climbing gamble.
+  const wolfRounds = [];
   for (let round = 2; round <= 24; round++) {
-    const c = wolfChance(round);
-    assert.ok(c >= prev, `round ${round} chance dropped`);
-    assert.ok(c <= 0.7, `round ${round} chance over cap`);
-    prev = c;
+    if (wolfIndexForRound(round, roundSeed(round), sheepForRound(round)) !== null) {
+      wolfRounds.push(round);
+    }
   }
-  assert.equal(wolfChance(13), 0.7);
-  assert.equal(wolfChance(24), 0.7);
+  assert.ok(wolfRounds.length > 0, 'no round ever drew a wolf');
+  assert.ok(wolfRounds[0] >= 5 && wolfRounds[0] <= 7, `first wolf round ${wolfRounds[0]} outside 5-7`);
+  for (let i = 1; i < wolfRounds.length; i++) {
+    assert.equal(wolfRounds[i] - wolfRounds[i - 1], 5, `wolf rounds ${wolfRounds[i - 1]} and ${wolfRounds[i]} not 5 apart`);
+  }
+  // Same seed, same wolf: /?round=N reproduces the draw every load.
+  for (let round = 2; round <= 24; round++) {
+    const n = sheepForRound(round);
+    const a = wolfIndexForRound(round, roundSeed(round), n);
+    const b = wolfIndexForRound(round, roundSeed(round), n);
+    assert.deepEqual(a, b);
+    if (a !== null) {
+      assert.ok(Number.isInteger(a) && a >= 0 && a < n, `index ${a} out of range`);
+    }
+  }
 });
 
 test('wolfIndexForRound is deterministic, in range, and null on no-wolf rounds', () => {
@@ -849,6 +866,9 @@ assert.equal(weeklyScoreLabel(8, false), 'Round 8');
 test('a mid-round snapshot round-trips the exact board', () => {
   const { store } = newStore();
   store.startRound(5, { silent: true });
+  // The snapshot round-trip is what's under test here, not the wolf: pin
+  // this round wolf-free.
+  store.state = { ...store.state, wolfIndex: null };
   store.tapSheep(0);
   store.tapSheep(2);
   const snapshot = store.snapshotRound();

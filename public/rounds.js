@@ -183,33 +183,49 @@ export function roundLabel(round) {
 // the future Easy/Expert difficulty work: the existing call sites pass
 // nothing, so nothing changes until the modes land.
 
-const WOLF_BASE_CHANCE = 0.15;
-const WOLF_CHANCE_STEP = 0.05;
-const WOLF_MAX_CHANCE = 0.7;
+// The wolf is a rhythm, not a gamble: every fifth round once the flock is
+// big enough to hide one. A seed-based offset of 0-2 slides the cycle's
+// phase so the first wolf lands in rounds 5-7 rather than always exactly
+// round 5. The offset is drawn from the cycle's origin round's seed (not
+// each round's own seed) so one run's schedule stays coherent: every
+// round of the run shifts its cycle by the same amount, keeping wolf
+// rounds exactly 5 apart. /?round=N still reproduces the same wolf every
+// time it is loaded, exactly like the rest of the difficulty curve.
+const WOLF_CYCLE = 5;
+const WOLF_OFFSET_RANGE = 3;
 export const WOLF_BONUS = 2;
 
 function wolfModeFactors(mode = 'normal') {
-  if (mode === 'easy') return { chance: 0.5, tier2: 7, tier3: 10 };
-  if (mode === 'expert') return { chance: 1.5, tier2: 4, tier3: 6 };
-  return { chance: 1, tier2: 5, tier3: 8 };
+  if (mode === 'easy') return { tier2: 7, tier3: 10 };
+  if (mode === 'expert') return { tier2: 4, tier3: 6 };
+  return { tier2: 5, tier3: 8 };
 }
 
-// Round 1 is the gentle tap-to-learn round: it never hides a wolf. After
-// that the chance climbs one step per round until it caps.
+// The presence predicate: 1 on a round that CAN hide a wolf, 0 on one that
+// never will. Round 1 is the gentle tap-to-learn round; small flocks are
+// screened separately by wolfIndexForRound's sheepCount guard. The cycle's
+// seed-based phase shift lives in wolfIndexForRound, which is the only
+// caller with the seed.
 export function wolfChance(round, mode = 'normal') {
   const r = normalizeRound(round);
   if (r <= 1) return 0;
-  const { chance } = wolfModeFactors(mode);
-  return Math.min(WOLF_MAX_CHANCE, (WOLF_BASE_CHANCE + (r - 2) * WOLF_CHANCE_STEP) * chance);
+  return r >= WOLF_CYCLE ? 1 : 0;
 }
 
-// Deterministic per-round draw: one value from a seed twisted away from
-// the layout seed decides whether this round hides a wolf, and a second
-// decides which flock member it is. Returns null on a no-wolf round.
+// Deterministic per-round draw: a shared phase shift (drawn once, from the
+// cycle's origin round's seed) decides where in the 5-round cycle this run
+// meets its wolves, the cycle check decides whether this round hides one,
+// and a seeded draw decides which flock member it is. Returns null on a
+// no-wolf round.
 export function wolfIndexForRound(round, seed, sheepCount, mode = 'normal') {
-  if (wolfChance(round, mode) === 0 || sheepCount < 2) return null;
+  const r = normalizeRound(round);
+  if (r <= 1 || sheepCount < 2) return null;
+  const cycleSeed = roundSeed(WOLF_CYCLE);
+  const offset = Math.floor(
+    mulberry32((cycleSeed ^ 0x9e3779b9) >>> 0)() * WOLF_OFFSET_RANGE,
+  );
+  if (r < WOLF_CYCLE || (r - WOLF_CYCLE - offset) % WOLF_CYCLE !== 0) return null;
   const rand = mulberry32((seed ^ 0x9e3779b9) >>> 0);
-  if (rand() >= wolfChance(round, mode)) return null;
   return Math.floor(rand() * sheepCount);
 }
 
