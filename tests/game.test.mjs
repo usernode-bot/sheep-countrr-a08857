@@ -40,7 +40,12 @@ import {
 import { wanderOffset } from '../public/movement.js';
 import { weekStartUtc, sortScoreRows } from '../public/leaderboard.js';
 import { sheepName } from '../public/layout.js';
-import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
+import {
+  buildSheepBodyGeometry,
+  buildEyeGeometry,
+  clampPanTarget,
+  panDeltaFor,
+} from '../public/scene.js';
 import { isSoundEnabled, setSoundEnabled } from '../public/sound.js';
 import { bestRoundsCsv, weeklyHistoryCsv } from '../public/export.js';
 
@@ -1114,4 +1119,28 @@ test('the streak survives a local save and load beside the other values', () => 
   fresh.loadLocalFrom({ round: 2, totalCounted: 1 });
   assert.equal(fresh.state.streakDays, 0);
   assert.equal(fresh.state.lastPlayedDay, null);
+});
+
+test('pan targets clamp to the padded flock bounds and pass through with none', () => {
+  const bounds = { minX: -5, maxX: 5, minZ: -3, maxZ: 3 };
+  // Inside the bounds the target is untouched.
+  assert.deepEqual(clampPanTarget({ x: 2, z: -1 }, bounds), { x: 2, z: -1 });
+  // Sideways and depth drags both stop at the edges.
+  assert.deepEqual(clampPanTarget({ x: 9, z: -7 }, bounds), { x: 5, z: -3 });
+  assert.deepEqual(clampPanTarget({ x: -9, z: 7 }, bounds), { x: -5, z: 3 });
+  // No flock framed yet means panning is disabled, not clamped to zero.
+  assert.deepEqual(clampPanTarget({ x: 4, z: -2 }, null), { x: 4, z: -2 });
+  assert.deepEqual(clampPanTarget({ x: 4, z: -2 }, undefined), { x: 4, z: -2 });
+});
+
+test('one screen pixel maps to the perspective world scale at the target', () => {
+  // At fov 60 and distance 10, the visible ground height is 2*10*tan(30)
+  // ~= 11.55; one pixel of drag moves that fraction of a world unit.
+  const expected = (2 * 10 * Math.tan(Math.PI / 6)) / 800;
+  const { x, y } = panDeltaFor(1, 1, 60, 10, 800);
+  assert.ok(Math.abs(x - expected) < 1e-12);
+  assert.ok(Math.abs(y - expected) < 1e-12);
+  // A narrower lens sees less ground per pixel, so the same drag pans less.
+  const narrow = panDeltaFor(1, 0, 30, 10, 800).x;
+  assert.ok(narrow < x);
 });

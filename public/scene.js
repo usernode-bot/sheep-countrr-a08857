@@ -375,6 +375,28 @@ export function buildEyeGeometry() {
   return geometry;
 }
 
+// Clamp a panned camera target to the padded flock bounds, so a drag can
+// never slide the view past where the flock can roam. With no bounds the
+// target passes through unchanged and panning is effectively disabled.
+export function clampPanTarget({ x, z }, bounds) {
+  if (!bounds
+    || !Number.isFinite(bounds.minX) || !Number.isFinite(bounds.maxX)
+    || !Number.isFinite(bounds.minZ) || !Number.isFinite(bounds.maxZ)) {
+    return { x, z };
+  }
+  return {
+    x: Math.min(Math.max(x, bounds.minX), bounds.maxX),
+    z: Math.min(Math.max(z, bounds.minZ), bounds.maxZ),
+  };
+}
+
+// Screen pixels to ground-plane world units for the current camera: the
+// visible height at the target's distance, spread over the canvas height.
+export function panDeltaFor(dx, dy, fov, distance, height) {
+  const worldPerPixel = (2 * distance * Math.tan(THREE.MathUtils.degToRad(fov) / 2)) / height;
+  return { x: dx * worldPerPixel, y: dy * worldPerPixel };
+}
+
 // The wolf's eyes: the same placement as a sheep's, with an amber glint
 // that stays visible at every tier, even the near-perfect third one.
 export function buildWolfEyeGeometry() {
@@ -856,6 +878,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   // as slow and quiet without changing what the round asks for.
   let motion = motionForRound(1, lastState && lastState.difficulty);
   let isPortrait = true;
+  // Where the view may be dragged: the flock's layout bounds padded by
+  // the round's roam radius, the same bounds fitCamera frames. Null
+  // until a flock exists, which keeps panning off before the first round.
+  let flockBounds = null;
 
   function layoutRegion(n) {
     // Region area grows with the flock; its shape follows the screen so a
@@ -875,6 +901,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       if (s.ribbonMat) s.ribbonMat.dispose();
       if (s.numberSprite) s.numberSprite.material.dispose();
     });
+    flockBounds = null;
     scene.remove(sheepGroup);
     sheepGroup = new THREE.Group();
     scene.add(sheepGroup);
@@ -1009,6 +1036,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     // Pad by the round's roam radius so a wandering sheep can never leave
     // the frame, however chaotic the round gets.
     const pad = 1.0 + roamRadius(lastState ? lastState.round : 1, lastState && lastState.difficulty);
+    flockBounds = { minX: minX - pad, maxX: maxX + pad, minZ: minZ - pad, maxZ: maxZ + pad };
     const top = 1.9;
     const xs = [minX - pad, maxX + pad];
     const zs = [minZ - pad, maxZ + pad];
@@ -1119,13 +1147,51 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const raycaster = new THREE.Raycaster();
   const pointerStart = { x: 0, y: 0, t: 0 };
   const pointerVec = new THREE.Vector2();
+  let activePointerId = null;
+  let panStart = null;
 
   function onPointerDown(evt) {
+    // One pointer pans; a second finger is ignored, exactly as a mouse
+    // only ever has one button down.
+    if (activePointerId !== null) return;
     pointerStart.x = evt.clientX;
     pointerStart.y = evt.clientY;
     pointerStart.t = performance.now();
+    activePointerId = evt.pointerId;
+    panStart = flockBounds && {
+      x: evt.clientX,
+      y: evt.clientY,
+      targetX: cameraTarget.x,
+      targetZ: cameraTarget.z,
+    };
+    if (panStart) canvas.setPointerCapture(evt.pointerId);
+  }
+  function applyPan(clientX, clientY) {
+    const delta = panDeltaFor(
+      clientX - panStart.x, clientY - panStart.y,
+      camera.fov, cameraDistance, canvas.clientHeight || 1
+    );
+    // Dragging right/up slides the view content right/up: subtract the
+    // ground-plane delta from the framed target.
+    const pan = clampPanTarget({
+      x: panStart.targetX - delta.x,
+      z: panStart.targetZ - delta.y,
+    }, flockBounds);
+    cameraTarget.x = pan.x;
+    cameraTarget.z = pan.z;
+    cameraBase.copy(cameraTarget).addScaledVector(cameraDir, cameraDistance);
+    camera.position.copy(cameraBase);
+    camera.lookAt(cameraTarget);
+  }
+  function onPointerMove(evt) {
+    if (evt.pointerId !== activePointerId || !panStart) return;
+    applyPan(evt.clientX, evt.clientY);
   }
   function onPointerUp(evt) {
+    if (evt.pointerId !== activePointerId) return;
+    if (canvas.hasPointerCapture?.(evt.pointerId)) canvas.releasePointerCapture(evt.pointerId);
+    activePointerId = null;
+    panStart = null;
     const dx = evt.clientX - pointerStart.x;
     const dy = evt.clientY - pointerStart.y;
     const dt = performance.now() - pointerStart.t;
@@ -1141,11 +1207,26 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       if (idx >= 0) onTap(idx);
     }
   }
+  function onPointerCancel(evt) {
+    if (evt.pointerId !== activePointerId) return;
+    if (canvas.hasPointerCapture?.(evt.pointerId)) canvas.releasePointerCapture(evt.pointerId);
+    activePointerId = null;
+    panStart = null;
+  }
   canvas.addEventListener('pointerdown', onPointerDown, { passive: true });
   canvas.addEventListener('pointerup', onPointerUp, { passive: true });
+  canvas.addEventListener('pointermove', onPointerMove, { passive: true });
+  canvas.addEventListener('pointercancel', onPointerCancel, { passive: true });
 
   let resizeTimer = null;
   function resize() {
+    // A resize mid-drag re-frames the camera; drop the stale start
+    // snapshot so the next move does not pan from an old offset.
+    if (activePointerId !== null) {
+      if (canvas.hasPointerCapture?.(activePointerId)) canvas.releasePointerCapture(activePointerId);
+      activePointerId = null;
+      panStart = null;
+    }
     const w = container.clientWidth || 1;
     const h = container.clientHeight || 1;
     renderer.setSize(w, h, false);
@@ -1435,6 +1516,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       window.removeEventListener('focus', start);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointercancel', onPointerCancel);
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
       ripplePool.dispose();
