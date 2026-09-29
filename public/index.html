@@ -237,6 +237,37 @@
       100% { transform: scale(1); }
     }
 
+    /* Progress track: a slim bar under the plate, so how far through the
+       flock the player is reads at a glance without taking attention from
+       the big count. A brief pulse marks completion; a green tint then
+       confirms the whole flock was counted. */
+    .count-progress {
+      width: min(11rem, 62vw);
+      height: 8px;
+      border-radius: 9999px;
+      background: rgba(74, 59, 92, 0.14);
+      overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(74, 59, 92, 0.12);
+    }
+    .count-progress-bar {
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      background: var(--pink);
+      transition: width 0.25s ease-out, background-color 0.4s ease;
+    }
+    .count-progress-bar.is-complete {
+      background: #7ed957;
+    }
+    .count-progress-bar.is-pulsing {
+      animation: progress-complete-pulse 0.6s ease-out 1;
+    }
+    @keyframes progress-complete-pulse {
+      0% { filter: brightness(1); }
+      40% { filter: brightness(1.45); }
+      100% { filter: brightness(1); }
+    }
+
 
     /* ---- Round pill: which round is being played, always on screen ---- */
     .round-pill {
@@ -250,6 +281,17 @@
       text-transform: uppercase;
       color: var(--plum);
       box-shadow: 0 6px 16px rgba(90, 60, 120, 0.16);
+    }
+    /* Secondary chrome steps back: the round pill reads as context, not
+       headline, so the count plate stays the element the eye lands on. */
+    .round-pill.round-pill-quiet {
+      font-size: 0.8rem;
+      padding: 0.15rem 0.75rem;
+      border-width: 2px;
+      box-shadow: none;
+      letter-spacing: 0.06em;
+      color: #6b5a7d;
+      background: rgba(255, 250, 242, 0.78);
     }
 
     /* ---- Speed Round countdown pill: the round pill's shape, in the
@@ -326,6 +368,26 @@
     }
     .submit-btn:active { transform: translateY(5px); box-shadow: none; }
     .submit-btn[disabled] { opacity: 0.5; box-shadow: none; transform: none; color: #565f6a; }
+
+    /* The bottom hint sits on its own tiny pill so it reads as guidance
+       rather than a headline, and its copy swaps with a soft fade instead
+       of a text jump. */
+    .hint-pill {
+      margin: 0;
+      padding: 0.25rem 0.8rem;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.5);
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #6b5a7d;
+    }
+    .hint-text {
+      display: inline-block;
+      transition: opacity 0.18s ease;
+    }
+    .hint-text.is-fading {
+      opacity: 0;
+    }
 
     /* ---- Grown-ups corner button: big target, quiet look ---- */
     #grownups-btn {
@@ -730,6 +792,7 @@
       #count-word { font-size: 0.85rem; }
       .sheep-fallback-grid { padding-top: calc(var(--safe-top) + 24px); padding-left: calc(var(--safe-left) + 140px); }
       .round-pill { font-size: 0.8rem; padding: 0.2rem 0.85rem; }
+      .count-progress { width: 6rem; }
       #action-bar { padding-bottom: calc(var(--safe-bottom) + 6px); gap: 0.25rem; }
       #play-hint { font-size: 0.85rem; }
       .submit-btn { min-height: 3rem; min-width: 11rem; font-size: 1.1rem; padding: 0.55rem 1.6rem; }
@@ -793,8 +856,30 @@
     .setting-row select { color: #f0e9de; background: #283448; border-color: #9da6af; }
     .setting-row input[type="checkbox"] { accent-color: #a18cb8; }
     .stat-value { color: #ecdbc0; }
+    /* Sharpened count feedback: the sleepy tuning keeps a gentle settle,
+       but a touch more scale so each counted sheep still reads. */
     .count-pop { animation: count-rest .8s ease-in-out; }
-    @keyframes count-rest { 50% { transform: scale(1.025); } }
+    @keyframes count-rest { 50% { transform: scale(1.06); } }
+    /* Panel entrances per outcome: the celebration card bounces in, the
+       game-over card settles, so the two closings read differently before
+       a word is read. Declared after the Bedtime .panel-pop redeclaration
+       above, so these win the animation property on cards that carry both
+       classes. Both are standard animations, so the global
+       prefers-reduced-motion catch-all still disables them. */
+    .panel-pop-bounce { animation: panel-pop 0.5s cubic-bezier(.34,1.56,.64,1); }
+    .panel-pop-quiet { animation: panel-settle 0.6s ease-out; }
+    @keyframes panel-settle {
+      0% { transform: translateY(12px) scale(0.97); opacity: 0; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    /* Bedtime overrides for the new chrome: the quiet round pill keeps
+       the dusk palette's own soft contrast, the hint pill tints instead
+       of glowing white, and the progress track dims to match. */
+    .round-pill.round-pill-quiet { color: #b7bdc7; background: #ffffff10; }
+    .hint-pill { background: #ffffff10; color: #b7bdc7; }
+    .count-progress { background: #ffffff14; box-shadow: none; }
+    .count-progress-bar { background: var(--pink); }
+    .count-progress-bar.is-complete { background: #a9c8a2; }
     button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #283448; outline-offset: 2px; box-shadow: 0 0 0 3px #f0e9de; }
     .sheep-fallback-field { background:
       radial-gradient(65% 25% at 15% 100%, #738886 0 70%, transparent 71%),
@@ -823,12 +908,15 @@
 
     <!-- Round and running tap count, on screen at all times. -->
     <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex flex-col items-center gap-2">
-      <div id="round-badge" class="round-pill">Round 1</div>
+      <div id="round-badge" class="round-pill round-pill-quiet">Round 1</div>
       <div id="speed-timer" class="round-pill speed-timer" hidden aria-live="off">30</div>
       <div id="duel-turn-clock" class="round-pill duel-timer" hidden aria-live="off">45</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
         <span id="count-display">0</span>
         <span id="count-word">of 1 sheep</span>
+      </div>
+      <div id="count-progress" class="count-progress" aria-hidden="true">
+        <div id="count-progress-bar" class="count-progress-bar" style="width:0%"></div>
       </div>
     </div>
 
@@ -863,7 +951,7 @@
 
     <!-- Bottom action bar: the hint, and the button that ends the round. -->
     <div id="action-bar" class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2">
-      <p id="play-hint">Tap every sheep.</p>
+      <p id="play-hint" class="hint-pill"><span id="play-hint-text" class="hint-text">Tap every sheep.</span></p>
       <button id="submit-count" type="button" class="submit-btn">
         Done counting
       </button>

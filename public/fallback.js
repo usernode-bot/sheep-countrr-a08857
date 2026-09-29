@@ -226,15 +226,19 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       btn.animate(
         [
           { transform: 'scale(1)' },
-          { transform: 'scale(0.98)' },
-          { transform: 'scale(1.02)' },
+          { transform: 'scale(0.94)' },
+          { transform: 'scale(1.07)' },
           { transform: 'scale(1)' },
         ],
-        { duration: 900, easing: 'cubic-bezier(.34,1.56,.64,1)' }
+        { duration: 620, easing: 'cubic-bezier(.34,1.56,.64,1)' }
       );
       badge.animate(
-        [{ transform: 'scale(0)' }, { transform: 'scale(1.25)' }, { transform: 'scale(1)' }],
-        { duration: 380, easing: 'ease-out' }
+        [
+          { transform: 'scale(0)' },
+          { transform: 'scale(1.4)' },
+          { transform: 'scale(1)' },
+        ],
+        { duration: 320, easing: 'cubic-bezier(.34,1.56,.64,1)' }
       );
     }
   }

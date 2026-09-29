@@ -1274,9 +1274,11 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         } else {
           const squash = p < 0.25 ? Math.sin((p / 0.25) * Math.PI) : 0;
           const hop = p >= 0.2 ? Math.sin(((p - 0.2) / 0.8) * Math.PI) : 0;
-          sy *= 1 - squash * 0.04 + hop * 0.025;
-          sx *= 1 + squash * 0.14 - hop * 0.015;
-          y += hop * 0.035;
+          // Amplified tap feedback: a deeper squash, a higher hop and a
+          // wider stretch, so a counted sheep reads at a glance.
+          sy *= 1 - squash * 0.07 + hop * 0.045;
+          sx *= 1 + squash * 0.2 - hop * 0.028;
+          y += hop * 0.06;
         }
       }
 

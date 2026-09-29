@@ -146,6 +146,7 @@ const els = {
   sceneRoot: document.getElementById('scene-root'),
   actionBar: document.getElementById('action-bar'),
   playHint: document.getElementById('play-hint'),
+  playHintText: document.getElementById('play-hint-text'),
   submitBtn: document.getElementById('submit-count'),
   roundIntro: document.getElementById('round-intro'),
   roundIntroSize: document.getElementById('round-intro-size'),
@@ -201,6 +202,8 @@ const els = {
   a11yRoundProgress: document.getElementById('a11y-round-progress'),
   leaderboardBtn: document.getElementById('leaderboard-btn'),
   countBadge: document.getElementById('count-badge'),
+  countProgress: document.getElementById('count-progress'),
+  countProgressBar: document.getElementById('count-progress-bar'),
   leaderboard: document.getElementById('leaderboard'),
   leaderboardClose: document.getElementById('leaderboard-close'),
   leaderboardTabs: document.getElementById('leaderboard-tabs'),
@@ -876,7 +879,7 @@ function syncDuelClock(state) {
 
 function syncDuelTurnHint() {
   if (duelState && !duelState.done && duelSecondsLeft === 0) {
-    els.playHint.textContent = 'Time to pass the device. Tap Done counting.';
+    els.playHintText.textContent = 'Time to pass the device. Tap Done counting.';
   }
 }
 
@@ -1187,6 +1190,8 @@ function hintFor(state) {
 
 let lastShownCount = null;
 let lastPhase = null;
+let lastHintText = null;
+let hintFadeTimer = null;
 function updateChrome(state) {
   // Keep the audio module's enabled flag in lockstep with the toggle, so
   // every sound path (chime, baa, celebration) reads one source of truth.
@@ -1201,6 +1206,38 @@ function updateChrome(state) {
   }
   lastShownCount = state.count;
 
+  // The hint crossfades into its next line: fade out the old copy, swap
+  // the text, then fade the new line back in. Under prefers-reduced-motion
+  // the transition is disabled, so this collapses to a plain text swap.
+  const hintText = hintFor(state);
+  if (els.playHintText && lastHintText !== null && hintText !== lastHintText) {
+    els.playHintText.classList.add('is-fading');
+    clearTimeout(hintFadeTimer);
+    hintFadeTimer = setTimeout(() => {
+      els.playHintText.textContent = hintText;
+      els.playHintText.classList.remove('is-fading');
+    }, 20);
+  } else if (els.playHintText) {
+    els.playHintText.textContent = hintText;
+  }
+  lastHintText = hintText;
+
+  // Lightweight flock progress: the bar fills as the count rises and
+  // briefly pulses with a green tint when the round is complete, so the
+  // completion reads on the chrome as well as in the panels.
+  if (els.countProgressBar) {
+    const total = Math.max(1, state.sheepCount);
+    const fraction = Math.min(1, state.count / total);
+    els.countProgressBar.style.width = `${Math.round(fraction * 100)}%`;
+    const complete = state.count >= total;
+    els.countProgressBar.classList.toggle('is-complete', complete);
+    if (complete && !els.countProgressBar.classList.contains('is-pulsing')) {
+      els.countProgressBar.classList.add('is-pulsing');
+    } else if (!complete) {
+      els.countProgressBar.classList.remove('is-pulsing', 'is-complete');
+    }
+  }
+
   syncRoundBadge(state);
   // The Speed Round countdown is its own pill, so the count plate keeps
   // its job (taps counted). Hidden the moment the mode is off, the round
@@ -1210,7 +1247,6 @@ function updateChrome(state) {
   if (showTimer) els.speedTimer.textContent = speedRoundClock(state.secondsLeft);
   els.countDisplay.textContent = String(state.count);
   els.countWord.textContent = `of ${sheepPhrase(state.sheepCount)}`;
-  els.playHint.textContent = hintFor(state);
   els.submitBtn.disabled = state.phase !== COUNTING;
 
   els.roundValue.textContent = String(state.round);
@@ -1268,6 +1304,16 @@ function syncPanels(state) {
   }
   els.roundComplete.hidden = !passed;
   els.gameOver.hidden = !over;
+
+  // Each closing panel gets its own entrance rhythm: the celebration card
+  // pops in with a bounce, the game-over card settles more quietly, so
+  // the two outcomes feel different before a word is read.
+  if (passed || over) {
+    const panelCard = (passed ? els.roundComplete : els.gameOver).querySelector('.panel-card');
+    panelCard.classList.remove('panel-pop-bounce', 'panel-pop-quiet');
+    void panelCard.offsetWidth;
+    panelCard.classList.add(passed ? 'panel-pop-bounce' : 'panel-pop-quiet');
+  }
 
   if (state.phase === lastPhase) return;
   lastPhase = state.phase;
