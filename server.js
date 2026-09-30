@@ -597,14 +597,16 @@ app.post('/api/state', async (req, res) => {
 // auth-gated catch-all below ever runs, silently defeating that gate.
 // Route both paths past static so the catch-all is the only place the
 // shell is served from.
+// The image build writes public/tailwind.css; only a plain checkout lacks it.
+const HAS_TAILWIND_CSS = require('fs').existsSync(path.join(__dirname, 'public', 'tailwind.css'));
+
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') return next();
-  // The centrally hosted bridge and the compiled Tailwind stylesheet are
-  // served by the platform edge in a real deploy. A plain boot (in-loop
-  // checks, local runs) reaches Express directly with no copy to serve, so
-  // answer 204 rather than 401: the files carry no gated data, and a console
+  // The centrally hosted bridge is served by the platform edge in a real
+  // deploy, and a plain checkout has no compiled Tailwind stylesheet. With
+  // no copy to serve, answer 204 rather than 401: the files carry no gated data, and a console
   // error for an asset this container is not expected to have reads as a bug.
-  if (req.path === '/tailwind.css' || req.path.startsWith('/usernode-bridge/')) {
+  if (req.path.startsWith('/usernode-bridge/') || (req.path === '/tailwind.css' && !HAS_TAILWIND_CSS)) {
     return res.status(204).end();
   }
   express.static(path.join(__dirname, 'public'))(req, res, next);

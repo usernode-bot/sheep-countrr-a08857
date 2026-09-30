@@ -266,9 +266,11 @@
     .speed-timer[hidden] { display: none; }
 
     /* ---- Pass-and-play Duel ---- */
-    /* The turn clock is the Speed Round pill's shape in the dusk palette,
+    /* The turn clock is the Speed Round pill's shape in mint,
        so the two modes never fight over the count plate. */
     .duel-timer {
+      background: var(--mint);
+      border-color: #7fcfa3;
       font-variant-numeric: tabular-nums;
       min-width: 4.5rem;
       text-align: center;
@@ -282,18 +284,13 @@
       min-height: 3rem;
       padding: 0.45rem 0.9rem;
       border-radius: 1.25rem;
-      background: #ffffff08;
-      border: 2px solid #ffffff20;
+      background: #fff;
+      box-shadow: 0 3px 0 #f0e2f7;
       font-weight: 800;
     }
-    .duel-score-name { color: #c0c7cf; text-align: left; }
-    .duel-score-value { font-weight: 900; color: #ecdbc0; font-variant-numeric: tabular-nums; }
-    .setting-row.speed-toggle-row {
-      width: 100%;
-      border: 2px solid #9da6af;
-      font-weight: 600;
-    }
-    .setting-row.speed-toggle-row input { accent-color: #a18cb8; }
+    .duel-score-name { color: var(--plum-soft); text-align: left; }
+    .duel-score-value { font-weight: 900; color: var(--plum); font-variant-numeric: tabular-nums; }
+    .setting-row.speed-toggle-row { width: 100%; }
 
     /* ---- Bottom action bar ---- */
     #action-bar {
@@ -303,12 +300,14 @@
       padding-right: calc(var(--safe-right) + 12px);
     }
     #play-hint {
-      margin: 0;
+      margin: 0 0.5rem;
+      padding: 0.3rem 1rem;
+      border-radius: 9999px;
+      background: rgba(255, 250, 242, 0.92);
       text-align: center;
       font-size: 1rem;
       font-weight: 800;
       color: var(--plum);
-      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
     }
     .submit-btn {
       pointer-events: auto;
@@ -425,6 +424,7 @@
       text-shadow: none;
       transition: transform 0.08s ease, box-shadow 0.08s ease;
     }
+    a.big-btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
     .big-btn:active { transform: translateY(5px); box-shadow: none; }
     .big-btn:hover { background: #6b5580; }
     .soft-btn {
@@ -654,8 +654,8 @@
       background: var(--cream);
       color: var(--plum);
       font-weight: 900;
-      font-size: 1.05rem;
-      letter-spacing: 0.03em;
+      font-size: 1rem;
+      white-space: nowrap;
     }
     #leaderboard-tabs button[aria-selected="true"] {
       background: var(--pink-soft);
@@ -747,83 +747,43 @@
       .submit-btn { min-height: 3rem; min-width: 11rem; font-size: 1.1rem; padding: 0.55rem 1.6rem; }
     }
 
-    @media (prefers-reduced-motion: reduce) {
-      .sheep-card, .sheep-eyes, .celebration-sheep, .celebration-sheep span { animation: none; }
-      .count-pop, .panel-pop { animation: none; }
-      .sheep-tap-ripple { animation: none; opacity: 0; }
+    body { margin: 0; -webkit-font-smoothing: antialiased; }
+    .bedtime-eyebrow {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--plum-soft);
     }
-    /* Bedtime tuning: muted dusk, quiet controls, no flashing rewards. */
-    :root {
-      color-scheme: dark;
-      --plum: #f0e9de;
-      --plum-soft: #b7bdc7;
-      --cream: #303d4b;
-      --pink: #b7afc5;
-      --pink-soft: #73808d;
-      --sky-top: #283448;
-      --sky-mid: #637487;
-      --sky-low: #a1afb8;
-      --horizon: #b1b5aa;
+    .bedtime-message {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1.35;
+      color: var(--plum-soft);
     }
-    body { margin: 0; background: #283448; -webkit-font-smoothing: antialiased; }
-    #scene-root { background: linear-gradient(180deg, var(--sky-top), var(--sky-mid) 40%, var(--horizon)); }
-    .count-plate { background: #303d4b; border: 2px solid #9da6af; box-shadow: none; padding: .65rem 1.8rem; }
-    .count-plate::before, .count-plate::after { display: none; }
-    #count-display { font-size: 3.5rem; font-weight: 600; text-shadow: none; }
-    #count-word { font-weight: 500; letter-spacing: .02em; text-transform: none; color: #565f6a; }
-    #grownups-btn { color: #e3e3e9; background: #3c4a59; box-shadow: none; }
-    #play-hint { margin: 0 .5rem; padding: .35rem 1rem; border-radius: 9999px; background: #283448f5; color: #f5f0e6; font-weight: 500; text-shadow: none; }
-    .round-pill { background: #303d4b; border: 2px solid #9da6af; color: #f0e9de; font-weight: 600; letter-spacing: .04em; text-transform: none; box-shadow: none; }
-    .submit-btn { background: #283448; color: #f0e9de; font-weight: 600; box-shadow: 0 6px 0 #f0e9de, 0 12px 22px rgba(255, 127, 167, 0.3); border: 2px solid #9da6af; }
-    .submit-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #f0e9de; }
-    .panel-backdrop { background: #202b3bb8; }
-    .panel-card { background: var(--cream); border: 2px solid #9da6af; box-shadow: none; }
-    .panel-pop { animation: panel-rest .8s ease-out; }
-    @keyframes panel-rest { from { opacity: 0; } to { opacity: 1; } }
-    .celebration-title { font-weight: 500; font-size: 1.75rem; }
-    .celebration-total { color: #5d4a12; background: #fbe7b8; box-shadow: 0 3px 0 #f2d76a; }
-    .bedtime-eyebrow, .bedtime-message { margin: 0; color: #c0c7cf; }
-    .big-btn { background: #283448; color: #f0e9de; box-shadow: none; border: 2px solid #34435a; font-weight: 600; }
-    .big-btn:hover { background: #34435a; border-color: #9da6af; }
-    .soft-btn, #grownups-close { background: #ffffff12; color: #f0e9de; box-shadow: none; border: 2px solid #9da6af; }
     /* 3-2-1 countdown card: one quiet number at a time, sized like the
-       count plate's big digits so the eye is already warmed up. A gentle
-       fade replaces each number; prefers-reduced-motion stops it. */
+       count plate's big digits so the eye is already warmed up. */
     .countdown-card { cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
     .countdown-number {
       margin: 0.25rem 0;
       font-size: 4.6rem;
       line-height: 1;
-      font-weight: 600;
+      font-weight: 900;
       color: var(--plum);
       font-variant-numeric: tabular-nums;
       animation: countdown-rest 0.7s ease-in-out;
     }
     @keyframes countdown-rest { from { opacity: 0.25; } to { opacity: 1; } }
     .countdown-card .soft-btn { pointer-events: auto; }
-    .setting-row, .stats-card { background: #ffffff08; border-color: #ffffff20; }
-    .setting-row select { color: #f0e9de; background: #283448; border-color: #9da6af; }
-    .setting-row input[type="checkbox"] { accent-color: #a18cb8; }
-    .stat-value { color: #ecdbc0; }
-    .count-pop { animation: count-rest .8s ease-in-out; }
-    @keyframes count-rest { 50% { transform: scale(1.025); } }
-    button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #283448; outline-offset: 2px; box-shadow: 0 0 0 3px #f0e9de; }
-    .sheep-fallback-field { background:
-      radial-gradient(65% 25% at 15% 100%, #6b9150 0 70%, transparent 71%),
-      radial-gradient(90% 35% at 85% 110%, #547a45 0 70%, transparent 71%); }
-    .setting-row, .stats-card { box-shadow: none; }
-    .sheep-card { background: #ffffff0d; border-color: #ffffff2b; box-shadow: none; animation-duration: 7s; }
-    .sheep-card.is-counted { background: #ffffff15; border-color: #b7afc5; }
     .is-counted .sheep-eyes { animation: none; transform: scaleY(.14); }
-    .sheep-card-badge { box-shadow: none; }
-    .submit-btn[disabled] { opacity: 1; background: var(--pink); color: #3d4653; box-shadow: none; border-color: #9da6af; }
-    #a11y-sheep-list:focus-within { clip: auto; width: auto; height: auto; inset: auto 12px 132px; white-space: normal; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #303d4b; border-radius: 16px; }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--plum); outline-offset: 2px; }
+    #a11y-sheep-list:focus-within { clip: auto; width: auto; height: auto; inset: auto 12px 132px; white-space: normal; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: var(--cream); border-radius: 16px; }
     #a11y-sheep-list button { min-height: 48px; padding: 8px; }
-    @media (max-height: 520px) { #play-hint { font-size: .875rem; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-    /* Calm mode: the DOM cards' drift follows the same speed dial the
-       movement module applies in JS, via a CSS lookup the script reads
-       back (getComputedStyle). One number, three surfaces. */
+    /* Calm mode: the DOM cards' drift slows with the same speed dial the
+       movement module applies in JS. */
     body.theme-calm .sheep-card { animation-duration: 7s; }
   </style>
 </head>
@@ -943,15 +903,17 @@
     <!-- Get ready: the pre-round briefing, shown before the first round of a
          run starts counting. Same card as the game-over panel. -->
     <div id="round-intro" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
-      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+      <div class="panel-card panel-pop w-full max-w-sm p-6 text-center flex flex-col items-center gap-3">
         <p class="bedtime-eyebrow">Get ready</p>
         <p class="celebration-title">Tap every sheep.</p>
         <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
         <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
         <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Counting it ends the run.</p>
+        <div class="intro-chip-row">
         <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
         <p id="streak-chip" class="best-round-chip" aria-live="off"><svg class="streak-flame" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 C 13 6, 17 8, 17 13 A 5 5.5 0 0 1 7 13 C 7 8, 11 6, 12 2 Z" fill="#ffb347"></path><path d="M12 8.6 C 12.8 10.8, 15 11.8, 15 14.6 A 3 3.4 0 0 1 9 14.6 C 9 11.8, 11.2 10.8, 12 8.6 Z" fill="#ff8fab"></path></svg><span class="chip-label">Day streak</span> <span id="streak-value" class="chip-value">1</span> <span id="streak-best" class="chip-label streak-best-label">Best 1</span></p>
+        </div>
         <label id="speed-toggle-row" class="setting-row speed-toggle-row" for="speed-toggle">
           <span>Speed Round</span>
           <input id="speed-toggle" type="checkbox">
@@ -961,7 +923,7 @@
           <input id="duel-toggle" type="checkbox">
         </label>
 
-        <div id="difficulty-picker" role="radiogroup" aria-label="Difficulty" class="flex flex-wrap justify-center gap-2">
+        <div id="difficulty-picker" role="radiogroup" aria-label="Difficulty" class="flex flex-wrap justify-center gap-1.5">
           <button type="button" class="difficulty-pill" data-difficulty="easy" role="radio" aria-checked="false">Easy</button>
           <button type="button" class="difficulty-pill" data-difficulty="normal" role="radio" aria-checked="true">Normal</button>
           <button type="button" class="difficulty-pill" data-difficulty="hard" role="radio" aria-checked="false">Hard</button>
@@ -1059,33 +1021,26 @@
   </div>
 
   <style>
-    /* Difficulty pills on the Get ready card, in the dusk chrome's palette.
-       Explicit colours rather than --plum/--pink: the Bedtime tuning block
-       redefines those as cream and grey-lavender, which on a light pill
-       left the labels unreadable (1.05:1). Unselected pills match the soft
-       buttons (cream label on the dark card, about 7:1); the selected
-       level flips to a cream fill with a deep plum label (about 10:1), so
-       it stays distinct from the dark Start counting button. */
+    /* Difficulty pills on the Get ready card: the round pill's look.
+       Plum on cream/pink-soft stays above 7:1 either way; the selected
+       level flips to a solid plum fill with a cream label. */
     .difficulty-pill {
       min-height: 2.75rem;
-      padding: 0 1.4rem;
+      padding: 0 0.8rem;
       border-radius: 9999px;
-      font-size: 1.1rem;
-      font-weight: 800;
-      letter-spacing: 0.01em;
-      color: #f0e9de;
-      background: #ffffff12;
-      border: 2px solid #9da6af;
-      box-shadow: none;
+      font-size: 1rem;
+      font-weight: 900;
+      color: var(--plum);
+      background: #fff;
+      border: 3px solid var(--pink-soft);
       touch-action: manipulation;
     }
     .difficulty-pill:active { transform: translateY(2px); }
     .difficulty-pill[aria-checked="true"] {
-      color: #283448;
-      background: #f0e9de;
-      border-color: #f0e9de;
+      color: var(--cream);
+      background: var(--plum);
+      border-color: var(--plum);
     }
-    .difficulty-pill[aria-checked="true"]:active { box-shadow: 0 1px 0 #e35d8a; }
 
     /* Best Round chip on the Get ready card: the same pill shape as the
        difficulty pills, but non-interactive, filled with the celebratory
@@ -1118,18 +1073,21 @@
       font-variant-numeric: tabular-nums;
     }
     .best-round-chip[hidden] { display: none; }
+    .intro-chip-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem; }
+    .intro-chip-row .best-round-chip { gap: 0.3rem; min-height: 2.25rem; font-size: 0.85rem; padding: 0.2rem 0.55rem; }
+    .intro-chip-row .best-round-chip .chip-value { min-width: 1.6rem; font-size: 1rem; }
 
     /* Day streak chip: the same achievement pill as the Best Round chip,
        with the flame drawn from the app's own peach and pink (decorative,
        so the label text carries the meaning for a screen reader). The best
        streak rides along as a softer second label inside the same pill. */
-    .streak-chip .streak-flame {
+    #streak-chip .streak-flame {
       width: 1.15em;
       height: 1.15em;
       flex: none;
       margin: -0.1em 0;
     }
-    .streak-chip .streak-best-label {
+    #streak-chip .streak-best-label {
       color: #7a6420;
       font-weight: 800;
       margin-left: 0.1rem;

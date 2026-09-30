@@ -182,3 +182,12 @@ cannot wander in. See `README.md` for the full feature description.
   platform-hosted asset like the bridge/native-kit/Tailwind runtime —
   it's installed into the image and served from `/vendor/three` via
   Express static, not vendored into git.
+- **The light pastel palette is the only default.** Night Meadow and
+  Calm mode recolor only the scenery (and Calm the tempo) via
+  `body.theme-*`; never add an unscoped `:root` block that redefines
+  `--plum` / `--cream` / `--pink`, since source order makes it win for
+  everyone. Style new chrome with those variables, not hardcoded hexes.
+- **`/tailwind.css` is served from `public/` when the image built it.**
+  `server.js` answers 204 only when the file is missing (a plain
+  checkout). Every layout utility in `index.html` depends on it, so never
+  short-circuit it unconditionally.
