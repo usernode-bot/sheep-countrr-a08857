@@ -17,6 +17,15 @@ keeping track of who you already counted does not.
   puts on a numbered ribbon, so a counted sheep is impossible to mistake
   for an uncounted one. The current round and the running tap count sit
   at the top of the screen the whole time.
+- **Before you start.** The first round of a run opens on a short "Get
+  ready" card that names the round and its flock, explains that a tap
+  counts a sheep and gives it a number, and warns that counting the same
+  sheep twice ends the run. Its one button, "Start counting", dismisses
+  the card and begins the round. It returns at the start of every run
+  (after "Start again" or "Start over at round 1"), and later rounds in
+  a run skip it since the round-complete message already previews the
+  next flock. The card also carries a streak flame: how many days in a
+  row the player has played, with the best streak ever reached beside it.
 - **Finishing a round.** Tap every sheep and the round completes itself,
   or tap "Done counting" when you think you have them all. A correct
   count shows a short round-complete message and moves on.
@@ -41,7 +50,15 @@ keeping track of who you already counted does not.
   start on, best round reached, lifetime sheep counted) plus a community
   total shown in the grown-ups panel. A half-counted round is never
   restored, since returning to taps you do not remember making would end
-  the run on the next tap.
+  the run on the next tap. The play streak and its best stay on the
+  device, keyed per user, and count days in the player's local timezone.
+- **Leaderboard** (grown-ups gate): a card with three tabs. Global ranks
+  the best round ever reached; This week ranks the best round achieved in
+  the current week (Monday 00:00 UTC to Sunday night, the same everywhere);
+  Friends ranks the Homeroom handles you follow, picked from the platform's
+  user directory with a typeahead field. Each finished run records its
+  round for the weekly tab. `/\?scene=leaderboard` freezes the card with
+  demo rows (add `&tab=weekly` or `&tab=friends` for the other tabs).
 - Reduced-motion preference holds the flock still and drops the tap
   animations in both renderers.
 
@@ -53,8 +70,10 @@ Review fixtures, all of which avoid localStorage and the server:
 
 - `/?round=N` starts a real, playable run at round N from that round's
   fixed seed, so the same URL always frames the same pasture. This is the
-  deep link the screenshot checks use: `/?round=1` for the still single
-  sheep, `/?round=8` for a chaotic flock of eleven.
+  deep link the screenshot checks use: `/?round=8` for a chaotic flock of
+  eleven. `/?round=1` now opens on the "Get ready" card (it is the start
+  of a fresh run); for the bare still-single-sheep board use
+  `/?scene=portrait`, which shows no card.
 - `/?scene=midcount`, `/?scene=roundcomplete`, `/?scene=gameover`,
   `/?scene=grownups`, `/?scene=flock`, `/?scene=portrait`,
   `/?scene=empty` freeze one screen for a screenshot.

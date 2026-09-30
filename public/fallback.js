@@ -2,9 +2,9 @@
 // is set for testing. Shares the exact same counting semantics as the
 // 3D scene: same tap contract (onTap(index)), same counted-badge numbers,
 // same pastel per number.
-import { NUMBER_COLORS } from './layout.js';
+import { NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { motionForRound } from './rounds.js';
+import { calmMotion, motionForRound, wolfDisguiseTier } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -83,6 +83,27 @@ const FLEECES = [
   { fleece: '#f8ecc9', 'fleece-light': '#fdf6e0', 'fleece-shade': '#e3d2a4' },
 ];
 
+// Wolf-only SVG cues, added to the plain sheep SVG on the wolf's card.
+// The groups carry classes so the card's data attributes and CSS decide
+// how much of the disguise shows per tier and after the reveal.
+const WOLF_CUES_SVG = `
+  <g class="wolf-cues">
+    <g class="wolf-ears">
+      <path d="M28 32 L33 12 L42 28 Z" fill="#b3ada2"/>
+      <path d="M92 32 L87 12 L78 28 Z" fill="#b3ada2"/>
+      <path d="M31 29 L34 17 L39 26 Z" fill="#a89f92"/>
+      <path d="M89 29 L86 17 L81 26 Z" fill="#a89f92"/>
+    </g>
+    <g class="wolf-tail">
+      <circle cx="97" cy="86" r="9" fill="var(--fleece-shade, #e5d7c5)"/>
+      <circle cx="103" cy="81" r="6" fill="var(--fleece-light, #ffffff)"/>
+    </g>
+    <g class="wolf-glint">
+      <circle cx="53.5" cy="57.5" r="1.6" fill="#ffb347"/>
+      <circle cx="71.5" cy="57.5" r="1.6" fill="#ffb347"/>
+    </g>
+  </g>`;
+
 export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   const field = document.createElement('div');
   field.className = 'sheep-fallback-field';
@@ -93,15 +114,23 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
 
   let cards = [];
   let current = null;
+  let calm = false;
   let motion = motionForRound(1);
   let rafId = null;
-  const startedAt = performance.now();
+  // The round's animation clock. setRoundClock resumes a saved board at
+  // the exact time it was left, so the flock is standing where it was.
+  let startedAt = performance.now();
+  let clockOffset = 0;
+  function elapsedSeconds() {
+    return clockOffset + (performance.now() - startedAt) / 1000;
+  }
 
   function render(state) {
     grid.innerHTML = '';
     cards = [];
     current = state;
-    motion = motionForRound(state.round);
+    calm = !!state.calmOn;
+    motion = calm ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty);
     grid.dataset.size = String(state.sheepCount);
     for (let i = 0; i < state.sheepCount; i++) {
       const btn = document.createElement('button');
@@ -114,13 +143,45 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       for (const [name, value] of Object.entries(FLEECES[i % FLEECES.length])) {
         btn.style.setProperty(`--${name}`, value);
       }
-      btn.innerHTML = SHEEP_SVG + '<span class="sheep-card-badge" hidden></span>';
+      const isWolf = state.wolfIndex === i;
+      if (isWolf) {
+        const tier = wolfDisguiseTier(state.round);
+        btn.dataset.wolf = 'true';
+        btn.dataset.wolfTier = String(tier);
+        btn.innerHTML = SHEEP_SVG.replace('</svg>', WOLF_CUES_SVG + '\n</svg>')
+          + '<span class="sheep-name-label" hidden></span>'
+          + '<span class="sheep-card-badge" hidden></span>'
+          + '<span class="sheep-tap-ripple" hidden></span>';
+      } else {
+        btn.innerHTML = SHEEP_SVG
+          + '<span class="sheep-name-label" hidden></span>'
+          + '<span class="sheep-card-badge" hidden></span>'
+          + '<span class="sheep-tap-ripple" hidden></span>';
+      }
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
       cards.push(btn);
     }
     state.counted.forEach((idx, order) => markCounted(idx, order + 1, false));
+    syncNames(state);
     startDrift();
+  }
+
+  // The optional name label above each card. Same deterministic name the
+  // 3D scene and the a11y list use, so a sheep is called the same thing
+  // whichever way it is drawn.
+  function syncNames(state) {
+    for (let i = 0; i < cards.length; i++) {
+      const label = cards[i] && cards[i].querySelector('.sheep-name-label');
+      if (!label) continue;
+      if (state.namesOn) {
+        label.hidden = false;
+        label.textContent = sheepName(state.seed, i);
+      } else {
+        label.hidden = true;
+        label.textContent = '';
+      }
+    }
   }
 
   // The cards drift with the same seeded motion the 3D flock uses, so a
@@ -135,11 +196,14 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     }
     const step = () => {
       rafId = requestAnimationFrame(step);
-      const t = (performance.now() - startedAt) / 1000;
+      const t = elapsedSeconds();
       for (let i = 0; i < cards.length; i++) {
         const btn = cards[i];
         if (btn.classList.contains('is-counted')) continue;
-        const offset = wanderOffset(current.seed, i, cards.length, t, motion);
+        // Tiers 1 and 2 wander a beat out of step with the flock, matching
+        // the 3D scene; tier 3 keeps perfect time.
+        const lag = btn.dataset.wolf === 'true' && Number(btn.dataset.wolfTier) < 3 ? -0.8 : 0;
+        const offset = wanderOffset(current.seed, i, cards.length, t + lag, motion);
         btn.style.left = `${(offset.x * PX_PER_UNIT).toFixed(1)}px`;
         btn.style.top = `${(offset.z * PX_PER_UNIT * 0.6).toFixed(1)}px`;
       }
@@ -190,12 +254,62 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     );
   }
 
+  // The disguise drops: the same wiggle the double-tap uses, plus the
+  // data attribute that swings every cue to its fully-visible form.
+  function revealWolf(index) {
+    const btn = cards[index];
+    if (!btn) return;
+    btn.dataset.revealed = 'true';
+    wiggle(index);
+  }
+
+  // Soft expanding ring where the card was tapped. One span per card,
+  // restarted on every tap so back-to-back taps re-animate it. Purely
+  // visual: the same ripple shows for a first tap and a double tap.
+  function tapRipple(index) {
+    const btn = cards[index];
+    const ripple = btn && btn.querySelector('.sheep-tap-ripple');
+    if (!ripple) return;
+    if (reducedMotion || !btn.animate) {
+      // Reduced motion (or no Web Animations) skips the ripple entirely.
+      ripple.hidden = true;
+      return;
+    }
+    ripple.hidden = false;
+    // Restart the animation even when two taps land back to back.
+    ripple.classList.remove('is-rippling');
+    void ripple.offsetWidth;
+    ripple.classList.add('is-rippling');
+  }
+
   function celebrate() {}
+
+  // Night Meadow: the field's ground gradients are CSS variables on the
+  // body class (see index.html), so the DOM renderer only has to mirror
+  // the state flag into its own styling scope. Nothing else changes.
+  function setNight(on) {
+    field.classList.toggle('theme-night', !!on);
+  }
+
+  // Calm mode: the field already reads its soft palette from the same
+  // body class the CSS uses, so mirroring the flag keeps the ground wash
+  // and the card recolor in step with the 3D scene.
+  function setCalm(on) {
+    field.classList.toggle('theme-calm', !!on);
+  }
 
   return {
     kind: 'dom',
+    elapsedSeconds,
+    // Resume support: pin the drift clock at the board's saved position.
+    setRoundClock(seconds) {
+      clockOffset = Number.isFinite(Number(seconds)) && Number(seconds) >= 0 ? Number(seconds) : 0;
+      startedAt = performance.now();
+    },
     setState(state) {
       render(state);
+      setNight(!!state.nightOn);
+      setCalm(!!state.calmOn);
     },
     countSheep(index, number) {
       markCounted(index, number, true);
@@ -203,11 +317,26 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     wiggleSheep(index) {
       wiggle(index);
     },
+    revealWolf(index) {
+      revealWolf(index);
+    },
+    tapRipple(index) {
+      tapRipple(index);
+    },
     celebrate() {
       celebrate();
     },
     resetRound(state) {
       render(state);
+    },
+    setNight(on) {
+      setNight(on);
+    },
+    setCalm(on) {
+      setCalm(on);
+    },
+    setNames(on) {
+      if (current) syncNames({ ...current, namesOn: !!on });
     },
     destroy() {
       cancelAnimationFrame(rafId);

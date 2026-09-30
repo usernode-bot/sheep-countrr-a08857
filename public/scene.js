@@ -7,9 +7,9 @@
 // ribbon and a number plate. Ten sheep is under a hundred draw calls, which
 // is what keeps the low tier smooth.
 import * as THREE from 'three';
-import { layoutPositions, NUMBER_COLORS } from './layout.js';
+import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { MAX_SHEEP, motionForRound, roamRadius } from './rounds.js';
+import { MAX_SHEEP, calmMotion, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
 
 const COLORS = {
   wool: '#f4eadb',
@@ -23,14 +23,39 @@ const COLORS = {
   hoof: '#8a6558',
   eyeWhite: '#fff8ed',
   pupil: '#2b2530',
-  ground: '#667d79',
-  hillA: '#738886',
-  hillB: '#5f7879',
-  hillC: '#4f686c',
+  ground: '#6b9150',
+  hillA: '#5e8a49',
+  hillB: '#527b42',
+  hillC: '#476d3e',
   trunk: '#7b7773',
-  leaf: '#586e6f',
-  leafLight: '#728786',
+  leaf: '#4e7a3f',
+  leafLight: '#6a9352',
   fog: '#a1afb8',
+  wolfWool: '#cfc9bd',
+  wolfWoolShade: '#b3ada2',
+  glint: '#ffb347',
+};
+
+// Calm mode: the scenery takes the same soft pastel wash the CSS sky
+// above the canvas uses (see body.theme-calm in index.html). Sheep,
+// flowers and UI colors stay as they are, so the counted ribbons and
+// number plates keep their exact contrast.
+const CALM_COLORS = {
+  ground: '#8fbf8a',
+  hillA: '#87a982',
+  hillB: '#75957a',
+  hillC: '#66846c',
+  fog: '#b3c2c8',
+};
+
+// Night Meadow: only the scenery (ground, hills, fog) shifts to its dark
+// counterpart; every sheep color, the flowers and the UI stay as they are.
+const NIGHT_COLORS = {
+  ground: '#3e5c40',
+  hillA: '#33513f',
+  hillB: '#2b4638',
+  hillC: '#243c30',
+  fog: '#2c3d52',
 };
 
 // One plush fleece color per sheep, repeating across bigger flocks. The
@@ -138,6 +163,32 @@ function buildNumberTextures() {
   return textures;
 }
 
+// A small cream pill with the sheep's name, floating above its head.
+// Fixed-width canvas so every label shares one sprite scale; the text is
+// centered inside it. Same palette family as the number plates.
+const NAME_FONT = '800 30px "Nunito", ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Segoe UI", system-ui, sans-serif';
+
+function buildNameTexture(name) {
+  const w = 256;
+  const h = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(80, 50, 90, 0.18)';
+  roundRect(ctx, 16, 18, w - 32, h - 22, 26);
+  ctx.fill();
+  ctx.fillStyle = '#fffaf2';
+  roundRect(ctx, 8, 8, w - 16, h - 22, 24);
+  ctx.fill();
+  ctx.fillStyle = '#4a3b5c';
+  ctx.font = NAME_FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, w / 2, h / 2 - 4);
+  return makeTexture(canvas);
+}
+
 function buildCloudTexture() {
   const w = 256;
   const h = 128;
@@ -236,6 +287,25 @@ function buildDotTexture() {
   return makeTexture(canvas);
 }
 
+// Soft expanding ground ring shown where a sheep is tapped. A fading ring
+// texture on a flat disc reads as a ripple in the grass at any tier.
+function buildRippleTexture() {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, size * 0.18, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(255, 248, 237, 0.85)');
+  gradient.addColorStop(0.55, 'rgba(255, 248, 237, 0.35)');
+  gradient.addColorStop(1, 'rgba(255, 248, 237, 0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  return makeTexture(canvas);
+}
+
 // ---------------------------------------------------------------------------
 // Sheep geometry. Built once per variant, then shared by every sheep.
 
@@ -303,6 +373,75 @@ export function buildEyeGeometry() {
   ]);
   sphere.dispose();
   return geometry;
+}
+
+// The wolf's eyes: the same placement as a sheep's, with an amber glint
+// that stays visible at every tier, even the near-perfect third one.
+export function buildWolfEyeGeometry() {
+  const sphere = new THREE.SphereGeometry(1, 14, 10);
+  const geometry = mergeColored([
+    { geo: sphere, color: COLORS.pupil, matrix: placeMatrix(0, 0, 0, 0.052, 0.063, 0.035) },
+    { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(-0.013, 0.021, 0.031, 0.016) },
+    { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(0.015, -0.016, 0.033, 0.007) },
+    { geo: sphere, color: COLORS.glint, matrix: placeMatrix(0.005, 0.008, 0.04, 0.014) },
+  ]);
+  sphere.dispose();
+  return geometry;
+}
+
+// The wolf reuses the sheep's merge pipeline: same silhouette, same wool
+// locks, different disguise. Tier 1 wears grey with upright ears and a
+// tail; tier 2 keeps small grey ears and a tail peek under a flock-pastel
+// fleece; tier 3 is a sheep except for the eyes, which carry the glint.
+export function buildWolfBodyGeometry(variant, tier, fleece = FLEECES[0]) {
+  const isGrey = tier === 1;
+  const wolfFleece = isGrey
+    ? { wool: COLORS.wolfWool, woolLight: '#e2ddd2', woolShade: COLORS.wolfWoolShade }
+    : fleece;
+  const base = buildSheepBodyGeometry(variant, wolfFleece);
+  if (tier >= 3) return base;
+
+  // Small upgrades on top of the sheep silhouette, merged with the same
+  // vertex-color pipeline so the draw-call budget stays flat.
+  const parts = [];
+  const sphere = new THREE.SphereGeometry(1, 10, 8);
+  const add = (color, x, y, z, sx, sy = sx, sz = sx, rx = 0, ry = 0, rz = 0) =>
+    parts.push({ geo: sphere, color, matrix: placeMatrix(x, y, z, sx, sy, sz, rx, ry, rz) });
+
+  // Upright pointed ears, replacing the look of the sheep's low wide ones.
+  const earScale = tier === 1 ? 1 : 0.6;
+  const earGrey = isGrey ? COLORS.wolfWoolShade : '#9d968b';
+  for (const side of [-1, 1]) {
+    add(earGrey, side * 0.3, 1.28, 0.44, 0.09 * earScale, 0.3 * earScale, 0.06 * earScale, 0, 0, side * -0.18);
+    add(isGrey ? '#a89f92' : '#b5ada1', side * 0.29, 1.26, 0.47, 0.055 * earScale, 0.2 * earScale, 0.03 * earScale, 0, 0, side * -0.18);
+  }
+  // A fluffy tail. Tier 2 shows only a peek of it.
+  const tailScale = tier === 1 ? 1 : 0.5;
+  add(wolfFleece.woolShade, 0, 0.66, -0.78, 0.17 * tailScale, 0.15 * tailScale, 0.2 * tailScale, 0, 0, 0.5);
+  add(wolfFleece.woolLight, 0, 0.72, -0.84, 0.1 * tailScale, 0.09 * tailScale, 0.12 * tailScale, 0, 0, 0.5);
+
+  const upgrade = mergeColored(parts);
+  sphere.dispose();
+
+  const pos = [];
+  const nor = [];
+  const col = [];
+  for (const geo of [base, upgrade]) {
+    const p = geo.attributes.position;
+    const n = geo.attributes.normal;
+    const c = geo.attributes.color;
+    for (let i = 0; i < p.count; i++) {
+      pos.push(p.getX(i), p.getY(i), p.getZ(i));
+      nor.push(n.getX(i), n.getY(i), n.getZ(i));
+      col.push(c.getX(i), c.getY(i), c.getZ(i));
+    }
+    geo.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return out;
 }
 
 function buildRibbonGeometry() {
@@ -457,6 +596,64 @@ function createConfettiPool(scene, size, texture) {
   return { start, update };
 }
 
+function createRipplePool(scene, size, texture) {
+  const geo = new THREE.CircleGeometry(1, 24);
+  const meshes = Array.from({ length: size }, () => {
+    const mat = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.visible = false;
+    scene.add(mesh);
+    return { mesh, mat, age: 0 };
+  });
+  let next = 0;
+  const DURATION = 0.6;
+  // The pool keeps its own frame clock: update() runs once per rendered
+  // frame, so the age of each ripple is the accumulated frame delta.
+  let lastUpdate = null;
+
+  function burst(x, z, scale) {
+    const r = meshes[next];
+    next = (next + 1) % size;
+    r.age = 0;
+    r.mesh.position.set(x, 0.02, z);
+    r.mesh.scale.setScalar(scale);
+    r.mesh.visible = true;
+  }
+
+  function update() {
+    const now = performance.now();
+    if (lastUpdate === null) lastUpdate = now;
+    const dt = Math.min((now - lastUpdate) / 1000, 0.1);
+    lastUpdate = now;
+    for (const r of meshes) {
+      if (!r.mesh.visible) continue;
+      r.age += dt;
+      const p = r.age / DURATION;
+      if (p >= 1) {
+        r.mesh.visible = false;
+        r.mat.opacity = 0;
+        continue;
+      }
+      const ease = 1 - Math.pow(1 - p, 2);
+      r.mat.opacity = 0.65 * (1 - p);
+      r.mesh.scale.setScalar(r.mesh.scale.x + ease * 0.02);
+    }
+  }
+
+  function dispose() {
+    geo.dispose();
+    meshes.forEach((r) => r.mat.dispose());
+  }
+
+  return { burst, update, dispose };
+}
+
 // ---------------------------------------------------------------------------
 
 function detectTier() {
@@ -470,6 +667,8 @@ function detectTier() {
 
 export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, getOverlayRect, getBottomOverlayRect }) {
   let tier = detectTier();
+  let night = false;
+  let calm = false;
 
   const canvas = document.createElement('canvas');
   canvas.className = 'sheep-canvas';
@@ -499,8 +698,11 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   fill.position.set(6, 4, -4);
   scene.add(fill);
 
-  // Ground: a big gently rolling plane.
-  const groundGeo = new THREE.PlaneGeometry(70, 70, 36, 36);
+  // Ground: a big gently rolling plane. Vertex colors mottle it with soft
+  // grass patches so it reads as a real meadow instead of one flat swatch;
+  // material.color still carries the day/calm/night tint, and multiplies
+  // these near-white variations, so palette switching keeps working.
+  const groundGeo = new THREE.PlaneGeometry(70, 70, 48, 48);
   const gp = groundGeo.attributes.position;
   for (let i = 0; i < gp.count; i++) {
     const x = gp.getX(i);
@@ -509,7 +711,25 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     gp.setZ(i, Math.sin(x * 0.45) * 0.08 + Math.cos(y * 0.5) * 0.08 + far * far * 0.4);
   }
   groundGeo.computeVertexNormals();
-  const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ color: COLORS.ground }));
+  {
+    const shades = new Float32Array(gp.count * 3);
+    for (let i = 0; i < gp.count; i++) {
+      const x = gp.getX(i);
+      const y = gp.getY(i);
+      // Two smooth octaves: broad patches plus a finer mottle, both fixed
+      // (not round-seeded) so the meadow looks the same every round.
+      const broad = Math.sin(x * 0.32 + 1.7) * Math.cos(y * 0.41 + 0.6)
+        + 0.6 * Math.sin(x * 0.71 + y * 0.53 + 2.1);
+      const fine = Math.sin(x * 1.9 + 4.2) * Math.sin(y * 2.3 + 1.3) * 0.35;
+      const t = Math.max(0, Math.min(1, 0.5 + (broad + fine) * 0.28));
+      // Dry sunlit patches lean warm; shaded patches lean deep green.
+      shades[i * 3] = 0.84 + t * 0.26;
+      shades[i * 3 + 1] = 0.92 + t * 0.12;
+      shades[i * 3 + 2] = 0.88 + t * 0.1;
+    }
+    groundGeo.setAttribute('color', new THREE.BufferAttribute(shades, 3));
+  }
+  const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ color: COLORS.ground, vertexColors: true }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.03;
   scene.add(ground);
@@ -520,12 +740,35 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     [-9, -13, 9, 2.6, COLORS.hillA], [8, -15, 11, 3.2, COLORS.hillB], [0, -19, 14, 3.4, COLORS.hillC],
     [-16, -17, 10, 3.0, COLORS.hillB], [17, -12, 8, 2.2, COLORS.hillA], [-5, -22, 12, 4.2, COLORS.hillC],
   ];
-  hills.forEach(([x, z, r, h, color]) => {
+  const hillMeshes = [];
+  hills.forEach(([x, z, r, h, color], i) => {
     const m = new THREE.Mesh(hillGeo, new THREE.MeshLambertMaterial({ color }));
     m.scale.set(r, h * 0.42, r * 0.8);
     m.position.set(x, -0.1, z);
     scene.add(m);
+    hillMeshes.push([m, ['hillA', 'hillB', 'hillC'][i % 3]]);
   });
+
+  // Applies the day/night palette to the ground, hills and fog only. The
+  // sky behind the transparent canvas is CSS on the container; the sheep,
+  // trees and flowers keep their colors so they still read as daytime
+  // objects under a dimmer meadow.
+  function applyPalette() {
+    const c = night ? NIGHT_COLORS : (calm ? CALM_COLORS : COLORS);
+    ground.material.color.set(c.ground);
+    hillMeshes.forEach(([m, key]) => m.material.color.set(c[key]));
+    scene.fog.color.set(c.fog);
+  }
+
+  function applyNight(on) {
+    night = !!on;
+    applyPalette();
+  }
+
+  function applyCalm(on) {
+    calm = !!on;
+    applyPalette();
+  }
 
   // A few round toy trees along the back.
   const treeGeo = buildTreeGeometry();
@@ -591,6 +834,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   // Shared sheep assets.
   const bodyGeos = FLEECES.map((fleece, i) => buildSheepBodyGeometry(i % 3, fleece));
   const eyeGeo = buildEyeGeometry();
+  const wolfEyeGeo = buildWolfEyeGeometry();
+  const wolfBodyGeos = [1, 2, 3].map((tier) =>
+    [0, 1, 2].map((variant) => buildWolfBodyGeometry(variant, tier, FLEECES[variant % FLEECES.length])));
   const ribbonGeo = buildRibbonGeometry();
   const sheepMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0 });
   const shadowGeo = new THREE.PlaneGeometry(1.5, 1.5);
@@ -598,6 +844,20 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const pickGeo = new THREE.SphereGeometry(0.9, 8, 6);
   const pickMat = new THREE.MeshBasicMaterial({ visible: false });
   const numberTextures = buildNumberTextures();
+  // Name-label textures, built on demand and shared across rounds: a
+  // name's pill is identical wherever that name appears.
+  const nameTextureCache = new Map();
+  function nameTexture(name) {
+    let tex = nameTextureCache.get(name);
+    if (!tex) {
+      tex = buildNameTexture(name);
+      nameTextureCache.set(name, tex);
+    }
+    return tex;
+  }
+  // Whether floating name labels are on. Toggled from app.js; never
+  // changes counting, only what is drawn.
+  let namesOn = false;
   const starTexture = buildStarTexture();
   const dotTexture = buildDotTexture();
 
@@ -608,11 +868,14 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   let flockSpread = 3;
   const sparklePool = createSparklePool(scene, tier === 'low' ? 14 : 26, starTexture);
   const confettiPool = createConfettiPool(scene, tier === 'low' ? 40 : 90, dotTexture);
+  const ripplePool = createRipplePool(scene, tier === 'low' ? 4 : 6, buildRippleTexture());
 
   let lastState = null;
   // How this round's flock moves. Round 1 is perfectly still; later
-  // rounds are faster, bouncier and eventually jittery.
-  let motion = motionForRound(1);
+  // rounds are faster, bouncier and eventually jittery. Calm mode keeps
+  // the same paths but slides the motion clock down, so the flock reads
+  // as slow and quiet without changing what the round asks for.
+  let motion = motionForRound(1, lastState && lastState.difficulty);
   let isPortrait = true;
 
   function layoutRegion(n) {
@@ -627,8 +890,12 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function buildFlock(state) {
     lastState = state;
-    motion = motionForRound(state.round);
-    sheep.forEach((s) => { s.ribbonMat.dispose(); s.numberSprite.material.dispose(); });
+    namesOn = !!state.namesOn;
+    motion = state.calmOn ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty);
+    sheep.forEach((s) => {
+      if (s.ribbonMat) s.ribbonMat.dispose();
+      if (s.numberSprite) s.numberSprite.material.dispose();
+    });
     scene.remove(sheepGroup);
     sheepGroup = new THREE.Group();
     scene.add(sheepGroup);
@@ -647,11 +914,16 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       const scale = 0.92 + seededRand(state.seed, i) * 0.16;
       g.scale.setScalar(scale);
 
-      const body = new THREE.Mesh(bodyGeos[i % bodyGeos.length], sheepMat);
+      const isWolf = state.wolfIndex === i;
+      const tier = isWolf ? wolfDisguiseTier(state.round) : 0;
+      const body = new THREE.Mesh(
+        isWolf ? wolfBodyGeos[tier - 1][i % 3] : bodyGeos[i % bodyGeos.length],
+        sheepMat
+      );
       g.add(body);
 
       const eyes = [-1, 1].map((side) => {
-        const eye = new THREE.Mesh(eyeGeo, sheepMat);
+        const eye = new THREE.Mesh(isWolf ? wolfEyeGeo : eyeGeo, sheepMat);
         eye.position.set(side * 0.123, 0.867, 0.709);
         g.add(eye);
         return eye;
@@ -662,18 +934,34 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       shadow.position.set(0, 0.012, 0.05);
       g.add(shadow);
 
-      const ribbonMat = new THREE.MeshLambertMaterial({ color: '#fff8ed' });
-      const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
-      ribbon.visible = false;
-      g.add(ribbon);
+      let ribbonMat = null;
+      let ribbon = null;
+      let numberSprite = null;
+      if (!isWolf) {
+        ribbonMat = new THREE.MeshLambertMaterial({ color: '#fff8ed' });
+        ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
+        ribbon.visible = false;
+        g.add(ribbon);
 
-      const numberSprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: numberTextures[0], transparent: true, depthTest: false, fog: false })
+        numberSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: numberTextures[0], transparent: true, depthTest: false, fog: false })
+        );
+        numberSprite.scale.set(0.62, 0.62, 1);
+        numberSprite.position.set(0, 1.55, 0.1);
+        numberSprite.visible = false;
+        g.add(numberSprite);
+      }
+
+      // Optional playful name label above the head. Uncounted sheep float
+      // it where the number plate would sit; counted sheep lift it above
+      // the number plate so the two never overlap.
+      const nameSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: nameTexture(sheepName(state.seed, i)), transparent: true, depthTest: false, fog: false })
       );
-      numberSprite.scale.set(0.62, 0.62, 1);
-      numberSprite.position.set(0, 1.55, 0.1);
-      numberSprite.visible = false;
-      g.add(numberSprite);
+      nameSprite.scale.set(1.7, 0.425, 1);
+      nameSprite.position.set(0, 1.5, 0.1);
+      nameSprite.visible = namesOn;
+      g.add(nameSprite);
 
       // Large invisible pick target so small fingers land the tap.
       const pick = new THREE.Mesh(pickGeo, pickMat);
@@ -699,6 +987,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         ribbon,
         ribbonMat,
         numberSprite,
+        nameSprite,
         counted: false,
         origin: { x: pos.x, z: pos.z },
         heading: g.rotation.y,
@@ -712,6 +1001,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         nextHop: 5 + Math.random() * 8,
         hopStart: -1,
         ribbonPop: -1,
+        isWolf,
+        tier,
       });
     }
 
@@ -738,7 +1029,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     if (!Number.isFinite(minX)) return;
     // Pad by the round's roam radius so a wandering sheep can never leave
     // the frame, however chaotic the round gets.
-    const pad = 1.0 + roamRadius(lastState ? lastState.round : 1);
+    const pad = 1.0 + roamRadius(lastState ? lastState.round : 1, lastState && lastState.difficulty);
     const top = 1.9;
     const xs = [minX - pad, maxX + pad];
     const zs = [minZ - pad, maxZ + pad];
@@ -813,10 +1104,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     s.numberSprite.material.needsUpdate = true;
     s.numberSprite.visible = true;
     if (animate && !reducedMotion) {
-      s.bounceStart = clock.elapsedTime;
+      s.bounceStart = elapsedSeconds();
       s.bounceDur = 0.9;
       s.wiggle = false;
-      s.ribbonPop = clock.elapsedTime;
+      s.ribbonPop = elapsedSeconds();
       const p = s.group.position;
       // A sleepy nod is enough feedback; no burst of sparkles.
     }
@@ -825,9 +1116,21 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   function wiggleSheep(index) {
     const s = sheep[index];
     if (!s || reducedMotion) return;
-    s.bounceStart = clock.elapsedTime;
+    s.bounceStart = elapsedSeconds();
     s.bounceDur = 0.34;
     s.wiggle = true;
+  }
+
+  // The disguise drops: on reveal the wolf hops on the existing
+  // tap-reaction plumbing and, from tier 2 up, swaps to the fully grey
+  // tier-1 body so the reveal has something to show even late in the game.
+  function revealWolf(index) {
+    const s = sheep[index];
+    if (!s) return;
+    s.bounceStart = clock.elapsedTime;
+    s.bounceDur = 0.9;
+    s.wiggle = false;
+    if (s.tier >= 2) s.body.geometry = wolfBodyGeos[0][index % 3];
   }
 
   function celebrate() {
@@ -911,6 +1214,24 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   canvas.addEventListener('webglcontextrestored', onContextRestored, false);
 
   const clock = new THREE.Clock();
+  // The round's animation clock. setRoundClock resumes a saved board at
+  // the exact time it was left, so wandering sheep are standing where
+  // they were when the player came back. THREE.Clock only exposes
+  // elapsedTime through getDelta(), so the frame loop stays the writer.
+  let clockOffset = 0;
+  let lastElapsed = 0;
+  let clockBase = 0;
+  function elapsedSeconds() {
+    return clockOffset + (lastElapsed - clockBase);
+  }
+  function setRoundClock(seconds) {
+    clockOffset = Number.isFinite(Number(seconds)) && Number(seconds) >= 0 ? Number(seconds) : 0;
+    // getDelta() also resyncs the clock, so no hidden-tab gap leaks into
+    // the next frame after a resume.
+    clockBase = clock.getDelta() >= 0 ? clock.elapsedTime : 0;
+    lastElapsed = clockBase;
+    clock.getDelta();
+  }
   let frameAvg = 16;
   let animId = null;
   let lowTierAccum = 0;
@@ -937,7 +1258,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     const stepDt = tier === 'low' ? lowTierAccum : dt;
     lowTierAccum = 0;
 
-    const t = clock.elapsedTime;
+    // The whole frame runs on the round's clock: after a resume it sits
+    // at the saved position, so the flock is exactly where it was left.
+    const rt = elapsedSeconds();
+    const t = rt;
     sheep.forEach((s) => {
       // Breathing.
       const breathe = reducedMotion ? 0 : Math.sin(t * 0.9 + s.phase) * 0.012;
@@ -949,7 +1273,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       // Seeded, bounded wandering gets gently more varied as the flock
       // grows. Counted sheep stop where they are, ready for sleep.
       if (!reducedMotion && !s.counted) {
-        const offset = wanderOffset(lastState.seed, s.index, lastState.sheepCount, t, motion);
+        // Tiers 1 and 2 wander a beat out of step with the flock; tier 3
+        // keeps perfect time, which is exactly what makes it hard to spot.
+        const wolfLag = s.isWolf && s.tier < 3 ? -0.8 : 0;
+        const offset = wanderOffset(lastState.seed, s.index, lastState.sheepCount, t + wolfLag, motion);
         s.group.position.x = s.origin.x + offset.x;
         s.group.position.z = s.origin.z + offset.z;
         s.group.rotation.y = s.heading + offset.turn;
@@ -985,13 +1312,13 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       // Counted sheep close their eyes, including in reduced motion.
       if (s.counted) s.eyes.forEach((e) => e.scale.set(1, 0.14, 1));
       if (!reducedMotion && !s.counted) {
-        if (s.blinkStart < 0 && t > s.nextBlink) s.blinkStart = t;
+        if (s.blinkStart < 0 && rt > s.nextBlink) s.blinkStart = rt;
         let eyeY = 1;
         if (s.blinkStart >= 0) {
           const p = (t - s.blinkStart) / 0.18;
           if (p >= 1) {
             s.blinkStart = -1;
-            s.nextBlink = t + 2 + Math.random() * 5;
+            s.nextBlink = rt + 2 + Math.random() * 5;
           } else {
             eyeY = 1 - Math.sin(p * Math.PI) * 0.92;
           }
@@ -1007,8 +1334,19 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         s.numberSprite.scale.set(0.62 * k, 0.62 * k, 1);
         if (p >= 1) s.ribbonPop = -1;
       }
-      if (s.numberSprite.visible && s.ribbonPop < 0) {
+      if (s.numberSprite && s.numberSprite.visible && s.ribbonPop < 0) {
         s.numberSprite.position.y = 1.55 + (reducedMotion ? 0 : Math.sin(t * 2.2 + s.phase) * 0.035);
+      }
+
+      // Name label: a gentle float while grazing; parked above the number
+      // plate once counted, so the two never overlap.
+      if (s.nameSprite) {
+        s.nameSprite.visible = namesOn;
+        if (namesOn) {
+          s.nameSprite.position.y = s.counted
+            ? 2.05
+            : 1.5 + (reducedMotion ? 0 : Math.sin(t * 1.8 + s.phase) * 0.03);
+        }
       }
     });
 
@@ -1032,6 +1370,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
     sparklePool.update(stepDt);
     confettiPool.update(stepDt, t);
+    ripplePool.update();
     renderer.render(scene, camera);
   }
 
@@ -1057,11 +1396,32 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   return {
     kind: 'three',
+    elapsedSeconds,
+    setRoundClock,
     setState(state) {
       buildFlock(state);
+      applyNight(!!state.nightOn);
+      applyCalm(!!state.calmOn);
     },
     countSheep(index, number) {
       markCounted(index, number, true);
+    },
+    revealWolf(index) {
+      revealWolf(index);
+    },
+    // Live ground position of a sheep, for the tap ripple. The ripple
+    // scale divides by the sheep's own scale so the ring footprint is
+    // constant across flock sizes.
+    sheepPosition(index) {
+      const s = sheep[index];
+      if (!s) return null;
+      return { x: s.group.position.x, z: s.group.position.z, scale: 1 / s.group.scale.x };
+    },
+    // Purely visual: a soft ring where the tap landed. The caller supplies
+    // ground coordinates so the effect follows the sheep's live position.
+    tapRipple(x, z, scale = 1) {
+      if (reducedMotion) return;
+      ripplePool.burst(x, z, scale);
     },
     wiggleSheep(index) {
       wiggleSheep(index);
@@ -1071,6 +1431,21 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     },
     resetRound(state) {
       buildFlock(state);
+    },
+    setNight(on) {
+      applyNight(on);
+    },
+    setCalm(on) {
+      applyCalm(on);
+    },
+    setNames(on) {
+      namesOn = !!on;
+      if (lastState && !!lastState.namesOn !== namesOn) {
+        lastState = { ...lastState, namesOn };
+      }
+      sheep.forEach((s) => {
+        if (s.nameSprite) s.nameSprite.visible = namesOn;
+      });
     },
     destroy() {
       stop();
@@ -1083,6 +1458,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
+      ripplePool.dispose();
+      nameTextureCache.forEach((tex) => tex.dispose());
       renderer.dispose();
       canvas.remove();
     },
