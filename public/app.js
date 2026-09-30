@@ -111,7 +111,8 @@ const deepLink = staticMode;
 const resumeParam = params.get('resume') === '1';
 const RESUME_USER_ID = 'resume-demo';
 
-const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reducedMotion = sceneParam === 'still' || !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+document.documentElement.dataset.motion = reducedMotion ? 'still' : 'full';
 
 // How long the success message sits before the next round starts. Long
 // enough for the praise line to be read; the Next round button skips it.

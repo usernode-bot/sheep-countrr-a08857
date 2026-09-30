@@ -808,6 +808,7 @@
     #a11y-sheep-list:focus-within { clip: auto; width: auto; height: auto; inset: auto 12px 132px; white-space: normal; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: #303d4b; border-radius: 16px; }
     #a11y-sheep-list button { min-height: 48px; padding: 8px; }
     @media (max-height: 520px) { #play-hint { font-size: .875rem; } }
+    html[data-motion="still"] *, html[data-motion="still"] *::before, html[data-motion="still"] *::after { animation: none !important; transition: none !important; }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     /* Calm mode: the DOM cards' drift follows the same speed dial the
        movement module applies in JS, via a CSS lookup the script reads
