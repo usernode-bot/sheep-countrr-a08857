@@ -22,6 +22,18 @@
       ]
     },
     {
+      "id": "boot.ready",
+      "name": "App finishes booting and clears the boot card",
+      "path": "/?round=1",
+      "expectSelector": "html[data-booted] #round-badge",
+      "expectText": "Round 1",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Round 1 explains the objective before counting",
       "id": "round.intro",
       "visual": true,

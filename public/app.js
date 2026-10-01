@@ -39,8 +39,25 @@ const DUEL_TURN_SECONDS = 45;
 export function duelTurnSeconds() { return DUEL_TURN_SECONDS; }
 
 const params = new URLSearchParams(window.location.search);
-const token = params.get('token') || sessionStorage.getItem('sheep-countrr:token') || '';
-if (params.get('token')) sessionStorage.setItem('sheep-countrr:token', token);
+// Storage can be blocked in an embedded frame (some Android WebViews and
+// privacy settings make sessionStorage throw or be null). An unguarded
+// access here would kill the whole module before boot() runs (#44), so a
+// blocked store just means the URL's token is the only one we have.
+function readStoredToken() {
+  try {
+    return window.sessionStorage.getItem('sheep-countrr:token') || '';
+  } catch {
+    return '';
+  }
+}
+const token = params.get('token') || readStoredToken() || '';
+if (params.get('token')) {
+  try {
+    window.sessionStorage.setItem('sheep-countrr:token', token);
+  } catch {
+    /* storage unavailable; the token stays in the URL for this load */
+  }
+}
 
 const sceneParam = params.get('scene');
 const rendererParam = params.get('renderer');
@@ -1845,4 +1862,11 @@ els.inviteFriendBtn.addEventListener('click', () => {
   copyLink('/api/invites', {}, els.inviteFriendBtn);
 });
 
-boot().catch((err) => console.error('Sheep countrr failed to start', err));
+// Tell the inline boot watchdog in index.html how startup went, so a
+// failed start shows the Try again card instead of an empty frame.
+boot()
+  .then(() => window.__sheepBootDone?.())
+  .catch((err) => {
+    console.error('Sheep countrr failed to start', err);
+    window.__sheepBootFailed?.(err);
+  });

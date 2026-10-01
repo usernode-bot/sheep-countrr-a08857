@@ -4,6 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 
+  <!-- Paint first (#44): the pastel sky as the page's own background,
+       before any external script or stylesheet can stall the first paint.
+       Without it a slow bridge, stylesheet or cold start shows through as
+       the platform's black frame. Literal hexes because the main <style>
+       (and its palette variables) has not been parsed yet; they mirror
+       --sky-top / --sky-mid / --sky-low / --horizon. -->
+  <style>
+    html { color-scheme: light; background: #eaf7ff; }
+    html, body { margin: 0; min-height: 100%; }
+    body { background: linear-gradient(180deg, #d9c8ff 0%, #bfe4ff 38%, #eaf7ff 62%, #fff1d6 100%) fixed; }
+  </style>
+
   <script>
   // usernode-dev-console@1
   (function () {
@@ -779,6 +791,16 @@
   </style>
 </head>
 <body class="h-full overflow-hidden">
+  <!-- Boot card (#44): stays hidden on a normal fast start. The watchdog
+       script before app.js shows it only when the game is slow to get
+       ready, then swaps to a Try again card if it never does. -->
+  <div id="boot-card" hidden class="boot-backdrop">
+    <div class="panel-card panel-pop boot-card-inner">
+      <p class="celebration-sheep" aria-hidden="true">&#128017;</p>
+      <p id="boot-status" role="status" class="boot-status">Getting the sheep ready</p>
+      <button id="boot-retry" type="button" class="big-btn" hidden>Try again</button>
+    </div>
+  </div>
   <div class="relative h-full w-full">
 
     <!-- The 3D pasture (or the card fallback) fills the screen. -->
@@ -1083,7 +1105,64 @@
       font-weight: 800;
       margin-left: 0.1rem;
     }
+
+    /* Boot card (#44). Plain CSS rather than utilities so it still lays
+       out if the compiled stylesheet is what failed to arrive. */
+    #boot-card {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: calc(var(--safe-top) + 16px) calc(var(--safe-right) + 16px) calc(var(--safe-bottom) + 16px) calc(var(--safe-left) + 16px);
+      background: radial-gradient(120% 90% at 50% 100%, rgba(255, 214, 227, 0.35), rgba(120, 90, 160, 0.18));
+    }
+    #boot-card .boot-card-inner {
+      width: 100%;
+      max-width: 22rem;
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      text-align: center;
+    }
+    #boot-card .celebration-sheep { margin: 0; }
+    #boot-card .boot-status { margin: 0; font-size: 1.15rem; font-weight: 800; color: var(--plum); }
   </style>
-  <script type="module" src="/app.js"></script>
+  <!-- Boot watchdog (#44). Classic script, no dependencies: it must work
+       when the bridge, the stylesheet or app.js itself never arrives.
+       app.js sets window.__sheepBooted once the board is up, or calls
+       window.__sheepBootFailed if boot throws. -->
+  <script>
+  (function () {
+    var card = document.getElementById('boot-card');
+    var status = document.getElementById('boot-status');
+    var retry = document.getElementById('boot-retry');
+    var failed = false;
+    function showLoading() {
+      if (window.__sheepBooted || failed) return;
+      card.hidden = false;
+    }
+    function fail() {
+      if (window.__sheepBooted || failed) return;
+      failed = true;
+      status.textContent = 'The sheep wandered off. Let\'s call them back.';
+      retry.hidden = false;
+      card.hidden = false;
+    }
+    retry.addEventListener('click', function () { window.location.reload(); });
+    window.__sheepBootFailed = fail;
+    window.__sheepBootDone = function () {
+      window.__sheepBooted = true;
+      card.hidden = true;
+      document.documentElement.setAttribute('data-booted', '');
+    };
+    setTimeout(showLoading, 1500);
+    setTimeout(fail, 8000);
+  })();
+  </script>
+  <script type="module" id="app-script" src="/app.js" onerror="window.__sheepBootFailed()"></script>
 </body>
 </html>
