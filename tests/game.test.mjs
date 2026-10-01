@@ -9,6 +9,7 @@ import {
   ENDED_MISSED,
   ENDED_WOLF,
   ENDED_TIME_UP,
+  LOAD_REMOTE_TIMEOUT_MS,
 } from '../public/state.js';
 import {
   CALM_SPEED,
@@ -1114,4 +1115,85 @@ test('the streak survives a local save and load beside the other values', () => 
   fresh.loadLocalFrom({ round: 2, totalCounted: 1 });
   assert.equal(fresh.state.streakDays, 0);
   assert.equal(fresh.state.lastPlayedDay, null);
+});
+
+// ---- Tap-path persistence and boot timeout (#52) ----
+// A counting tap updates the board at once and writes localStorage just
+// after, so these tests swap in an in-memory localStorage for a real,
+// persistent (non-ephemeral) store.
+
+function withMemoryStorage(fn) {
+  const saved = globalThis.localStorage;
+  const data = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (data.has(k) ? data.get(k) : null),
+    setItem: (k, v) => data.set(k, String(v)),
+    removeItem: (k) => data.delete(k),
+  };
+  const restore = () => {
+    if (saved === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = saved;
+  };
+  return Promise.resolve()
+    .then(() => fn((key) => JSON.parse(data.get(key) || '{}')))
+    .finally(restore);
+}
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+test('a counting tap updates the board first and saves right after', () => withMemoryStorage(async (read) => {
+  const store = new StateStore({ userId: 'tap-save' });
+  store.startRound(3, { silent: true });
+  const countedOnDisk = () => read(store.storageKey).midCountdown?.counted ?? [];
+
+  assert.equal(store.tapSheep(0).outcome, 'counted');
+  assert.deepEqual(store.state.counted, [0], 'the board updates synchronously');
+  assert.deepEqual(countedOnDisk(), [], 'the write is off the tap path');
+
+  // Back-to-back taps coalesce into one write that carries both.
+  store.tapSheep(1);
+  await tick();
+  assert.deepEqual(countedOnDisk(), [0, 1]);
+  assert.equal(read(store.storageKey).totalCounted, 2);
+
+  // pagehide / tab hide flush it at once.
+  store.tapSheep(2);
+  store.flushPendingSave();
+  assert.deepEqual(countedOnDisk(), [0, 1, 2]);
+}));
+
+test('a run that ends before the deferred save never resurrects the board', () => withMemoryStorage(async (read) => {
+  const store = new StateStore({ userId: 'tap-end' });
+  store.startRound(3, { silent: true });
+  store.tapSheep(0);
+  // Double tap in the same task: the run ends and the snapshot is cleared.
+  store.tapSheep(0);
+  assert.equal(store.state.phase, RUN_OVER);
+  await tick();
+  const saved = read(store.storageKey);
+  assert.equal(saved.midCountdown, undefined, 'the late tap save must not rewrite the snapshot');
+  assert.equal(saved.totalCounted, 1, 'the tap itself still counted');
+}));
+
+test('a slow progress load gives up and keeps the device progress', { timeout: LOAD_REMOTE_TIMEOUT_MS + 3000 }, async () => {
+  const savedFetch = globalThis.fetch;
+  let aborted = false;
+  // A server that never answers, unless the request is aborted.
+  globalThis.fetch = (_url, opts = {}) => new Promise((_resolve, reject) => {
+    opts.signal?.addEventListener('abort', () => {
+      aborted = true;
+      reject(new Error('aborted'));
+    });
+  });
+  try {
+    const store = new StateStore({ userId: 'slow', token: 'x' });
+    store.state = { ...store.state, round: 4 };
+    const started = Date.now();
+    const state = await store.loadRemote();
+    assert.ok(aborted, 'the request is aborted');
+    assert.ok(Date.now() - started < LOAD_REMOTE_TIMEOUT_MS + 1000);
+    assert.equal(state.round, 4, 'local progress stands');
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
 });

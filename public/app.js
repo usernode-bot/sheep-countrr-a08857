@@ -279,6 +279,22 @@ if (resumeParam) {
 store.state.meUsername = usernameFromToken(token);
 
 let renderer = null;
+
+// Every full panel (Get ready, countdown, Round complete, Game over,
+// Grown-ups, leaderboard, duel and invite cards) is a .panel-backdrop
+// shown and hidden through its `hidden` attribute from many places. One
+// observer watches them all and tells the renderer whether the pasture is
+// covered, so the 3D scene can drop to a gentle background drift instead
+// of redrawing at display rate under the blur.
+function syncBackdropMode(target = renderer) {
+  const covered = [...document.querySelectorAll('.panel-backdrop')].some((el) => !el.hidden);
+  target?.setBackdropMode?.(covered);
+}
+const backdropObserver = new MutationObserver(() => syncBackdropMode());
+document.querySelectorAll('.panel-backdrop').forEach((el) => {
+  backdropObserver.observe(el, { attributes: true, attributeFilter: ['hidden'] });
+});
+
 let advanceTimer = null;
 let autoSubmitTimer = null;
 // True while the pre-round briefing covers the board, so no tap or
@@ -442,7 +458,25 @@ const LEADERBOARD_FIXTURE = {
   friends: [],
 };
 
+// The renderer module (and, for the 3D one, three itself) is requested
+// the moment boot starts, so it downloads while the saved progress loads
+// instead of after it. Memoized: mountScene/mountFallback await the same
+// promise, and the onFatal fallback swap reuses it.
+const rendererModules = {};
+function loadRendererModule(dom) {
+  const key = dom ? 'dom' : 'three';
+  if (!rendererModules[key]) rendererModules[key] = dom ? import('./fallback.js') : import('./scene.js');
+  return rendererModules[key];
+}
+function wantsDomRenderer() {
+  return rendererParam === 'dom' || !supportsWebGL();
+}
+
 async function boot() {
+  const wantsDom = wantsDomRenderer();
+  // Swallow a failed early load here; mountScene's own await reports it
+  // and falls back to the card view.
+  loadRendererModule(wantsDom).catch(() => {});
   if (publicViewMode) {
     await bootPublicView();
     return;
@@ -495,7 +529,6 @@ async function boot() {
     }
   }
 
-  const wantsDom = rendererParam === 'dom' || !supportsWebGL();
   renderer = wantsDom ? await mountFallback() : await mountScene();
 
   // Resume first (pin the renderer to the saved clock), then hand the
@@ -575,10 +608,16 @@ async function boot() {
   }
 
   document.addEventListener('visibilitychange', () => {
+    // A tap's deferred localStorage write lands before the page can go
+    // away, including in the resume demo, which saves locally.
+    if (document.hidden) store.flushPendingSave();
     // The resume demo has no token and syncs nowhere.
     if (document.hidden && !resumeParam) store.flush();
   });
-  window.addEventListener('pagehide', () => { if (!resumeParam) store.flush(); });
+  window.addEventListener('pagehide', () => {
+    store.flushPendingSave();
+    if (!resumeParam) store.flush();
+  });
 }
 
 function bootInviteFixture() {
@@ -640,8 +679,7 @@ async function bootShareView() {
     count: 0,
     counted: [],
   };
-  const wantsDom = rendererParam === 'dom' || !supportsWebGL();
-  renderer = wantsDom ? await mountFallback() : await mountScene();
+  renderer = wantsDomRenderer() ? await mountFallback() : await mountScene();
   renderer.setState(store.state);
   updateChrome(store.state);
   renderA11yList(store.state);
@@ -685,8 +723,8 @@ async function bootInviteView() {
 
 async function mountScene() {
   try {
-    const { createSceneRenderer } = await import('./scene.js');
-    return createSceneRenderer({
+    const { createSceneRenderer } = await loadRendererModule(false);
+    const sceneRenderer = createSceneRenderer({
       container: els.sceneRoot,
       reducedMotion,
       onTap: handleTap,
@@ -703,6 +741,8 @@ async function mountScene() {
         renderer.setState(store.state);
       },
     });
+    syncBackdropMode(sceneRenderer);
+    return sceneRenderer;
   } catch (err) {
     console.warn('3D pasture unavailable, using the card view instead', err);
     return mountFallback();
@@ -710,8 +750,10 @@ async function mountScene() {
 }
 
 async function mountFallback() {
-  const { createFallbackRenderer } = await import('./fallback.js');
-  return createFallbackRenderer({ container: els.sceneRoot, onTap: handleTap, reducedMotion });
+  const { createFallbackRenderer } = await loadRendererModule(true);
+  const fallback = createFallbackRenderer({ container: els.sceneRoot, onTap: handleTap, reducedMotion });
+  syncBackdropMode(fallback);
+  return fallback;
 }
 
 // One clock contract for both renderers. After mount, the store stamps

@@ -185,15 +185,19 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   }
 
   // The cards drift with the same seeded motion the 3D flock uses, so a
-  // late round is just as hard to follow in either renderer. Offsets are
-  // left/top on an already-relative card, which leaves the tap animations
-  // on `transform` alone.
+  // late round is just as hard to follow in either renderer. Offsets go on
+  // the individual CSS `translate` property: it moves the card on the
+  // compositor without a layout pass every frame, and composes with (so
+  // leaves alone) the tap and wiggle animations on `transform`.
   function startDrift() {
     cancelAnimationFrame(rafId);
     if (reducedMotion || !current || !(motion.radius > 0)) {
-      cards.forEach((btn) => { btn.style.left = '0px'; btn.style.top = '0px'; });
+      cards.forEach((btn) => { btn.style.translate = 'none'; btn.style.willChange = ''; });
       return;
     }
+    cards.forEach((btn) => {
+      btn.style.willChange = btn.classList.contains('is-counted') ? '' : 'translate';
+    });
     const step = () => {
       rafId = requestAnimationFrame(step);
       const t = elapsedSeconds();
@@ -204,8 +208,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
         // the 3D scene; tier 3 keeps perfect time.
         const lag = btn.dataset.wolf === 'true' && Number(btn.dataset.wolfTier) < 3 ? -0.8 : 0;
         const offset = wanderOffset(current.seed, i, cards.length, t + lag, motion);
-        btn.style.left = `${(offset.x * PX_PER_UNIT).toFixed(1)}px`;
-        btn.style.top = `${(offset.z * PX_PER_UNIT * 0.6).toFixed(1)}px`;
+        btn.style.translate = `${(offset.x * PX_PER_UNIT).toFixed(1)}px ${(offset.z * PX_PER_UNIT * 0.6).toFixed(1)}px`;
       }
     };
     rafId = requestAnimationFrame(step);
@@ -216,8 +219,8 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     if (!btn) return;
     const color = NUMBER_COLORS[(number - 1) % NUMBER_COLORS.length];
     btn.classList.add('is-counted');
-    btn.style.left = '0px';
-    btn.style.top = '0px';
+    btn.style.translate = 'none';
+    btn.style.willChange = '';
     btn.style.setProperty('--ribbon', color);
     const badge = btn.querySelector('.sheep-card-badge');
     badge.hidden = false;
@@ -323,6 +326,9 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     tapRipple(index) {
       tapRipple(index);
     },
+    // The 3D scene throttles itself under a covering panel. The cards are
+    // already cheap, so this keeps the shared renderer interface only.
+    setBackdropMode() {},
     celebrate() {
       celebrate();
     },
