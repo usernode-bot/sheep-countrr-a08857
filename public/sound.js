@@ -1,4 +1,4 @@
-// Sound is off by default. Everything here is generated with the Web
+// Sound is on by default. Everything here is generated with the Web
 // Audio API, so there are no audio asset files to ship. The AudioContext
 // is only ever created/resumed from inside a real tap handler, per
 // autoplay policy.

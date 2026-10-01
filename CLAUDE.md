@@ -66,7 +66,7 @@ raises the movement speed and randomness, so remembering which sheep you
 already counted is the difficulty. Tapping an uncounted sheep counts it
 and marks it permanently (numbered ribbon, eyes closed, motion stopped);
 tapping a counted sheep, or submitting a short count, ends the run and
-shows the round reached with a restart button. Sound is off by default; a
+shows the round reached with a restart button. Sound is on by default; a
 grown-up reaches settings (sound, progress, start over) only via a ~1.5s
 press-and-hold on the corner gear icon, so a child mashing the screen
 cannot wander in. See `README.md` for the full feature description.
