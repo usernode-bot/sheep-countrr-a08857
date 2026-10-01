@@ -13,6 +13,9 @@ import {
 import {
   CALM_SPEED,
   MAX_SHEEP,
+  NEW_PLAYER_DIFFICULTY,
+  introRuleText,
+  isCalmLevel,
   advanceStreak,
   calmMotion,
   dayDistance,
@@ -1114,4 +1117,112 @@ test('the streak survives a local save and load beside the other values', () => 
   fresh.loadLocalFrom({ round: 2, totalCounted: 1 });
   assert.equal(fresh.state.streakDays, 0);
   assert.equal(fresh.state.lastPlayedDay, null);
+});
+
+// ---- Calm level (issue #28) ----
+
+// A real (non-ephemeral) store over an in-memory localStorage and a stubbed
+// /api/state, so the new-player default can be asserted end to end.
+async function withFakeBrowser(saved, remote, fn) {
+  const prevStorage = globalThis.localStorage;
+  const prevFetch = globalThis.fetch;
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  const store = new StateStore({ userId: 'u1', token: remote ? 't' : '' });
+  if (saved) localStorage.setItem(store.storageKey, JSON.stringify(saved));
+  globalThis.fetch = async () => ({ ok: true, json: async () => remote });
+  try {
+    await fn(store, mem);
+  } finally {
+    globalThis.localStorage = prevStorage;
+    globalThis.fetch = prevFetch;
+  }
+}
+
+test('calm keeps the early-round drift forever and a small, slow flock', () => {
+  const drift = motionForRound(2, 'normal');
+  assert.deepEqual(motionForRound(1, 'calm'), motionForRound(1, 'normal'));
+  for (let round = 2; round <= 40; round++) {
+    const m = motionForRound(round, 'calm');
+    assert.equal(m.speed, drift.speed, `calm round ${round} sped up`);
+    assert.equal(m.radius, drift.radius);
+    assert.equal(m.bounceMix, 0);
+    assert.equal(m.jitterAmp, 0);
+    assert.ok(Number.isFinite(roamRadius(round, 'calm')));
+    assert.ok(sheepForRound(round, 'calm') <= 5, `calm round ${round} flock too big`);
+    assert.ok(sheepForRound(round, 'calm') >= sheepForRound(round - 1, 'calm'));
+  }
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map((r) => sheepForRound(r, 'calm')), [1, 1, 2, 2, 3, 3, 4, 4, 5]);
+  assert.equal(roundIntroText(6, 'calm'), 'Round 6 has 3 sheep. They start to wander.');
+});
+
+test('calm: a double tap only wiggles, a short count never ends the run, no wolf, no clock', () => {
+  const { store, recordedRuns } = newStore(true);
+  store.setDifficulty('calm');
+  store.startRound(7, { silent: true });
+  assert.equal(store.state.wolfIndex, null);
+  assert.equal(store.tapSheep(0).outcome, 'counted');
+  assert.deepEqual(store.tapSheep(0), { outcome: 'wiggle' });
+  assert.equal(store.state.phase, COUNTING);
+  assert.equal(store.state.count, 1);
+  const short = store.submitCount();
+  assert.equal(short.outcome, 'notYet');
+  assert.deepEqual(short.awake, [1, 2, 3]);
+  assert.equal(store.state.phase, COUNTING);
+  for (const i of short.awake) store.tapSheep(i);
+  assert.equal(store.submitCount().outcome, 'passed');
+  store.setSpeedOn(true);
+  assert.equal(store.state.speedOn, false);
+  // Calm never records a run for the weekly board.
+  store.endRun(ENDED_MISSED);
+  assert.deepEqual(recordedRuns, []);
+  // Every challenge level keeps its run-ending double tap.
+  store.setDifficulty('normal');
+  store.tapSheep(0);
+  assert.equal(store.tapSheep(0).outcome, 'doubleTap');
+  assert.equal(store.state.phase, RUN_OVER);
+});
+
+test('the briefing rule line names the calm tap only on calm', () => {
+  assert.match(introRuleText('calm'), /sleepy wiggle/);
+  assert.match(introRuleText('normal'), /ends the run/);
+  assert.match(introRuleText('expert'), /ends the run/);
+  assert.ok(!/\u2014/.test(introRuleText('calm')));
+  assert.equal(isCalmLevel(NEW_PLAYER_DIFFICULTY), true);
+});
+
+test('a new player opens on calm; any saved pick keeps its level', async () => {
+  // Nothing saved anywhere: Calm, and it is written down for next time.
+  await withFakeBrowser(null, { round: 1, difficulty: null }, async (store, mem) => {
+    store.loadLocal();
+    assert.equal(store.state.difficulty, 'calm');
+    await store.loadRemote();
+    assert.equal(store.state.difficulty, 'calm');
+    assert.equal(JSON.parse(mem.get(store.storageKey)).difficulty, 'calm');
+  });
+  // A saved pick on the device stays.
+  await withFakeBrowser({ round: 2, difficulty: 'hard' }, null, async (store) => {
+    store.loadLocal();
+    assert.equal(store.state.difficulty, 'hard');
+  });
+  // A save from before levels existed reads as Normal, as it always has.
+  await withFakeBrowser({ round: 2, totalCounted: 4 }, null, async (store) => {
+    store.loadLocal();
+    assert.equal(store.state.difficulty, 'normal');
+  });
+  // A new device for an existing player: the server's saved level wins.
+  await withFakeBrowser(null, { round: 1, difficulty: 'expert' }, async (store) => {
+    store.loadLocal();
+    await store.loadRemote();
+    assert.equal(store.state.difficulty, 'expert');
+  });
+  // Deep-link stores never default to Calm: /?round=8 keeps its flock.
+  const { store } = newStore();
+  store.startRound(8, { silent: true });
+  assert.equal(store.state.difficulty, 'normal');
+  assert.equal(store.state.sheepCount, 11);
 });

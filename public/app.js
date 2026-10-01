@@ -11,6 +11,8 @@ import {
 import {
   DEFAULT_DIFFICULTY,
   SPEED_ROUND_SECONDS,
+  introRuleText,
+  isCalmLevel,
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
@@ -149,6 +151,10 @@ const els = {
   submitBtn: document.getElementById('submit-count'),
   roundIntro: document.getElementById('round-intro'),
   roundIntroSize: document.getElementById('round-intro-size'),
+  roundIntroRule: document.getElementById('round-intro-rule'),
+  roundIntroWolf: document.getElementById('round-intro-wolf'),
+  speedToggleRow: document.getElementById('speed-toggle-row'),
+  duelToggleRow: document.getElementById('duel-toggle-row'),
   countdownOverlay: document.getElementById('countdown-overlay'),
   countdownNumber: document.getElementById('countdown-number'),
   countdownStatus: document.getElementById('countdown-status'),
@@ -467,7 +473,7 @@ async function boot() {
       store.state = { ...store.state, duel: true };
     }
     store.startRound(normalizeRound(roundParam), { silent: true });
-    if (wolfParam === '1') {
+    if (wolfParam === '1' && !isCalmLevel(store.state.difficulty)) {
       // A wolf needs a flock to hide in: round 1's single sheep stays a
       // sheep even when the deep link asks for one.
       store.state = {
@@ -734,8 +740,12 @@ function handleTap(index) {
   // Same for the countdown overlay: nothing counts until the round starts.
   if (countdownOpen) return;
   // Purely visual: a soft ripple where the sheep was tapped, before any
-  // counting state changes. Skipped under prefers-reduced-motion.
-  if (renderer && renderer.kind === 'three') {
+  // counting state changes. Skipped under prefers-reduced-motion, and on
+  // Calm, whose feedback stays as quiet as the bedtime original.
+  const quiet = isCalmLevel(store.state.difficulty);
+  if (quiet) {
+    // no ripple
+  } else if (renderer && renderer.kind === 'three') {
     const pos = renderer.sheepPosition(index);
     if (pos) renderer.tapRipple(pos.x, pos.z, pos.scale);
   } else {
@@ -759,7 +769,9 @@ function handleTap(index) {
     }
     return;
   }
-  if (result.outcome === 'doubleTap') {
+  if (result.outcome === 'doubleTap' || result.outcome === 'wiggle') {
+    // On Calm ('wiggle') this is the whole response: the sheep wiggles
+    // sleepily and the round carries on.
     renderer.wiggleSheep(index);
     renderA11yList(store.state);
     return;
@@ -774,7 +786,13 @@ function submitCount() {
   if (introOpen) return;
   if (countdownOpen) return;
   clearTimeout(autoSubmitTimer);
-  store.submitCount();
+  const result = store.submitCount();
+  // Calm never ends a run on a short count: the sheep still awake give a
+  // sleepy wiggle so the player can see who is left, and counting goes on.
+  if (result.outcome === 'notYet') {
+    for (const i of result.awake) renderer?.wiggleSheep?.(i);
+    return;
+  }
   if (store.state.duel && store.state.phase !== COUNTING) stopDuelClock();
 }
 
@@ -965,13 +983,29 @@ function dismissDuelPanel() {
 // button starts counting. The difficulty picker lives on the card. Selecting a level
 // immediately rewrites the briefing line, so the player can see what each
 // level means before committing to Start counting.
-const DIFFICULTY_LABELS = { easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert' };
+const DIFFICULTY_LABELS = { calm: 'Calm', easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert' };
+
+// Calm drops the card's challenge lines: its rule line promises the
+// forgiving tap, and the wolf warning, Speed Round and Duel (each a way
+// to end a run) are hidden while Calm is picked.
+function syncCalmCard(state) {
+  const calm = isCalmLevel(state.difficulty);
+  els.roundIntroRule.textContent = introRuleText(state.difficulty);
+  els.roundIntroWolf.hidden = calm;
+  els.speedToggleRow.hidden = calm;
+  els.duelToggleRow.hidden = calm;
+  if (calm && store.state.duel) {
+    store.state = { ...store.state, duel: false };
+    els.duelToggle.checked = false;
+  }
+}
 
 function syncDifficultyPicker(state) {
   for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
     const level = normalizeDifficulty(btn.dataset.difficulty);
     btn.setAttribute('aria-checked', String(level === state.difficulty));
   }
+  syncCalmCard(state);
   els.difficultyValue.textContent = DIFFICULTY_LABELS[state.difficulty] || 'Normal';
   els.bestValue.textContent = String(store.bestRound);
 }
@@ -1274,7 +1308,7 @@ function syncPanels(state) {
   clearTimeout(advanceTimer);
   if (passed) {
     renderer?.celebrate?.();
-    playCelebration();
+    if (!isCalmLevel(state.difficulty)) playCelebration();
     // Frozen fixtures stay put so a screenshot catches the message.
     if (!staticMode) advanceTimer = setTimeout(advanceRound, ADVANCE_DELAY_MS);
   }
