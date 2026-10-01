@@ -211,6 +211,12 @@
     }
     .count-plate::before { left: 22px; }
     .count-plate::after { right: 22px; }
+    /* Game chrome that takes rapid taps must never select text. */
+    .count-plate,
+    #action-bar {
+      user-select: none;
+      -webkit-user-select: none;
+    }
     #count-display {
       display: block;
       font-size: 4.6rem;
@@ -235,6 +241,23 @@
       0% { transform: scale(1); }
       35% { transform: scale(1.22) rotate(-3deg); }
       100% { transform: scale(1); }
+    }
+
+    /* Same press-down feedback the soft buttons already use, on the
+       remaining tappable controls, so every control answers a touch the
+       same way. */
+    #grownups-btn,
+    #grownups-close,
+    #leaderboard-close,
+    #leaderboard-tabs button {
+      transition: transform 0.08s ease, box-shadow 0.08s ease;
+    }
+    #grownups-btn:active,
+    #grownups-close:active,
+    #leaderboard-close:active,
+    #leaderboard-tabs button:active {
+      transform: translateY(4px);
+      box-shadow: none;
     }
 
 

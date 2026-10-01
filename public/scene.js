@@ -135,29 +135,35 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function buildNumberTextures() {
+// One canvas size per tier: the plate's look is unchanged (the same
+// 256-basis layout, same sprite scale), only its backing resolution
+// differs so weaker devices spend less texture memory and fill rate.
+function buildNumberTextures(size = 256) {
+  const basis = 256;
   const textures = [];
   for (let n = 1; n <= MAX_SHEEP; n++) {
-    const size = 256;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
+    // Draw in 256-basis coordinates at every size: a plain ctx.scale
+    // keeps the plate's proportions and font identical per tier.
+    ctx.scale(size / basis, size / basis);
     // Soft drop shadow, then a cream plate with a pastel rim.
     ctx.fillStyle = 'rgba(80, 50, 90, 0.18)';
-    roundRect(ctx, 26, 34, size - 52, size - 60, 64);
+    roundRect(ctx, 26, 34, basis - 52, basis - 60, 64);
     ctx.fill();
     ctx.fillStyle = NUMBER_COLORS[(n - 1) % NUMBER_COLORS.length];
-    roundRect(ctx, 20, 20, size - 40, size - 52, 64);
+    roundRect(ctx, 20, 20, basis - 40, basis - 52, 64);
     ctx.fill();
     ctx.fillStyle = '#fffaf2';
-    roundRect(ctx, 34, 34, size - 68, size - 80, 52);
+    roundRect(ctx, 34, 34, basis - 68, basis - 80, 52);
     ctx.fill();
     ctx.fillStyle = '#4a3b5c';
     ctx.font = FONT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(n), size / 2, size / 2 - 8);
+    ctx.fillText(String(n), basis / 2, basis / 2 - 8);
     textures.push(makeTexture(canvas));
   }
   return textures;
@@ -168,24 +174,30 @@ function buildNumberTextures() {
 // centered inside it. Same palette family as the number plates.
 const NAME_FONT = '800 30px "Nunito", ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Segoe UI", system-ui, sans-serif';
 
-function buildNameTexture(name) {
-  const w = 256;
-  const h = 64;
+// `scale` shrinks the backing canvas (0.5 on mid/low tiers) while the
+// drawing happens in the full-size coordinates, so the pill's shape,
+// font and sprite scale are identical; only its sharpness differs.
+function buildNameTexture(name, scale = 1) {
+  const w = Math.round(256 * scale);
+  const h = Math.round(64 * scale);
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
+  ctx.scale(w / 256, h / 64);
+  const fw = 256;
+  const fh = 64;
   ctx.fillStyle = 'rgba(80, 50, 90, 0.18)';
-  roundRect(ctx, 16, 18, w - 32, h - 22, 26);
+  roundRect(ctx, 16, 18, fw - 32, fh - 22, 26);
   ctx.fill();
   ctx.fillStyle = '#fffaf2';
-  roundRect(ctx, 8, 8, w - 16, h - 22, 24);
+  roundRect(ctx, 8, 8, fw - 16, fh - 22, 24);
   ctx.fill();
   ctx.fillStyle = '#4a3b5c';
   ctx.font = NAME_FONT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(name, w / 2, h / 2 - 4);
+  ctx.fillText(name, fw / 2, fh / 2 - 4);
   return makeTexture(canvas);
 }
 
@@ -683,7 +695,12 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     powerPreference: 'low-power',
   });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, tier === 'low' ? 1 : 2));
+  // Cap sharper on weaker devices: low stays at 1, a mid device at 1.5
+  // (down from 2) and only a strong device keeps the full 2.
+  renderer.setPixelRatio(Math.min(
+    window.devicePixelRatio || 1,
+    tier === 'low' ? 1 : tier === 'mid' ? 1.5 : 2
+  ));
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(COLORS.fog, 16, 46);
@@ -843,14 +860,18 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const shadowMat = new THREE.MeshBasicMaterial({ map: buildShadowTexture(), transparent: true, depthWrite: false });
   const pickGeo = new THREE.SphereGeometry(0.9, 8, 6);
   const pickMat = new THREE.MeshBasicMaterial({ visible: false });
-  const numberTextures = buildNumberTextures();
+  // Number plates are one texture per number, sized by device tier: the
+  // strongest device keeps the full 256px canvas, a mid device 192px and
+  // a low device 128px. The sprite scale is unchanged, so the plate reads
+  // the same and only its sharpness follows the device.
+  const numberTextures = buildNumberTextures(tier === 'low' ? 128 : tier === 'mid' ? 192 : 256);
   // Name-label textures, built on demand and shared across rounds: a
   // name's pill is identical wherever that name appears.
   const nameTextureCache = new Map();
   function nameTexture(name) {
     let tex = nameTextureCache.get(name);
     if (!tex) {
-      tex = buildNameTexture(name);
+      tex = buildNameTexture(name, tier === 'high' ? 1 : 0.5);
       nameTextureCache.set(name, tex);
     }
     return tex;
@@ -952,16 +973,21 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         g.add(numberSprite);
       }
 
-      // Optional playful name label above the head. Uncounted sheep float
-      // it where the number plate would sit; counted sheep lift it above
-      // the number plate so the two never overlap.
-      const nameSprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: nameTexture(sheepName(state.seed, i)), transparent: true, depthTest: false, fog: false })
-      );
-      nameSprite.scale.set(1.7, 0.425, 1);
-      nameSprite.position.set(0, 1.5, 0.1);
-      nameSprite.visible = namesOn;
-      g.add(nameSprite);
+      // Optional playful name label above the head. The sprite (and its
+      // canvas texture) is built lazily: only when names are actually on,
+      // so a flock built with labels off never pays for twelve canvases.
+      // setNames(true) creates the missing sprites on demand through the
+      // shared texture cache.
+      let nameSprite = null;
+      if (namesOn) {
+        nameSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: nameTexture(sheepName(state.seed, i)), transparent: true, depthTest: false, fog: false })
+        );
+        nameSprite.scale.set(1.7, 0.425, 1);
+        nameSprite.position.set(0, 1.5, 0.1);
+        nameSprite.visible = namesOn;
+        g.add(nameSprite);
+      }
 
       // Large invisible pick target so small fingers land the tap.
       const pick = new THREE.Mesh(pickGeo, pickMat);
@@ -1444,6 +1470,19 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         lastState = { ...lastState, namesOn };
       }
       sheep.forEach((s) => {
+        if (namesOn && !s.nameSprite) {
+          // First toggle on for a flock built with labels off: build the
+          // sprite now, from the shared cache (the texture itself is
+          // created once per name and reused across rounds).
+          const sprite = new THREE.Sprite(
+            new THREE.SpriteMaterial({ map: nameTexture(sheepName(lastState ? lastState.seed : 0, s.index)), transparent: true, depthTest: false, fog: false })
+          );
+          sprite.scale.set(1.7, 0.425, 1);
+          sprite.position.set(0, 1.5, 0.1);
+          sprite.visible = true;
+          s.group.add(sprite);
+          s.nameSprite = sprite;
+        }
         if (s.nameSprite) s.nameSprite.visible = namesOn;
       });
     },

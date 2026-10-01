@@ -655,8 +655,36 @@ export class StateStore {
       roundElapsed: elapsed,
       totalCounted: this.state.totalCounted + 1,
     };
-    this.saveLocal();
-    this.saveMidRound();
+    // One storage pass per tap: the run values and the mid-round snapshot
+    // share the same key, so they are read once, merged and written back
+    // together instead of saveLocal and saveMidRound each doing their own
+    // read/parse/write. Same payload shape, same contents.
+    if (!this.ephemeral) {
+      try {
+        const raw = localStorage.getItem(this.storageKey);
+        const meta = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(this.storageKey, JSON.stringify({
+          ...meta,
+          round: this.state.round,
+          difficulty: this.state.difficulty,
+          bestRounds: this.state.bestRounds,
+          bestSafeStreak: this.state.bestSafeStreak,
+          bonusCounted: this.state.bonusCounted,
+          totalCounted: this.state.totalCounted,
+          soundOn: this.state.soundOn,
+          nightOn: this.state.nightOn,
+          calmOn: this.state.calmOn,
+          namesOn: this.state.namesOn,
+          speedOn: this.state.speedOn,
+          streakDays: this.state.streakDays,
+          bestStreakDays: this.state.bestStreakDays,
+          lastPlayedDay: this.state.lastPlayedDay,
+          midCountdown: this.snapshotRound(),
+        }));
+      } catch {
+        /* storage full or unavailable; the run still works this session */
+      }
+    }
     this.scheduleSync();
     this.onChange(this.state);
     return { outcome: 'counted', number: counted.length };
