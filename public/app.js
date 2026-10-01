@@ -62,8 +62,8 @@ const speedParam = normalizeSpeedRound(params.get('speed') === '1');
 // never persisted from a deep link, so the store stays ephemeral there.
 const hasDuelParam = params.get('duel') !== null;
 const duelParam = params.get('duel') === '1';
-// The grown-ups fixture can force the sound toggle on (the shipped default
-// for the frozen ?scene=grownups card) without touching localStorage.
+// The grown-ups fixture can force the sound toggle on (its default matches
+// the shipped sound-on default) without touching localStorage.
 const soundParam = params.get('sound');
 // The grown-ups fixture can force the Night Meadow toggle the same way
 // (?night=1 shows the night scene without touching localStorage).

@@ -595,6 +595,13 @@ test('the sound enabled flag gates before any AudioContext work', () => {
   assert.equal(isSoundEnabled(), false);
 });
 
+test('a fresh store starts with sound on', () => {
+  // The shipped default for a brand-new player: the baa is already on,
+  // before anyone finds the grown-ups panel.
+  const { store } = newStore();
+  assert.equal(store.state.soundOn, true);
+});
+
 test('the sound toggle persists through save and load', () => {
   const { store } = newStore();
   store.setSoundOn(true);

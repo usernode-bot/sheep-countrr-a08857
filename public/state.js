@@ -89,7 +89,7 @@ export function createDefaultState() {
     bestRounds: { easy: 1, normal: 1, hard: 1, expert: 1 },
     totalCounted: 0,
     communityTotal: 0,
-    soundOn: false,
+    soundOn: true,
     nightOn: false,
     calmOn: false,
     namesOn: false,
