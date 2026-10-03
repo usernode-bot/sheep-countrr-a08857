@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { MAX_SHEEP, calmMotion, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
+import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
 
 const COLORS = {
   wool: '#f4eadb',
@@ -1110,7 +1110,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function markCounted(index, number, animate = true) {
     const s = sheep[index];
-    if (!s || s.counted) return;
+    // The wolf has no ribbon or number to show: it is never counted.
+    if (!s || s.counted || s.isWolf) return;
     s.counted = true;
     if (lastState && !lastState.counted.includes(index)) {
       lastState = { ...lastState, counted: [...lastState.counted, index] };
@@ -1122,9 +1123,13 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     s.numberSprite.material.needsUpdate = true;
     s.numberSprite.visible = true;
     if (animate && !reducedMotion) {
-      s.bounceStart = elapsedSeconds();
-      s.bounceDur = 0.9;
-      s.wiggle = false;
+      // Calm skips the squash-and-hop: the sheep just settles and its
+      // ribbon appears, as quiet as the bedtime original.
+      if (!isCalmLevel(lastState && lastState.difficulty)) {
+        s.bounceStart = elapsedSeconds();
+        s.bounceDur = 0.9;
+        s.wiggle = false;
+      }
       s.ribbonPop = elapsedSeconds();
       const p = s.group.position;
       // A sleepy nod is enough feedback; no burst of sparkles.
@@ -1145,7 +1150,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   function revealWolf(index) {
     const s = sheep[index];
     if (!s) return;
-    s.bounceStart = clock.elapsedTime;
+    // The frame measures reactions on the round's clock, not the raw one.
+    s.bounceStart = elapsedSeconds();
     s.bounceDur = 0.9;
     s.wiggle = false;
     if (s.tier >= 2) s.body.geometry = wolfBodyGeos[0][index % 3];
@@ -1274,6 +1280,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   function frame() {
     animId = requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.1);
+    // Advance the round's clock. Without this write elapsedSeconds() never
+    // moved outside a resumed board, so sheep stood frozen and a counted
+    // sheep's number and ribbon never grew in.
+    lastElapsed = clock.elapsedTime;
     frameAvg = frameAvg * 0.9 + dt * 1000 * 0.1;
     if (tier !== 'low' && !backdrop && clock.elapsedTime > 2) {
       // One-way steps down within a session, to avoid oscillating.

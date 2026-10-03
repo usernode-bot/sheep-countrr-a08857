@@ -4,7 +4,7 @@
 // same pastel per number.
 import { NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { calmMotion, motionForRound, wolfDisguiseTier } from './rounds.js';
+import { calmMotion, isCalmLevel, motionForRound, wolfDisguiseTier } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -226,7 +226,8 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     badge.hidden = false;
     badge.textContent = String(number);
     if (animate && !reducedMotion && btn.animate) {
-      btn.animate(
+      // Calm skips the card's hop; the number badge still pops in.
+      if (!isCalmLevel(current && current.difficulty)) btn.animate(
         [
           { transform: 'scale(1)' },
           { transform: 'scale(0.98)' },

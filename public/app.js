@@ -11,6 +11,8 @@ import {
 import {
   DEFAULT_DIFFICULTY,
   SPEED_ROUND_SECONDS,
+  introRuleText,
+  isCalmLevel,
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
@@ -24,6 +26,7 @@ import {
   speedRoundClock,
   successMessage,
   WOLF_BONUS,
+  wolfCueText,
   wolfDisguiseTier,
   wolfIndexForRound,
   roundBadgeText,
@@ -149,6 +152,10 @@ const els = {
   submitBtn: document.getElementById('submit-count'),
   roundIntro: document.getElementById('round-intro'),
   roundIntroSize: document.getElementById('round-intro-size'),
+  roundIntroRule: document.getElementById('round-intro-rule'),
+  roundIntroWolf: document.getElementById('round-intro-wolf'),
+  speedToggleRow: document.getElementById('speed-toggle-row'),
+  duelToggleRow: document.getElementById('duel-toggle-row'),
   countdownOverlay: document.getElementById('countdown-overlay'),
   countdownNumber: document.getElementById('countdown-number'),
   countdownStatus: document.getElementById('countdown-status'),
@@ -167,6 +174,7 @@ const els = {
   duelPanelScores: document.getElementById('duel-panel-scores'),
   duelPanelHint: document.getElementById('duel-panel-hint'),
   duelPanelBtn: document.getElementById('duel-panel-btn'),
+  duelPanelExit: document.getElementById('duel-panel-exit'),
   duelTurnClock: document.getElementById('duel-turn-clock'),
   speedTimer: document.getElementById('speed-timer'),
   roundComplete: document.getElementById('round-complete'),
@@ -430,6 +438,8 @@ function buildStaticState() {
       hint: null,
       btn: 'Count again',
       onBtn: () => {},
+      exitBtn: 'Back to my game',
+      onExit: () => {},
     });
   }
   if (sceneParam === 'sharegameover') {
@@ -501,7 +511,7 @@ async function boot() {
       store.state = { ...store.state, duel: true };
     }
     store.startRound(normalizeRound(roundParam), { silent: true });
-    if (wolfParam === '1') {
+    if (wolfParam === '1' && !isCalmLevel(store.state.difficulty)) {
       // A wolf needs a flock to hide in: round 1's single sheep stays a
       // sheep even when the deep link asks for one.
       store.state = {
@@ -675,7 +685,7 @@ async function bootShareView() {
     phase: RUN_OVER,
     speedOn: normalizeSpeedRound(data.speedRound),
     secondsLeft: normalizeSpeedRound(data.speedRound) ? SPEED_ROUND_SECONDS : null,
-    endedBy: data.endedBy === ENDED_DOUBLE_TAP ? ENDED_DOUBLE_TAP : null,
+    endedBy: [ENDED_DOUBLE_TAP, ENDED_WOLF, ENDED_TIME_UP].includes(data.endedBy) ? data.endedBy : null,
     count: 0,
     counted: [],
   };
@@ -690,7 +700,9 @@ async function bootShareView() {
     ? 'You counted the same sheep twice.'
     : data.endedBy === ENDED_TIME_UP
       ? 'The clock ran out.'
-      : 'Some sheep were left uncounted.';
+      : data.endedBy === ENDED_WOLF
+        ? 'The wolf tricked you.'
+        : 'Some sheep were left uncounted.';
   els.gameOver.hidden = false;
   els.sharedBy.textContent = `Counted by ${data.username}.`;
   els.sharedBy.hidden = false;
@@ -776,8 +788,12 @@ function handleTap(index) {
   // Same for the countdown overlay: nothing counts until the round starts.
   if (countdownOpen) return;
   // Purely visual: a soft ripple where the sheep was tapped, before any
-  // counting state changes. Skipped under prefers-reduced-motion.
-  if (renderer && renderer.kind === 'three') {
+  // counting state changes. Skipped under prefers-reduced-motion, and on
+  // Calm, whose feedback stays as quiet as the bedtime original.
+  const quiet = isCalmLevel(store.state.difficulty);
+  if (quiet) {
+    // no ripple
+  } else if (renderer && renderer.kind === 'three') {
     const pos = renderer.sheepPosition(index);
     if (pos) renderer.tapRipple(pos.x, pos.z, pos.scale);
   } else {
@@ -801,7 +817,9 @@ function handleTap(index) {
     }
     return;
   }
-  if (result.outcome === 'doubleTap') {
+  if (result.outcome === 'doubleTap' || result.outcome === 'wiggle') {
+    // On Calm ('wiggle') this is the whole response: the sheep wiggles
+    // sleepily and the round carries on.
     renderer.wiggleSheep(index);
     renderA11yList(store.state);
     return;
@@ -816,7 +834,13 @@ function submitCount() {
   if (introOpen) return;
   if (countdownOpen) return;
   clearTimeout(autoSubmitTimer);
-  store.submitCount();
+  const result = store.submitCount();
+  // Calm never ends a run on a short count: the sheep still awake give a
+  // sleepy wiggle so the player can see who is left, and counting goes on.
+  if (result.outcome === 'notYet') {
+    for (const i of result.awake) renderer?.wiggleSheep?.(i);
+    return;
+  }
   if (store.state.duel && store.state.phase !== COUNTING) stopDuelClock();
 }
 
@@ -830,12 +854,18 @@ function submitCount() {
 // hand over and never ends a turn by itself.
 const DUEL_PLAYERS = ['Sheep counter 1', 'Sheep counter 2'];
 let duelState = null; // { round, seed, difficulty, turn (0-based), misses: [n, n], done }
+// The player's own store, set aside while a duel's throwaway turn stores run
+// the board. endDuel (and a restart) puts it back.
+let soloStore = null;
 let duelResolving = false; // guards the store swap inside onChange
 let duelClockTimer = null;
 let duelSecondsLeft = DUEL_TURN_SECONDS;
 
 function startDuel(round, { skipIntro } = {}) {
   const start = normalizeRound(round);
+  // "Count again" starts a duel from inside one: keep the store set aside
+  // at the first duel, not the previous duel's turn store.
+  if (!soloStore) soloStore = store;
   duelState = {
     round: start,
     seed: roundSeed(start) + 900000 + start, // one fixed flock for both turns
@@ -930,7 +960,10 @@ function resolveDuelTurn() {
   duelResolving = true;
   stopDuelClock();
   const misses = duelState.misses;
-  misses[duelState.turn] = store.state.sheepCount - store.state.count;
+  // Misses are real sheep left uncounted. The wolf is not a sheep to count,
+  // so it never adds a miss (a perfect wolf round used to read "1 missed").
+  const realSheep = store.state.sheepCount - (store.state.wolfIndex != null ? 1 : 0);
+  misses[duelState.turn] = Math.max(0, realSheep - store.state.count);
   const isLast = duelState.turn === DUEL_PLAYERS.length - 1;
   if (isLast) {
     duelState.done = true;
@@ -972,10 +1005,33 @@ function showDuelResults() {
       dismissDuelPanel();
       startDuel(duelState.round, { skipIntro: true });
     },
+    exitBtn: 'Back to my game',
+    onExit: endDuel,
   });
 }
 
-function showDuelPanel({ title, body, scores, hint, btn, onBtn }) {
+// Leaves pass-and-play for the player's own game. The store the duel set
+// aside comes back exactly as it was (round, progress, settings). Before
+// this the duel's throwaway store stayed in charge until a reload, so
+// nothing played afterwards was saved or reached the leaderboard.
+function endDuel() {
+  stopDuelClock();
+  duelState = null;
+  dismissDuelPanel();
+  if (soloStore) {
+    store = soloStore;
+    soloStore = null;
+  }
+  store.state = { ...store.state, duel: false };
+  els.duelToggle.checked = false;
+  syncRoundClock();
+  renderer?.resetRound(store.state);
+  updateChrome(store.state);
+  renderA11yList(store.state);
+  if (!staticMode) showRoundIntro(store.state);
+}
+
+function showDuelPanel({ title, body, scores, hint, btn, onBtn, exitBtn, onExit }) {
   els.duelPanelTitle.textContent = title;
   els.duelPanelBody.textContent = body;
   els.duelPanelScores.replaceChildren();
@@ -996,6 +1052,11 @@ function showDuelPanel({ title, body, scores, hint, btn, onBtn }) {
   els.duelPanelHint.textContent = hint || '';
   els.duelPanelBtn.textContent = btn;
   els.duelPanelBtn.onclick = onBtn;
+  if (els.duelPanelExit) {
+    els.duelPanelExit.hidden = !exitBtn;
+    els.duelPanelExit.textContent = exitBtn || '';
+    els.duelPanelExit.onclick = exitBtn ? onExit : null;
+  }
   els.duelPanel.hidden = false;
 }
 
@@ -1007,13 +1068,29 @@ function dismissDuelPanel() {
 // button starts counting. The difficulty picker lives on the card. Selecting a level
 // immediately rewrites the briefing line, so the player can see what each
 // level means before committing to Start counting.
-const DIFFICULTY_LABELS = { easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert' };
+const DIFFICULTY_LABELS = { calm: 'Calm', easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert' };
+
+// Calm drops the card's challenge lines: its rule line promises the
+// forgiving tap, and the wolf warning, Speed Round and Duel (each a way
+// to end a run) are hidden while Calm is picked.
+function syncCalmCard(state) {
+  const calm = isCalmLevel(state.difficulty);
+  els.roundIntroRule.textContent = introRuleText(state.difficulty);
+  els.roundIntroWolf.hidden = calm;
+  els.speedToggleRow.hidden = calm;
+  els.duelToggleRow.hidden = calm;
+  if (calm && store.state.duel) {
+    store.state = { ...store.state, duel: false };
+    els.duelToggle.checked = false;
+  }
+}
 
 function syncDifficultyPicker(state) {
   for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
     const level = normalizeDifficulty(btn.dataset.difficulty);
     btn.setAttribute('aria-checked', String(level === state.difficulty));
   }
+  syncCalmCard(state);
   els.difficultyValue.textContent = DIFFICULTY_LABELS[state.difficulty] || 'Normal';
   els.bestValue.textContent = String(store.bestRound);
 }
@@ -1106,7 +1183,15 @@ function showCountdown(state) {
   // Frozen ?scene= fixtures and deep links hold still for screenshots;
   // they never run the countdown. Neither does a round that starts
   // behind the briefing card instead.
-  if (staticMode || roundParam !== null || introOpen) return;
+  if (staticMode || introOpen) return;
+  if (roundParam !== null) {
+    // A ?round= link skips the countdown but is still a playable run: a
+    // timed round's clock starts now, as it would when a countdown ends.
+    // Without this, ?round=1&speed=1 (and every later round of a link)
+    // never started its clock.
+    startSpeedClock();
+    return;
+  }
   clearCountdown();
   countdownOpen = true;
   els.countdownNumber.textContent = '3';
@@ -1206,6 +1291,12 @@ function restartRun() {
   stopSpeedClock();
   stopDuelClock();
   duelState = null;
+  // A restart during or after a duel restarts the player's own run, not the
+  // duel's throwaway turn store.
+  if (soloStore) {
+    store = soloStore;
+    soloStore = null;
+  }
   clearCountdown();
   store.restartRun();
   syncRoundClock();
@@ -1251,7 +1342,9 @@ function updateChrome(state) {
   els.speedTimer.hidden = !showTimer;
   if (showTimer) els.speedTimer.textContent = speedRoundClock(state.secondsLeft);
   els.countDisplay.textContent = String(state.count);
-  els.countWord.textContent = `of ${sheepPhrase(state.sheepCount)}`;
+  // The total is the real sheep only. A round's wolf is not one to count:
+  // counting "of N" with the wolf in N led a child straight to tapping it.
+  els.countWord.textContent = `of ${sheepPhrase(realSheepCount(state))}`;
   els.playHint.textContent = hintFor(state);
   els.submitBtn.disabled = state.phase !== COUNTING;
 
@@ -1276,10 +1369,12 @@ function syncPanels(state) {
   const passed = state.phase === ROUND_PASSED;
   const over = state.phase === RUN_OVER;
 
-  if (state.duel && over) {
-    // A duel turn never shows the solo game-over card: the handoff or the
-    // results card replaces it, and this early return keeps every solo
-    // branch (gameOver copy, advance timer, celebration) out of the way.
+  if (state.duel && (over || passed)) {
+    // A duel turn never shows the solo game-over or round-complete card:
+    // the handoff or the results card replaces it, and this early return
+    // keeps every solo branch (gameOver copy, advance timer, celebration)
+    // out of the way. A turn counted without a mistake passes the round;
+    // it used to fall through to the solo auto-advance and never hand over.
     // A frozen duel fixture has no duel controller behind it, so its card
     // is shown directly at boot and nothing re-syncs it.
     if (duelState) resolveDuelTurn();
@@ -1298,7 +1393,7 @@ function syncPanels(state) {
       state.endedBy === ENDED_WOLF ? 'The wolf tricked you.'
       : state.endedBy === ENDED_DOUBLE_TAP ? 'You counted the same sheep twice.'
       : state.endedBy === ENDED_TIME_UP ? 'The clock ran out.'
-      : `You said done with ${state.count} of ${sheepPhrase(state.sheepCount)} counted.`;
+      : `You said done with ${state.count} of ${sheepPhrase(realSheepCount(state))} counted.`;
     const dodged = state.safeStreak || 0;
     els.gameOverStreak.hidden = !(dodged > 0);
     if (!els.gameOverStreak.hidden) {
@@ -1316,10 +1411,15 @@ function syncPanels(state) {
   clearTimeout(advanceTimer);
   if (passed) {
     renderer?.celebrate?.();
-    playCelebration();
+    if (!isCalmLevel(state.difficulty)) playCelebration();
     // Frozen fixtures stay put so a screenshot catches the message.
     if (!staticMode) advanceTimer = setTimeout(advanceRound, ADVANCE_DELAY_MS);
   }
+}
+
+// How many animals in the round are real sheep: everything but the wolf.
+function realSheepCount(state) {
+  return state.sheepCount - (state.wolfIndex != null ? 1 : 0);
 }
 
 function renderA11yList(state) {
@@ -1345,12 +1445,14 @@ function renderA11yList(state) {
     // With Name labels on, the mirror uses the same playful name the two
     // renderers draw, so a screen reader calls the sheep what the player
     // sees: "Woolly is grazing" / "Woolly, counted as number 3".
-    btn.textContent = state.namesOn
+    const label = state.namesOn
       ? (state.counted.includes(i)
         ? `${sheepName(state.seed, i)}, counted as number ${state.counted.indexOf(i) + 1}`
         : `${sheepName(state.seed, i)} is grazing`)
       : (state.counted.includes(i)
         ? `Sheep ${i + 1}, counted` : `Sheep ${i + 1}, not counted yet`);
+    // The wolf's entry names what gives it away on screen (wolfCueText).
+    btn.textContent = state.wolfIndex === i ? `${label}, and ${wolfCueText(state.round)}` : label;
   });
   // The countdown mirrors into the a11y channel too, appended after the
   // clock line, so when the round goes live the clock is the last thing

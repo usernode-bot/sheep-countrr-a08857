@@ -27,6 +27,21 @@ export const TOTAL_ROUNDS = 9;
 // speed at full ramp, overRate the post-ramp speed creep per round, and
 // jitterScale how nervy the late wobble gets.
 export const DIFFICULTIES = {
+  // Calm is the bedtime level, and the default for a brand-new player
+  // (see NEW_PLAYER_DIFFICULTY). Its flock grows by one sheep every two
+  // rounds and stops at five, and its motion never ramps: rampRounds of
+  // Infinity pins the ramp at zero, so every round from 2 on keeps the
+  // slow drift every level opens with (speed 0.4, radius 0.3, no bounce,
+  // no jitter). The forgiving rules (a double tap only wiggles, no wolf,
+  // no game over) live in state.js behind isCalmLevel.
+  calm: {
+    growth: 0.5,
+    maxSheep: 5,
+    rampRounds: Infinity,
+    speedRamp: 0,
+    overRate: 0,
+    jitterScale: 0,
+  },
   easy: {
     growth: 1.0,
     maxSheep: 6,
@@ -60,6 +75,25 @@ export const DIFFICULTIES = {
     jitterScale: 0.4,
   },
 };
+
+// The level a player with no saved pick starts on. Deep links and frozen
+// fixtures keep DEFAULT_DIFFICULTY (Normal) so their flocks never move;
+// only a real player's store, with nothing saved locally or on the
+// server, opens on Calm. A saved pick, any pick, always wins.
+export const CALM_LEVEL = 'calm';
+export const NEW_PLAYER_DIFFICULTY = CALM_LEVEL;
+
+export function isCalmLevel(difficulty) {
+  return difficulty === CALM_LEVEL;
+}
+
+// The Get ready card's rule line. Calm promises the forgiving tap; the
+// challenge levels keep the warning that a double count ends the run.
+export function introRuleText(difficulty = DEFAULT_DIFFICULTY) {
+  return isCalmLevel(difficulty)
+    ? 'Count each sheep once, then tap Done counting. Tap one twice and it just gives a sleepy wiggle.'
+    : 'Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.';
+}
 
 // Anything unrecognised (a hostile /api/state body, a mangled deep link,
 // an old localStorage row) falls back to Normal, never to a crash.
@@ -222,6 +256,20 @@ export function wolfDisguiseTier(round, mode = 'normal') {
   if (r < tier2) return 1;
   if (r < tier3) return 2;
   return 3;
+}
+
+// What a sighted player can see give the wolf away at each disguise tier
+// (the renderers draw ears and a tail, then smaller ears, then only a
+// glint), said in words for the screen-reader list, which otherwise called
+// the wolf a sheep like any other and left those players no way to avoid it.
+const WOLF_CUES = {
+  1: 'it has pointy ears and a bushy tail',
+  2: 'its ears look a little pointy',
+  3: 'its eyes glint',
+};
+
+export function wolfCueText(round) {
+  return WOLF_CUES[wolfDisguiseTier(round)] || WOLF_CUES[3];
 }
 
 // The on-screen round text: "Round 5 of 9" while the ladder has more

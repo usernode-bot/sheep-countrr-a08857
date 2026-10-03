@@ -432,6 +432,32 @@
       ]
     },
     {
+      "id": "difficulty.calm",
+      "name": "Calm is the first level on the briefing card and promises the sleepy wiggle",
+      "path": "/?round=1&difficulty=calm",
+      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=calm][aria-checked=true]",
+      "visual": true,
+      "impact": [
+        "public/rounds.js",
+        "public/state.js",
+        "public/app.js",
+        "public/index.html",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Calm rule line replaces the run-ending warning",
+      "path": "/?round=1&difficulty=calm",
+      "expectSelector": "#round-intro-rule",
+      "expectText": "sleepy wiggle"
+    },
+    {
+      "name": "Calm keeps the round 9 flock small",
+      "path": "/?round=9&difficulty=calm",
+      "expectSelector": "#count-display",
+      "expectText": "of 5 sheep"
+    },
+    {
       "name": "Largest flock still fits the board",
       "path": "/?scene=flock",
       "expectSelector": "#a11y-sheep-list button:nth-child(12)",
@@ -537,6 +563,12 @@
         "public/index.html",
         "dapp.json"
       ]
+    },
+    {
+      "name": "The duel result card offers a way back to the player's own game",
+      "path": "/?scene=duelresult",
+      "expectSelector": "#duel-panel-exit:not([hidden])",
+      "expectText": "Back to my game"
     },
     {
       "id": "round.resume",

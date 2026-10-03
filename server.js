@@ -101,8 +101,11 @@ const MAX_ROUND = 999;
 const MAX_TAPS_PER_SYNC = 12;
 
 // The difficulty levels the client may report. Anything else falls back to
-// 'normal', matching public/rounds.js's normalizeDifficulty.
-const DIFFICULTIES = new Set(['easy', 'normal', 'hard', 'expert']);
+// 'normal', matching public/rounds.js's normalizeDifficulty. 'calm' is the
+// bedtime level: it keeps its own best round in best_rounds but never
+// raises best_round (the Global and Friends score) and never records a run
+// (the weekly score), so Calm play stays out of the challenge leaderboards.
+const DIFFICULTIES = new Set(['calm', 'easy', 'normal', 'hard', 'expert']);
 
 // URL-safe code shapes. The client copies full URLs, but the key/code itself
 // never carries anything else, so a strict charset check is all the input
@@ -135,13 +138,6 @@ app.use(express.json());
 // on subsequent fetches.
 app.use((req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
-  // The centrally hosted bridge never exists in a standalone container
-  // (the platform edge serves it in front of real deploys). Answer 204 so
-  // local in-loop checks and previews don't log a console error for a file
-  // no standalone server is expected to carry.
-  if (req.path.startsWith('/usernode-bridge/') && !req.user) {
-    return res.status(204).end();
-  }
   if (token && JWT_PUBLIC_KEY && APP_AUDIENCE) {
     try {
       // Pin the algorithm, issuer and audience. Without `algorithms` a
@@ -213,11 +209,19 @@ function normalizeHandle(raw) {
 // line the player saw.
 app.post('/api/runs', async (req, res) => {
   const roundReached = clamp(parseInt((req.body || {}).roundReached, 10) || 1, 1, MAX_ROUND);
-  const endReason = ['doubleTap', 'missed', 'timeUp'].includes((req.body || {}).endedBy)
+  // 'wolf' is the run a wolf tap ended; without it here a shared card for
+  // that run fell back to "Some sheep were left uncounted."
+  const endReason = ['doubleTap', 'missed', 'timeUp', 'wolf'].includes((req.body || {}).endedBy)
     ? (req.body || {}).endedBy : null;
   // Speed Rounds carry their own tag so the weekly leaderboard can show
   // them separately from normal rounds.
   const speedRound = !!(req.body || {}).speedRound;
+  // The client never posts a Calm run (Calm has no game over); this is the
+  // server-side half of keeping Calm off the weekly leaderboard.
+  if ((req.body || {}).difficulty === 'calm') {
+    res.json({ ok: true, id: null });
+    return;
+  }
   try {
     const { rows } = await pool.query(
       `INSERT INTO sheep_runs (user_id, username, round_reached, end_reason, speed_round)
@@ -489,20 +493,23 @@ function randomSeed() {
 app.get('/api/state', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT round, best_round, best_safe_streak, bonus_counted, total_counted, sound_on, night_on, calm_on
+      `SELECT round, best_round, best_safe_streak, bonus_counted, total_counted, sound_on, night_on, calm_on, difficulty
        FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
 
     let row = rows[0];
     if (!row) {
+      // A brand-new player starts on Calm. The row is stored as Calm so a
+      // later read agrees, but this first answer says "no saved level"
+      // (null), so a pick this device already holds is never overwritten.
       await pool.query(
-        `INSERT INTO sheep_progress (user_id, username, round, best_round, seed)
-         VALUES ($1, $2, 1, 1, $3)
+        `INSERT INTO sheep_progress (user_id, username, round, best_round, seed, difficulty)
+         VALUES ($1, $2, 1, 1, $3, 'calm')
          ON CONFLICT (user_id) DO NOTHING`,
         [req.user.id, req.user.username, randomSeed()]
       );
-      row = { round: 1, best_round: 1, best_safe_streak: 0, bonus_counted: 0, total_counted: 0, sound_on: false, night_on: false, calm_on: false, difficulty: 'normal', best_rounds: {} };
+      row = { round: 1, best_round: 1, best_safe_streak: 0, bonus_counted: 0, total_counted: 0, sound_on: false, night_on: false, calm_on: false, difficulty: null, best_rounds: {} };
     }
 
     const { rows: totalRows } = await pool.query(
@@ -513,7 +520,7 @@ app.get('/api/state', async (req, res) => {
 
     // bestRounds holds one best round per difficulty; the legacy best_round
     // column stays the all-time best and still folds in for old clients.
-    const bestRounds = { easy: 1, normal: 1, hard: 1, expert: 1, ...(row.best_rounds || {}) };
+    const bestRounds = { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1, ...(row.best_rounds || {}) };
 
     res.json({
       round: row.round,
@@ -565,7 +572,11 @@ app.post('/api/state', async (req, res) => {
     // A run restarts at round 1, so the round may move backward freely;
     // only the best rounds are monotonic: the all-time best across every
     // difficulty, and the reporting difficulty's own best.
-    const bestRound = Math.max(prev ? prev.best_round : 1, claimedBest, round);
+    // A Calm sync never moves it: best_round is what Global and Friends
+    // rank, and Calm rounds are not challenge scores.
+    const bestRound = difficulty === 'calm'
+      ? (prev ? prev.best_round : 1)
+      : Math.max(prev ? prev.best_round : 1, claimedBest, round);
     // Like bestRound: the best streak ever reached is monotonic.
     const bestSafeStreak = Math.max(prev ? prev.best_safe_streak : 0, claimedStreak);
     const bonusCounted = (prev ? prev.bonus_counted : 0) + newBonus;
@@ -607,16 +618,18 @@ app.post('/api/state', async (req, res) => {
 // auth-gated catch-all below ever runs, silently defeating that gate.
 // Route both paths past static so the catch-all is the only place the
 // shell is served from.
-// The image build writes public/tailwind.css; only a plain checkout lacks it.
+// The image build writes public/tailwind.css (this app's own stylesheet,
+// compiled by the Dockerfile's first stage); only a plain checkout lacks it.
 const HAS_TAILWIND_CSS = require('fs').existsSync(path.join(__dirname, 'public', 'tailwind.css'));
 
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') return next();
-  // The centrally hosted bridge is served by the platform edge in a real
-  // deploy, and a plain checkout has no compiled Tailwind stylesheet. With
-  // no copy to serve, answer 204 rather than 401: the files carry no gated data, and a console
-  // error for an asset this container is not expected to have reads as a bug.
-  if (req.path.startsWith('/usernode-bridge/') || (req.path === '/tailwind.css' && !HAS_TAILWIND_CSS)) {
+  // A plain checkout has no compiled Tailwind stylesheet. With no copy to
+  // serve, answer 204 rather than 401: the file carries no gated data, and a
+  // console error for an asset this container is not expected to have reads
+  // as a bug. /usernode-bridge/ never reaches here: the proxy above answers
+  // every path under it.
+  if (req.path === '/tailwind.css' && !HAS_TAILWIND_CSS) {
     return res.status(204).end();
   }
   express.static(path.join(__dirname, 'public'))(req, res, next);

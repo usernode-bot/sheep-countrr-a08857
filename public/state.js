@@ -10,8 +10,10 @@
 import {
   DEFAULT_DIFFICULTY,
   MAX_SHEEP,
+  NEW_PLAYER_DIFFICULTY,
   SPEED_ROUND_SECONDS,
   advanceStreak,
+  isCalmLevel,
   localDayKey,
   normalizeCalm,
   normalizeDifficulty,
@@ -44,7 +46,20 @@ export const ENDED_TIME_UP = 'timeUp';
 
 // One best round per difficulty, kept in a map so a best on Easy can never
 // masquerade as one on Hard.
-export const DIFFICULTY_KEYS = ['easy', 'normal', 'hard', 'expert'];
+export const DIFFICULTY_KEYS = ['calm', 'easy', 'normal', 'hard', 'expert'];
+
+// Calm never hides a wolf: the impostor is a challenge mechanic, and
+// counting it would end the run, which Calm never does.
+function wolfFor(round, seed, sheepCount, difficulty) {
+  return isCalmLevel(difficulty) ? null : wolfIndexForRound(round, seed, sheepCount);
+}
+
+// Calm's forgiving rules apply to a solo run. A pass-and-play duel keeps
+// its own scoring (a turn ends on a miss) whatever level it was started
+// from, or a turn could never end short.
+function forgiving(state) {
+  return isCalmLevel(state.difficulty) && !state.duel;
+}
 
 // ---- Play streak normalization ----
 // A day key is a local calendar date, YYYY-MM-DD. Anything that is not one
@@ -59,7 +74,7 @@ function normalizeStreakCount(raw) {
 }
 
 function normalizeBestRounds(raw, fallback) {
-  const out = { easy: 1, normal: 1, hard: 1, expert: 1 };
+  const out = { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1 };
   const source = raw && typeof raw === 'object' ? raw : {};
   for (const key of DIFFICULTY_KEYS) {
     out[key] = normalizeRound(source[key] || 1);
@@ -89,7 +104,7 @@ export function createDefaultState() {
     safeStreak: 0,
     bestSafeStreak: 0,
     bonusCounted: 0,
-    bestRounds: { easy: 1, normal: 1, hard: 1, expert: 1 },
+    bestRounds: { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1 },
     totalCounted: 0,
     communityTotal: 0,
     soundOn: false,
@@ -193,7 +208,13 @@ export class StateStore {
     if (this.ephemeral) return this.state;
     try {
       const raw = localStorage.getItem(this.storageKey);
-      if (!raw) return this.state;
+      if (!raw) {
+        // Nothing saved on this device: a new player opens on Calm. A
+        // level saved on the server still wins in loadRemote.
+        this.state = { ...this.state, difficulty: NEW_PLAYER_DIFFICULTY };
+        this.startRound(1, { silent: true });
+        return this.state;
+      }
       const saved = JSON.parse(raw);
       // Only the run-spanning values are restored. A half-counted round
       // is never resumed: coming back mid-round and finding taps you do
@@ -292,7 +313,12 @@ export class StateStore {
         soundOn: !!data.soundOn,
         nightOn: !!data.nightOn,
         calmOn: normalizeCalm(data.calmOn),
-        difficulty: resuming ? this.state.difficulty : normalizeDifficulty(data.difficulty),
+        // A null difficulty means the server has no saved pick (its row
+        // was created by this very read), so the local one stands: Calm
+        // for a new player, or whatever this device last chose.
+        difficulty: resuming || data.difficulty == null
+          ? this.state.difficulty
+          : normalizeDifficulty(data.difficulty),
       };
       if (resuming) {
         this.startRound(this.state.round, { silent: true, keepBoard: true });
@@ -372,7 +398,7 @@ export class StateStore {
       roundElapsed: keepBoard ? this.state.roundElapsed : 0,
       phase: COUNTING,
       endedBy: null,
-      wolfIndex: keepBoard ? this.state.wolfIndex : wolfIndexForRound(next, seed, sheepCount),
+      wolfIndex: keepBoard ? this.state.wolfIndex : wolfFor(next, seed, sheepCount, this.state.difficulty),
       // A restart to round 1 is a new run, so the current streak resets.
       // bestSafeStreak survives, like bestRounds.
       safeStreak: next === 1 ? 0 : this.state.safeStreak,
@@ -380,10 +406,11 @@ export class StateStore {
       // round of the run plays the same flock under its own fresh 30
       // second clock. The clock state is reset with the round so a
       // resumed round can never read a stale countdown.
-      speedOn: normalizeSpeedRound(this.state.speedOn),
+      // Calm has no clock: a Speed Round can end a run, Calm never does.
+      speedOn: normalizeSpeedRound(this.state.speedOn) && !isCalmLevel(this.state.difficulty),
       secondsLeft: keepBoard
         ? this.state.secondsLeft
-        : (normalizeSpeedRound(this.state.speedOn) ? SPEED_ROUND_SECONDS : null),
+        : (normalizeSpeedRound(this.state.speedOn) && !isCalmLevel(this.state.difficulty) ? SPEED_ROUND_SECONDS : null),
       bestRounds: {
         ...this.state.bestRounds,
         [this.state.difficulty]: bestRound,
@@ -480,19 +507,26 @@ export class StateStore {
     const seed = Number.isFinite(Number(snapshot.seed)) && Number(snapshot.seed) >= 0
       ? Number(snapshot.seed)
       : this.seedFor(round);
+    // Re-derived from the same round/seed/sheepCount, exactly like
+    // startRound: the wolf draw is a pure function of these, so a resumed
+    // board always shows the same animal that was hiding.
+    const wolfIndex = wolfFor(round, seed, sheepCount, difficulty);
+    // A board saved before the wolf existed can list, as counted, the sheep
+    // the wolf now hides behind. Resuming it put a counted wolf on screen,
+    // which the 3D renderer could not draw, so the game failed on every
+    // reload. That animal is the wolf now: drop it from the counted list.
+    const keptCounted = uniqueCounted.filter((i) => i !== wolfIndex);
+    const keptAt = countedAt.filter((at) => at.index !== wolfIndex);
     this.state = {
       ...this.state,
       round,
       difficulty,
       sheepCount,
       seed,
-      // Re-derived from the same round/seed/sheepCount, exactly like
-      // startRound: the wolf draw is a pure function of these, so a
-      // resumed board always shows the same animal that was hiding.
-      wolfIndex: wolfIndexForRound(round, seed, sheepCount),
-      count: uniqueCounted.length,
-      counted: uniqueCounted,
-      countedAt,
+      wolfIndex,
+      count: keptCounted.length,
+      counted: keptCounted,
+      countedAt: keptAt,
       roundElapsed: Number.isFinite(Number(snapshot.roundElapsed)) && Number(snapshot.roundElapsed) >= 0
         ? Number(snapshot.roundElapsed)
         : 0,
@@ -504,7 +538,6 @@ export class StateStore {
     this._hasMidRoundSnapshot = true;
     // Resuming a board is playing: the streak records the day too.
     this.recordPlayDay();
-    return this.state;
     return this.state;
   }
 
@@ -622,6 +655,9 @@ export class StateStore {
   // The run id is remembered for Share result, and the reason is stored
   // with the run so a shared card shows the same line the player saw.
   recordRun() {
+    // Calm runs never reach the leaderboards: a bedtime count is not a
+    // challenge score, and Calm has no game over to record anyway.
+    if (isCalmLevel(this.state.difficulty)) return;
     // The test seam answers even for an ephemeral deep-link store: the
     // unit suite runs with no token, like the fixtures do.
     if (this.onRecordRun) {
@@ -641,6 +677,7 @@ export class StateStore {
           roundReached: this.state.round,
           endedBy: this.state.endedBy,
           speedRound: this.state.speedOn,
+          difficulty: this.state.difficulty,
         }),
       }).then((res) => (res.ok ? res.json() : null))
         .then((data) => {
@@ -655,6 +692,8 @@ export class StateStore {
   // A tap on a sheep. Returns what it did:
   //   { outcome: 'counted', number }  a new sheep, numbered in tap order
   //   { outcome: 'doubleTap' }        already counted, so the run ends
+  //   { outcome: 'wiggle' }           already counted on Calm: a sleepy
+  //                                   wiggle, and the round carries on
   //   { outcome: 'wolfTap' }          the wolf: the run ends immediately
   //   { outcome: 'ignored' }          the run is not accepting taps
   tapSheep(index) {
@@ -663,6 +702,7 @@ export class StateStore {
       return { outcome: 'ignored' };
     }
     if (this.state.counted.includes(index)) {
+      if (forgiving(this.state)) return { outcome: 'wiggle' };
       this.endRun(ENDED_DOUBLE_TAP);
       return { outcome: 'doubleTap' };
     }
@@ -705,7 +745,8 @@ export class StateStore {
   }
 
   // The player says that is all of them. Right count passes the round;
-  // anything short ends the run.
+  // anything short ends the run, except on Calm, where it answers
+  // 'notYet' with the sheep still awake and the round carries on.
   submitCount() {
     if (this.state.phase !== COUNTING) return { outcome: 'ignored' };
     if (this.isComplete()) {
@@ -733,6 +774,13 @@ export class StateStore {
       this.flush();
       this.onChange(this.state);
       return { outcome: 'passed', round: this.state.round };
+    }
+    if (forgiving(this.state)) {
+      const awake = [];
+      for (let i = 0; i < this.state.sheepCount; i++) {
+        if (!this.state.counted.includes(i) && i !== this.state.wolfIndex) awake.push(i);
+      }
+      return { outcome: 'notYet', awake };
     }
     this.endRun(ENDED_MISSED);
     return { outcome: 'missed', round: this.state.round };
@@ -779,7 +827,7 @@ export class StateStore {
   // is about to start; it never flips mid-round (the briefing is modal,
   // so this runs before Start counting in real play).
   setSpeedOn(on) {
-    const speedOn = normalizeSpeedRound(on);
+    const speedOn = normalizeSpeedRound(on) && !isCalmLevel(this.state.difficulty);
     this.state = { ...this.state, speedOn, secondsLeft: speedOn ? SPEED_ROUND_SECONDS : null };
     this.saveLocal();
     // The briefing's toggle is part of the resumable board too.
