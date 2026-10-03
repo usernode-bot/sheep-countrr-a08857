@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { MAX_SHEEP, calmMotion, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
+import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
 
 const COLORS = {
   wool: '#f4eadb',
@@ -1105,9 +1105,13 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     s.numberSprite.material.needsUpdate = true;
     s.numberSprite.visible = true;
     if (animate && !reducedMotion) {
-      s.bounceStart = elapsedSeconds();
-      s.bounceDur = 0.9;
-      s.wiggle = false;
+      // Calm skips the squash-and-hop: the sheep just settles and its
+      // ribbon appears, as quiet as the bedtime original.
+      if (!isCalmLevel(lastState && lastState.difficulty)) {
+        s.bounceStart = elapsedSeconds();
+        s.bounceDur = 0.9;
+        s.wiggle = false;
+      }
       s.ribbonPop = elapsedSeconds();
       const p = s.group.position;
       // A sleepy nod is enough feedback; no burst of sparkles.

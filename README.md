@@ -26,6 +26,14 @@ keeping track of who you already counted does not.
   a run skip it since the round-complete message already previews the
   next flock. The card also carries a streak flame: how many days in a
   row the player has played, with the best streak ever reached beside it.
+- **Calm, the default level.** The Get ready card lists Calm first, then
+  Easy, Normal, Hard and Expert. A player with no saved level starts on
+  Calm; a saved pick is kept. On Calm the sheep only ever drift as slowly
+  as an early round, the flock grows by one every two rounds and stops at
+  five, a sheep tapped twice just gives a sleepy wiggle, "Done counting"
+  with sheep left wiggles the ones still awake, and there is no wolf,
+  Speed Round, Duel or game over. Calm rounds keep their own best round
+  but never count toward the Global, Friends or weekly leaderboards.
 - **Finishing a round.** Tap every sheep and the round completes itself,
   or tap "Done counting" when you think you have them all. A correct
   count shows a short round-complete message and moves on.

@@ -95,8 +95,11 @@ const MAX_ROUND = 999;
 const MAX_TAPS_PER_SYNC = 12;
 
 // The difficulty levels the client may report. Anything else falls back to
-// 'normal', matching public/rounds.js's normalizeDifficulty.
-const DIFFICULTIES = new Set(['easy', 'normal', 'hard', 'expert']);
+// 'normal', matching public/rounds.js's normalizeDifficulty. 'calm' is the
+// bedtime level: it keeps its own best round in best_rounds but never
+// raises best_round (the Global and Friends score) and never records a run
+// (the weekly score), so Calm play stays out of the challenge leaderboards.
+const DIFFICULTIES = new Set(['calm', 'easy', 'normal', 'hard', 'expert']);
 
 // URL-safe code shapes. The client copies full URLs, but the key/code itself
 // never carries anything else, so a strict charset check is all the input
@@ -203,6 +206,12 @@ app.post('/api/runs', async (req, res) => {
   // Speed Rounds carry their own tag so the weekly leaderboard can show
   // them separately from normal rounds.
   const speedRound = !!(req.body || {}).speedRound;
+  // The client never posts a Calm run (Calm has no game over); this is the
+  // server-side half of keeping Calm off the weekly leaderboard.
+  if ((req.body || {}).difficulty === 'calm') {
+    res.json({ ok: true, id: null });
+    return;
+  }
   try {
     const { rows } = await pool.query(
       `INSERT INTO sheep_runs (user_id, username, round_reached, end_reason, speed_round)
@@ -474,20 +483,23 @@ function randomSeed() {
 app.get('/api/state', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT round, best_round, best_safe_streak, bonus_counted, total_counted, sound_on, night_on, calm_on
+      `SELECT round, best_round, best_safe_streak, bonus_counted, total_counted, sound_on, night_on, calm_on, difficulty
        FROM sheep_progress WHERE user_id = $1`,
       [req.user.id]
     );
 
     let row = rows[0];
     if (!row) {
+      // A brand-new player starts on Calm. The row is stored as Calm so a
+      // later read agrees, but this first answer says "no saved level"
+      // (null), so a pick this device already holds is never overwritten.
       await pool.query(
-        `INSERT INTO sheep_progress (user_id, username, round, best_round, seed)
-         VALUES ($1, $2, 1, 1, $3)
+        `INSERT INTO sheep_progress (user_id, username, round, best_round, seed, difficulty)
+         VALUES ($1, $2, 1, 1, $3, 'calm')
          ON CONFLICT (user_id) DO NOTHING`,
         [req.user.id, req.user.username, randomSeed()]
       );
-      row = { round: 1, best_round: 1, best_safe_streak: 0, bonus_counted: 0, total_counted: 0, sound_on: false, night_on: false, calm_on: false, difficulty: 'normal', best_rounds: {} };
+      row = { round: 1, best_round: 1, best_safe_streak: 0, bonus_counted: 0, total_counted: 0, sound_on: false, night_on: false, calm_on: false, difficulty: null, best_rounds: {} };
     }
 
     const { rows: totalRows } = await pool.query(
@@ -498,7 +510,7 @@ app.get('/api/state', async (req, res) => {
 
     // bestRounds holds one best round per difficulty; the legacy best_round
     // column stays the all-time best and still folds in for old clients.
-    const bestRounds = { easy: 1, normal: 1, hard: 1, expert: 1, ...(row.best_rounds || {}) };
+    const bestRounds = { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1, ...(row.best_rounds || {}) };
 
     res.json({
       round: row.round,
@@ -550,7 +562,11 @@ app.post('/api/state', async (req, res) => {
     // A run restarts at round 1, so the round may move backward freely;
     // only the best rounds are monotonic: the all-time best across every
     // difficulty, and the reporting difficulty's own best.
-    const bestRound = Math.max(prev ? prev.best_round : 1, claimedBest, round);
+    // A Calm sync never moves it: best_round is what Global and Friends
+    // rank, and Calm rounds are not challenge scores.
+    const bestRound = difficulty === 'calm'
+      ? (prev ? prev.best_round : 1)
+      : Math.max(prev ? prev.best_round : 1, claimedBest, round);
     // Like bestRound: the best streak ever reached is monotonic.
     const bestSafeStreak = Math.max(prev ? prev.best_safe_streak : 0, claimedStreak);
     const bonusCounted = (prev ? prev.bonus_counted : 0) + newBonus;
