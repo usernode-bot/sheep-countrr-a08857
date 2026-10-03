@@ -359,9 +359,15 @@
       border-radius: 2.25rem;
       border: 4px solid #fff;
       box-shadow: 0 24px 50px rgba(74, 59, 92, 0.28), 0 6px 0 #f0e2f7;
+      /* Android-sized screens: the Get-ready and Grown-ups cards are taller
+         than the viewport, which used to clip them (the Grown-ups close
+         button sat above the top edge, unreachable). Cap the card at the
+         backdrop's inner height and scroll inside it instead; the bottom
+         edge, where the primary button lives, stays anchored on mobile. */
       max-height: 100%;
       overflow-y: auto;
       overscroll-behavior: contain;
+      scrollbar-width: thin;
     }
     .panel-pop { animation: panel-pop 0.5s cubic-bezier(.34,1.56,.64,1); }
     @keyframes panel-pop {
@@ -513,7 +519,10 @@
       align-content: center;
       justify-items: center;
       gap: 16px 12px;
-      padding: calc(var(--safe-top) + 170px) calc(var(--safe-right) + 18px) calc(var(--safe-bottom) + 140px) calc(var(--safe-left) + 18px);
+      /* Bottom padding clears the action bar even when the hint wraps to
+         two lines on a narrow screen, so the last row of cards never sits
+         under the Done counting button. */
+      padding: calc(var(--safe-top) + 170px) calc(var(--safe-right) + 18px) calc(var(--safe-bottom) + 160px) calc(var(--safe-left) + 18px);
     }
     .sheep-fallback-grid[data-size="1"],
     .sheep-fallback-grid[data-size="2"] { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
@@ -888,6 +897,9 @@
         <button id="duel-panel-btn" type="button" class="big-btn">
           Start counting
         </button>
+        <button id="duel-panel-exit" type="button" class="soft-btn" hidden>
+          Back to my game
+        </button>
       </div>
     </div>
 
@@ -1083,6 +1095,30 @@
       color: #7a6420;
       font-weight: 800;
       margin-left: 0.1rem;
+    }
+
+    /* Short screens (phones in portrait, and a short desktop window):
+       compact every panel card so its primary button fits without
+       scrolling at phone-sized heights. Taller content still scrolls
+       inside the card, the max-height cap above stays the safety net. */
+    @media (max-height: 900px) {
+      .panel-card { gap: 0.7rem; }
+      .panel-card.p-7 { padding: 1.35rem; }
+      .panel-card.p-6 { padding: 1.35rem; }
+      .difficulty-pill { min-height: 2.4rem; padding: 0 1rem; font-size: 1rem; }
+      .celebration-title { font-size: 1.6rem; }
+    }
+
+    /* Android-sized portrait screens: shrink the fallback cards and clear
+       the count plate (plus the bob animation's lift) and the wrapped
+       Done-counting bar, so the flock fits without scrolling under either. */
+    @media (orientation: portrait) and (max-height: 700px) {
+      .sheep-fallback-grid { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
+      .sheep-fallback-grid[data-size="1"],
+      .sheep-fallback-grid[data-size="2"] { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+      .sheep-fallback-grid[data-size="3"],
+      .sheep-fallback-grid[data-size="4"] { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+      .sheep-fallback-grid { padding-top: calc(var(--safe-top) + 178px); }
     }
   </style>
   <script type="module" src="/app.js"></script>

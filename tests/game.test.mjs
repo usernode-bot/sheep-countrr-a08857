@@ -37,9 +37,11 @@ import {
   successMessage,
   WOLF_BONUS,
   wolfChance,
+  wolfCueText,
   wolfDisguiseTier,
   wolfIndexForRound,
 } from '../public/rounds.js';
+import { readFileSync } from 'node:fs';
 import { wanderOffset } from '../public/movement.js';
 import { weekStartUtc, sortScoreRows } from '../public/leaderboard.js';
 import { sheepName } from '../public/layout.js';
@@ -932,9 +934,13 @@ test('a Speed Round snapshot carries its remaining clock, and 0 reads as gone', 
   const { store } = newStore();
   store.setSpeedOn(true);
   store.startRound(2, { silent: true });
-  // The clock is what's under test here, not the wolf: pin this round wolf-free.
+  // The clock is what's under test here, not the wolf: pin this round
+  // wolf-free, and count a sheep the round's wolf is not. A resume re-draws
+  // the wolf and never restores it as counted, since the 3D renderer cannot
+  // draw a counted wolf.
+  const drawnWolf = store.state.wolfIndex;
   store.state = { ...store.state, wolfIndex: null };
-  store.tapSheep(0);
+  store.tapSheep(drawnWolf === 0 ? 1 : 0);
   const snapshot = store.snapshotRound();
   assert.equal(snapshot.speedOn, true);
   assert.equal(snapshot.secondsLeft, SPEED_ROUND_SECONDS);
@@ -1225,4 +1231,88 @@ test('a new player opens on calm; any saved pick keeps its level', async () => {
   store.startRound(8, { silent: true });
   assert.equal(store.state.difficulty, 'normal');
   assert.equal(store.state.sheepCount, 11);
+});
+
+// A board saved mid-round before the wolf existed (#37 shipped save/resume a
+// day before #38 added the wolf) can list, as counted, the sheep the wolf now
+// hides behind. Resuming it put a counted wolf on screen, which the 3D
+// renderer cannot draw (a wolf has no ribbon), so boot failed on every reload.
+test('a board saved before the wolf existed resumes without a counted wolf', () => {
+  let round = 2;
+  let seed = roundSeed(round);
+  let n = sheepForRound(round);
+  let wolf = wolfIndexForRound(round, seed, n);
+  while (wolf === null && round < 60) {
+    round += 1;
+    seed = roundSeed(round);
+    n = sheepForRound(round);
+    wolf = wolfIndexForRound(round, seed, n);
+  }
+  assert.notEqual(wolf, null, 'some round hides a wolf');
+  const sheep = [...Array(n).keys()].find((i) => i !== wolf);
+  const { store } = newStore();
+  store.loadLocalFrom({
+    round,
+    difficulty: 'normal',
+    midCountdown: {
+      round,
+      difficulty: 'normal',
+      sheepCount: n,
+      seed,
+      counted: [sheep, wolf],
+      countedAt: [{ index: sheep, elapsed: 1 }, { index: wolf, elapsed: 2 }],
+      roundElapsed: 3,
+      phase: COUNTING,
+      speedOn: false,
+      secondsLeft: null,
+    },
+  });
+  assert.equal(store.state.phase, COUNTING, 'the board still resumes');
+  assert.equal(store.state.wolfIndex, wolf);
+  assert.deepEqual(store.state.counted, [sheep], 'the wolf is not counted');
+  assert.deepEqual(store.state.countedAt, [{ index: sheep, elapsed: 1 }]);
+  assert.equal(store.state.count, 1);
+});
+
+test('the screen-reader wolf cue names what a sighted player can see at each tier', () => {
+  const seen = new Set();
+  for (let round = 1; round <= 40; round += 1) {
+    const cue = wolfCueText(round);
+    assert.equal(typeof cue, 'string');
+    assert.ok(cue.length > 0);
+    assert.doesNotMatch(cue, /\u2014/, 'user-facing copy carries no em dashes');
+    seen.add(`${wolfDisguiseTier(round)}:${cue}`);
+  }
+  // One wording per tier, and the obvious tier-1 disguise names its ears.
+  assert.equal(new Set([...seen].map((k) => k.split(':')[0])).size, seen.size);
+  assert.match(wolfCueText(1), /ears/);
+});
+
+// The 3D frame loop runs on the round's clock. #37 moved it there but never
+// advanced it, so every sheep stood frozen and a counted sheep's number
+// never grew in, while every selector-based check still passed. The clock
+// lives in a WebGL renderer this suite cannot run, so pin the write itself.
+test('the 3D frame loop advances the round clock every frame', () => {
+  const scene = readFileSync(new URL('../public/scene.js', import.meta.url), 'utf8');
+  const frame = scene.slice(scene.indexOf('function frame() {'));
+  const firstReturn = frame.indexOf('return;');
+  const write = frame.indexOf('lastElapsed = clock.elapsedTime;');
+  assert.ok(write > 0, 'frame() writes lastElapsed');
+  assert.ok(write < firstReturn, 'before the low-tier early return, so taps read a current clock');
+});
+
+// server.js answered the app's own compiled stylesheet with an empty 204
+// (#38), so production rendered without its layout; and it had no wolf end
+// reason, so a shared wolf run read "Some sheep were left uncounted."
+test('the server serves the app stylesheet and records wolf endings', () => {
+  const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  const code = server.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.match(code, /const HAS_TAILWIND_CSS = require\('fs'\)\.existsSync\(path\.join\(__dirname, 'public', 'tailwind\.css'\)\);/);
+  const stubs = code.split('\n').filter((l) => /'\/tailwind\.css'/.test(l)).map((l) => l.trim());
+  assert.deepEqual(stubs, ["if (req.path === '/tailwind.css' && !HAS_TAILWIND_CSS) {"],
+    'the stylesheet is answered empty only when the image has no built copy');
+  const empty = code.split('\n').filter((l) => /status\(204\)/.test(l)).map((l) => l.trim());
+  assert.deepEqual(empty, ["app.get('/favicon.ico', (_req, res) => res.status(204).end());", 'return res.status(204).end();'],
+    'the favicon probe and the missing-stylesheet case are the only empty answers: no stubs for /usernode-bridge/');
+  assert.match(code, /\['doubleTap', 'missed', 'timeUp', 'wolf'\]\.includes/);
 });

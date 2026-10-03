@@ -258,6 +258,20 @@ export function wolfDisguiseTier(round, mode = 'normal') {
   return 3;
 }
 
+// What a sighted player can see give the wolf away at each disguise tier
+// (the renderers draw ears and a tail, then smaller ears, then only a
+// glint), said in words for the screen-reader list, which otherwise called
+// the wolf a sheep like any other and left those players no way to avoid it.
+const WOLF_CUES = {
+  1: 'it has pointy ears and a bushy tail',
+  2: 'its ears look a little pointy',
+  3: 'its eyes glint',
+};
+
+export function wolfCueText(round) {
+  return WOLF_CUES[wolfDisguiseTier(round)] || WOLF_CUES[3];
+}
+
 // The on-screen round text: "Round 5 of 9" while the ladder has more
 // rungs above it, and plain "Round 9" once the flock has reached its cap
 // and the ladder has no further rung to name. The Speed Round keeps its

@@ -188,6 +188,14 @@ cannot wander in. See `README.md` for the full feature description.
   `--plum` / `--cream` / `--pink`, since source order makes it win for
   everyone. Style new chrome with those variables, not hardcoded hexes.
 - **`/tailwind.css` is served from `public/` when the image built it.**
-  `server.js` answers 204 only when the file is missing (a plain
-  checkout). Every layout utility in `index.html` depends on it, so never
-  short-circuit it unconditionally.
+  It is this app's own build output (`npm run build`, run by the
+  Dockerfile's first stage), not a platform file. `server.js` answers 204
+  only when the file is missing (a plain checkout). Every layout utility in
+  `index.html` depends on it, so never short-circuit it unconditionally: a
+  204 there once shipped to production and left every screen without its
+  layout.
+- **The 3D frame loop runs on the round's clock** (`elapsedSeconds()` in
+  `scene.js`), which `frame()` must advance every frame. `setRoundClock`
+  only re-bases it for a resumed board. Movement, blinking and the counted
+  number's pop-in all read it, so a clock that stops moving freezes the
+  game while every static check still passes.
