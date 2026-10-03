@@ -188,6 +188,17 @@ cannot wander in. See `README.md` for the full feature description.
   `body.theme-*`; never add an unscoped `:root` block that redefines
   `--plum` / `--cream` / `--pink`, since source order makes it win for
   everyone. Style new chrome with those variables, not hardcoded hexes.
+- **The first paint is the pastel sky, never the platform's black frame
+  (#44).** The tiny `<style>` at the very top of `index.html`'s `<head>`
+  gives `html`/`body` the sky colors before the bridge, stylesheet or
+  `app.js` can stall; keep it first and keep it pastel. `#boot-card` plus
+  the inline watchdog script just before the `app.js` tag are the only
+  thing allowed to cover the screen before `boot()` finishes: `app.js`
+  calls `window.__sheepBootDone()` (which also sets `html[data-booted]`,
+  asserted by the `boot.ready` check) or `window.__sheepBootFailed()`.
+  Any browser-storage access at `app.js` module top level must be wrapped
+  in try/catch: a throw there kills the module before the watchdog hears
+  about it.
 - **`/tailwind.css` is served from `public/` when the image built it.**
   It is this app's own build output (`npm run build`, run by the
   Dockerfile's first stage), not a platform file. `server.js` answers 204
