@@ -27,6 +27,9 @@ import {
 
 const STORAGE_PREFIX = 'sheep-countrr:';
 const SYNC_DEBOUNCE_MS = 1500;
+// How long boot waits for the saved progress before starting from what
+// this device remembers. A late answer is dropped; taps still sync.
+export const LOAD_REMOTE_TIMEOUT_MS = 3000;
 
 // Run phases.
 export const COUNTING = 'counting';
@@ -161,6 +164,23 @@ export class StateStore {
     this.roundClock = null;
     // True while a resumable board is on screen (see hasMidRoundSnapshot).
     this._hasMidRoundSnapshot = false;
+    // A counting tap's localStorage write, deferred off the tap path (see
+    // flushPendingSave). Any other storage write flushes it first, so it
+    // can never land after (and undo) a later clearMidRound.
+    this._pendingTapSave = false;
+    this._pendingTapTimer = null;
+  }
+
+  // Runs the deferred tap save now, if one is waiting. Called by every
+  // other storage write and by app.js on pagehide / tab hide, so a
+  // mid-round snapshot is never lost or written out of order.
+  flushPendingSave() {
+    if (!this._pendingTapSave) return;
+    this._pendingTapSave = false;
+    clearTimeout(this._pendingTapTimer);
+    this._pendingTapTimer = null;
+    this.saveLocal();
+    this.saveMidRound();
   }
 
   get storageKey() {
@@ -236,6 +256,7 @@ export class StateStore {
 
   saveLocal() {
     if (this.ephemeral) return;
+    this.flushPendingSave();
     try {
       // Merge with whatever else is stored under the key (the mid-round
       // snapshot lives beside these values) instead of replacing it.
@@ -265,10 +286,16 @@ export class StateStore {
 
   async loadRemote() {
     if (this.ephemeral || !this.token) return this.state;
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), LOAD_REMOTE_TIMEOUT_MS) : null;
     try {
-      const res = await fetch('/api/state', { headers: { 'x-usernode-token': this.token } });
+      const res = await fetch('/api/state', {
+        headers: { 'x-usernode-token': this.token },
+        signal: controller ? controller.signal : undefined,
+      });
       if (!res.ok) return this.state;
       const data = await res.json();
+      clearTimeout(timer);
       // The server keeps only run-spanning values, so a local mid-round
       // snapshot wins: it was saved on every tap, the server sync is
       // debounced. Its round and difficulty stay exactly as saved; only
@@ -300,7 +327,9 @@ export class StateStore {
       }
       this.saveLocal();
     } catch {
-      /* offline or no server: keep whatever localStorage had */
+      /* offline, no server, or too slow: keep whatever localStorage had */
+    } finally {
+      clearTimeout(timer);
     }
     return this.state;
   }
@@ -516,6 +545,7 @@ export class StateStore {
   // changes. Reads it back through loadLocal on the next visit.
   saveMidRound() {
     if (this.ephemeral) return;
+    this.flushPendingSave();
     try {
       const raw = localStorage.getItem(this.storageKey);
       const meta = raw ? JSON.parse(raw) : {};
@@ -549,6 +579,7 @@ export class StateStore {
   clearMidRound() {
     this._hasMidRoundSnapshot = false;
     if (this.ephemeral) return;
+    this.flushPendingSave();
     try {
       const raw = localStorage.getItem(this.storageKey);
       const meta = raw ? JSON.parse(raw) : {};
@@ -695,8 +726,12 @@ export class StateStore {
       roundElapsed: elapsed,
       totalCounted: this.state.totalCounted + 1,
     };
-    this.saveLocal();
-    this.saveMidRound();
+    // The ribbon and count update first; the two localStorage writes
+    // follow right after, coalesced across back-to-back taps.
+    if (!this.ephemeral && !this._pendingTapSave) {
+      this._pendingTapSave = true;
+      this._pendingTapTimer = setTimeout(() => this.flushPendingSave(), 0);
+    }
     this.scheduleSync();
     this.onChange(this.state);
     return { outcome: 'counted', number: counted.length };

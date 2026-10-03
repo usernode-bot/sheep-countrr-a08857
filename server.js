@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const https = require('https');
 const http = require('http');
 
@@ -22,6 +23,11 @@ const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
+
+// gzip the JS modules, HTML shell and JSON before anything else answers.
+// The 3D engine alone is several hundred kilobytes of text, which is most
+// of what a first visit on a phone connection waits for.
+app.use(compression());
 
 // The platform signs user-identity tokens with an RSA private key it never
 // shares. Containers get only the PUBLIC half, so this app can verify who a
@@ -175,8 +181,12 @@ app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 // three.js is served straight out of node_modules — no CDN, no vendored
 // copy in git. Mount the whole build/ dir (not just three.module.js) since
-// it imports three.core.js by relative path.
-app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build')));
+// it imports three.core.js by relative path. The version is pinned
+// exactly in package.json, so a returning player keeps it for a week
+// instead of revalidating it on every visit. Bumping `three` can leave a
+// player on the old build for up to that week; change the URL (or the
+// maxAge) in the same commit if that matters for the bump.
+app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d' }));
 
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));

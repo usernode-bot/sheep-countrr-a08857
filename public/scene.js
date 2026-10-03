@@ -1,5 +1,6 @@
-// The 3D pasture. Loaded lazily by app.js only when WebGL is available,
-// so devices without it never pay for importing three at all.
+// The 3D pasture. Imported by app.js only when WebGL is available, so
+// devices without it never run three (index.html still preloads the
+// file, since nearly every device does have WebGL).
 //
 // Art direction: a quiet dusk meadow with plush, sleepy sheep. Every sheep is ONE vertex-colored
 // mesh (body, wool puffs, face, ears, cheeks, smile, legs, hooves merged at
@@ -676,14 +677,18 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   // alpha: the pastel sky gradient is CSS on the container behind the
   // canvas, which is cheaper than a sky dome and matches the DOM fallback.
+  // MSAA only where it is visible and affordable: on a dense (DPR 2+)
+  // phone screen it costs a lot and the pixels already hide the edges.
+  // It is fixed at context creation, so the step-down below cannot undo it.
+  const dpr = window.devicePixelRatio || 1;
   const renderer = new THREE.WebGLRenderer({
     canvas,
     alpha: true,
-    antialias: tier !== 'low',
+    antialias: tier === 'high' && dpr < 2,
     powerPreference: 'low-power',
   });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, tier === 'low' ? 1 : 2));
+  renderer.setPixelRatio(Math.min(dpr, tier === 'low' ? 1 : tier === 'mid' ? 1.5 : 2));
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(COLORS.fog, 16, 46);
@@ -838,7 +843,20 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const wolfBodyGeos = [1, 2, 3].map((tier) =>
     [0, 1, 2].map((variant) => buildWolfBodyGeometry(variant, tier, FLEECES[variant % FLEECES.length])));
   const ribbonGeo = buildRibbonGeometry();
-  const sheepMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0 });
+  // One material for every sheep body and eye, so the low tier can swap
+  // the whole flock to cheaper Lambert shading in one place.
+  let sheepMat = tier === 'low'
+    ? new THREE.MeshLambertMaterial({ vertexColors: true })
+    : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0 });
+  function useLowSheepMaterial() {
+    if (sheepMat.isMeshLambertMaterial) return;
+    const old = sheepMat;
+    sheepMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    scene.traverse((o) => {
+      if (o.material === old) o.material = sheepMat;
+    });
+    old.dispose();
+  }
   const shadowGeo = new THREE.PlaneGeometry(1.5, 1.5);
   const shadowMat = new THREE.MeshBasicMaterial({ map: buildShadowTexture(), transparent: true, depthWrite: false });
   const pickGeo = new THREE.SphereGeometry(0.9, 8, 6);
@@ -1241,6 +1259,17 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   let frameAvg = 16;
   let animId = null;
   let lowTierAccum = 0;
+  // Adaptive quality: two one-way steps per session, each only after the
+  // smoothed frame time has stayed over budget for a while, so a single
+  // long frame (a flock rebuild, a tab coming back) never trips one.
+  // Step 1 drops the pixel ratio to 1; step 2 is the full low tier.
+  let overBudget = 0;
+  let pixelStepped = false;
+  // While a full panel covers the pasture it only needs to drift: render
+  // a few times a second instead of at display rate (see setBackdropMode).
+  let backdrop = false;
+  let backdropAccum = 0;
+  const BACKDROP_FPS = 12;
 
   function easeOutBack(x) {
     const c1 = 1.70158;
@@ -1256,17 +1285,33 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     // sheep's number and ribbon never grew in.
     lastElapsed = clock.elapsedTime;
     frameAvg = frameAvg * 0.9 + dt * 1000 * 0.1;
-    if (tier !== 'low' && frameAvg > 28 && clock.elapsedTime > 2) {
-      // One-way step down within a session, to avoid oscillating.
-      tier = 'low';
-      renderer.setPixelRatio(1);
+    if (tier !== 'low' && !backdrop && clock.elapsedTime > 2) {
+      // One-way steps down within a session, to avoid oscillating.
+      const budget = pixelStepped ? 26 : 20;
+      const hold = pixelStepped ? 2 : 1;
+      overBudget = frameAvg > budget ? overBudget + dt : 0;
+      if (overBudget > hold) {
+        overBudget = 0;
+        if (!pixelStepped) {
+          pixelStepped = true;
+          if (renderer.getPixelRatio() > 1) renderer.setPixelRatio(1);
+        } else {
+          tier = 'low';
+          renderer.setPixelRatio(1);
+          useLowSheepMaterial();
+        }
+      }
     }
-    if (tier === 'low') {
+    if (backdrop) {
+      backdropAccum += dt;
+      if (backdropAccum < 1 / BACKDROP_FPS) return;
+    } else if (tier === 'low') {
       lowTierAccum += dt;
       if (lowTierAccum < 1 / 30) return;
     }
-    const stepDt = tier === 'low' ? lowTierAccum : dt;
+    const stepDt = backdrop ? backdropAccum : tier === 'low' ? lowTierAccum : dt;
     lowTierAccum = 0;
+    backdropAccum = 0;
 
     // The whole frame runs on the round's clock: after a resume it sits
     // at the saved position, so the flock is exactly where it was left.
@@ -1447,6 +1492,14 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     },
     setCalm(on) {
       applyCalm(on);
+    },
+    // A full panel covers the pasture: keep it drifting at a few frames a
+    // second instead of redrawing it at display rate under the blur. The
+    // clock keeps running, so wander positions and the round clock are
+    // unaffected.
+    setBackdropMode(on) {
+      backdrop = !!on;
+      backdropAccum = 0;
     },
     setNames(on) {
       namesOn = !!on;

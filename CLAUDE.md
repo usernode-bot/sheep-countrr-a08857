@@ -168,9 +168,10 @@ cannot wander in. See `README.md` for the full feature description.
   objects, so a full flock of twelve stays under ~100 draw calls. Keep new sheep
   detail inside the merge rather than adding per-sheep meshes.
 - **Both renderers animate from the same `wanderOffset`.** `scene.js`
-  moves sheep in world units; `fallback.js` applies the same offsets as
-  `left`/`top` on the already-relative cards, deliberately leaving
-  `transform` to the tap and wiggle animations. A counted sheep snaps
+  moves sheep in world units; `fallback.js` applies the same offsets via
+  the individual CSS `translate` property (compositor-only, no per-frame
+  layout), deliberately leaving `transform` to the tap and wiggle
+  animations. A counted sheep snaps
   back to its home spot and stops moving in both.
 - **`NUMBER_COLORS` in `layout.js`** is the one pastel-per-number palette
   used by the 3D ribbon/number plate and the DOM fallback badge. Both
