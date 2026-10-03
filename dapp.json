@@ -539,6 +539,12 @@
       ]
     },
     {
+      "name": "The duel result card offers a way back to the player's own game",
+      "path": "/?scene=duelresult",
+      "expectSelector": "#duel-panel-exit:not([hidden])",
+      "expectText": "Back to my game"
+    },
+    {
       "id": "round.resume",
       "name": "A saved mid-round board restores on return",
       "path": "/?resume=1&snapshot=%7B%22midCountdown%22%3A%7B%22round%22%3A5%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22phase%22%3A%22counting%22%7D%7D",

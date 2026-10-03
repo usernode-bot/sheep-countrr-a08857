@@ -129,13 +129,6 @@ app.use(express.json());
 // on subsequent fetches.
 app.use((req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
-  // The centrally hosted bridge never exists in a standalone container
-  // (the platform edge serves it in front of real deploys). Answer 204 so
-  // local in-loop checks and previews don't log a console error for a file
-  // no standalone server is expected to carry.
-  if (req.path.startsWith('/usernode-bridge/') && !req.user) {
-    return res.status(204).end();
-  }
   if (token && JWT_PUBLIC_KEY && APP_AUDIENCE) {
     try {
       // Pin the algorithm, issuer and audience. Without `algorithms` a
@@ -203,7 +196,9 @@ function normalizeHandle(raw) {
 // line the player saw.
 app.post('/api/runs', async (req, res) => {
   const roundReached = clamp(parseInt((req.body || {}).roundReached, 10) || 1, 1, MAX_ROUND);
-  const endReason = ['doubleTap', 'missed', 'timeUp'].includes((req.body || {}).endedBy)
+  // 'wolf' is the run a wolf tap ended; without it here a shared card for
+  // that run fell back to "Some sheep were left uncounted."
+  const endReason = ['doubleTap', 'missed', 'timeUp', 'wolf'].includes((req.body || {}).endedBy)
     ? (req.body || {}).endedBy : null;
   // Speed Rounds carry their own tag so the weekly leaderboard can show
   // them separately from normal rounds.
@@ -597,16 +592,18 @@ app.post('/api/state', async (req, res) => {
 // auth-gated catch-all below ever runs, silently defeating that gate.
 // Route both paths past static so the catch-all is the only place the
 // shell is served from.
-// The image build writes public/tailwind.css; only a plain checkout lacks it.
+// The image build writes public/tailwind.css (this app's own stylesheet,
+// compiled by the Dockerfile's first stage); only a plain checkout lacks it.
 const HAS_TAILWIND_CSS = require('fs').existsSync(path.join(__dirname, 'public', 'tailwind.css'));
 
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') return next();
-  // The centrally hosted bridge is served by the platform edge in a real
-  // deploy, and a plain checkout has no compiled Tailwind stylesheet. With
-  // no copy to serve, answer 204 rather than 401: the files carry no gated data, and a console
-  // error for an asset this container is not expected to have reads as a bug.
-  if (req.path.startsWith('/usernode-bridge/') || (req.path === '/tailwind.css' && !HAS_TAILWIND_CSS)) {
+  // A plain checkout has no compiled Tailwind stylesheet. With no copy to
+  // serve, answer 204 rather than 401: the file carries no gated data, and a
+  // console error for an asset this container is not expected to have reads
+  // as a bug. /usernode-bridge/ never reaches here: the proxy above answers
+  // every path under it.
+  if (req.path === '/tailwind.css' && !HAS_TAILWIND_CSS) {
     return res.status(204).end();
   }
   express.static(path.join(__dirname, 'public'))(req, res, next);

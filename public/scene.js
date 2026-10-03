@@ -1092,7 +1092,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function markCounted(index, number, animate = true) {
     const s = sheep[index];
-    if (!s || s.counted) return;
+    // The wolf has no ribbon or number to show: it is never counted.
+    if (!s || s.counted || s.isWolf) return;
     s.counted = true;
     if (lastState && !lastState.counted.includes(index)) {
       lastState = { ...lastState, counted: [...lastState.counted, index] };
@@ -1127,7 +1128,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   function revealWolf(index) {
     const s = sheep[index];
     if (!s) return;
-    s.bounceStart = clock.elapsedTime;
+    // The frame measures reactions on the round's clock, not the raw one.
+    s.bounceStart = elapsedSeconds();
     s.bounceDur = 0.9;
     s.wiggle = false;
     if (s.tier >= 2) s.body.geometry = wolfBodyGeos[0][index % 3];
@@ -1245,6 +1247,10 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   function frame() {
     animId = requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.1);
+    // Advance the round's clock. Without this write elapsedSeconds() never
+    // moved outside a resumed board, so sheep stood frozen and a counted
+    // sheep's number and ribbon never grew in.
+    lastElapsed = clock.elapsedTime;
     frameAvg = frameAvg * 0.9 + dt * 1000 * 0.1;
     if (tier !== 'low' && frameAvg > 28 && clock.elapsedTime > 2) {
       // One-way step down within a session, to avoid oscillating.

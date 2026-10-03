@@ -451,19 +451,26 @@ export class StateStore {
     const seed = Number.isFinite(Number(snapshot.seed)) && Number(snapshot.seed) >= 0
       ? Number(snapshot.seed)
       : this.seedFor(round);
+    // Re-derived from the same round/seed/sheepCount, exactly like
+    // startRound: the wolf draw is a pure function of these, so a resumed
+    // board always shows the same animal that was hiding.
+    const wolfIndex = wolfIndexForRound(round, seed, sheepCount);
+    // A board saved before the wolf existed can list, as counted, the sheep
+    // the wolf now hides behind. Resuming it put a counted wolf on screen,
+    // which the 3D renderer could not draw, so the game failed on every
+    // reload. That animal is the wolf now: drop it from the counted list.
+    const keptCounted = uniqueCounted.filter((i) => i !== wolfIndex);
+    const keptAt = countedAt.filter((at) => at.index !== wolfIndex);
     this.state = {
       ...this.state,
       round,
       difficulty,
       sheepCount,
       seed,
-      // Re-derived from the same round/seed/sheepCount, exactly like
-      // startRound: the wolf draw is a pure function of these, so a
-      // resumed board always shows the same animal that was hiding.
-      wolfIndex: wolfIndexForRound(round, seed, sheepCount),
-      count: uniqueCounted.length,
-      counted: uniqueCounted,
-      countedAt,
+      wolfIndex,
+      count: keptCounted.length,
+      counted: keptCounted,
+      countedAt: keptAt,
       roundElapsed: Number.isFinite(Number(snapshot.roundElapsed)) && Number(snapshot.roundElapsed) >= 0
         ? Number(snapshot.roundElapsed)
         : 0,
