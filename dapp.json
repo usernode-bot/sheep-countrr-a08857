@@ -458,6 +458,60 @@
       ]
     },
     {
+      "id": "difficulty.insane",
+      "name": "Insane difficulty marks Insane on the briefing card",
+      "path": "/?round=1&difficulty=insane",
+      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=insane][aria-checked=true]",
+      "visual": true,
+      "impact": [
+        "public/rounds.js",
+        "public/state.js",
+        "public/app.js",
+        "public/index.html",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "difficulty.chaos",
+      "name": "Chaos difficulty marks Chaos on the briefing card",
+      "path": "/?round=1&difficulty=chaos",
+      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=chaos][aria-checked=true]",
+      "visual": true,
+      "impact": [
+        "public/rounds.js",
+        "public/state.js",
+        "public/app.js",
+        "public/index.html",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "difficulty.legend",
+      "name": "Legend difficulty marks Legend on the briefing card",
+      "path": "/?round=1&difficulty=legend",
+      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=legend][aria-checked=true]",
+      "visual": true,
+      "impact": [
+        "public/rounds.js",
+        "public/state.js",
+        "public/app.js",
+        "public/index.html",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Legend fills the round 10 flock and the longer ladder",
+      "path": "/?round=10&difficulty=legend",
+      "expectSelector": "#count-display",
+      "expectText": "of 12 sheep"
+    },
+    {
+      "name": "Legend badge names the longer 12-round ladder",
+      "path": "/?round=5&difficulty=legend",
+      "expectSelector": "#round-badge",
+      "expectText": "Round 5 of 12"
+    },
+    {
       "name": "Calm rule line replaces the run-ending warning",
       "path": "/?round=1&difficulty=calm",
       "expectSelector": "#round-intro-rule",

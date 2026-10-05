@@ -27,13 +27,23 @@ keeping track of who you already counted does not.
   next flock. The card also carries a streak flame: how many days in a
   row the player has played, with the best streak ever reached beside it.
 - **Calm, the default level.** The Get ready card lists Calm first, then
-  Easy, Normal, Hard and Expert. A player with no saved level starts on
+  Easy, Normal, Hard, Expert, and above Expert the long-run levels Insane,
+  Chaos and Legend. A player with no saved level starts on
   Calm; a saved pick is kept. On Calm the sheep only ever drift as slowly
   as an early round, the flock grows by one every two rounds and stops at
   five, a sheep tapped twice just gives a sleepy wiggle, "Done counting"
   with sheep left wiggles the ones still awake, and there is no wolf,
   Speed Round, Duel or game over. Calm rounds keep their own best round
   but never count toward the Global, Friends or weekly leaderboards.
+- **The long-run levels.** Insane, Chaos and Legend are for a player who
+  has topped out Expert. Each keeps its own best round and a longer
+  12-round ladder (the round badge reads "of 12"), the flock reaches the
+  full twelve sheep within a few rounds, movement reaches full chaos by
+  round 4 or 5 and keeps creeping up, and the wolf shows up earlier and
+  in better disguise the higher the level: by Legend's round 5, every
+  round hides one. The wolf's chance and disguise also scale on the
+  original levels, so Easy's wolf is gentler and Hard's slightly sharper
+  than Normal's.
 - **Finishing a round.** Tap every sheep and the round completes itself,
   or tap "Done counting" when you think you have them all. A correct
   count shows a short round-complete message and moves on.

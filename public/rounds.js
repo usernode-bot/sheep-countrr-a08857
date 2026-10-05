@@ -14,10 +14,11 @@ export const MAX_SHEEP = 12;
 // Round at which the movement ramp reaches full chaos.
 export const DEFAULT_DIFFICULTY = 'normal';
 
-// The ladder's length. The round pill reads "Round 5 of 9" so a player
-// always knows how far the run goes; the flock keeps its shape past the
-// top (see sheepForRound's cap) and the suffix drops off there, so the
-// pill never claims a round the flock does not have.
+// The ladder's length for the original five levels. The round pill reads
+// "Round 5 of 9" so a player always knows how far the run goes; the flock
+// keeps its shape past the top (see sheepForRound's cap) and the suffix
+// drops off there, so the pill never claims a round the flock does not
+// have. The levels above Expert run a longer ladder — see totalRoundsFor.
 export const TOTAL_ROUNDS = 9;
 
 // The difficulty dials. Normal is today's curve exactly; Easy stretches the
@@ -73,6 +74,36 @@ export const DIFFICULTIES = {
     speedRamp: 2.2,
     overRate: 0.12,
     jitterScale: 0.4,
+  },
+  // The long-term ladder above Expert. The flock already sits at the shared
+  // MAX_SHEEP cap here, so hardness comes from movement and wolves, not
+  // more sheep: shorter ramps, faster full-chaos speed, a steeper post-ramp
+  // creep and a nervier wobble, each level meaningfully worse than the one
+  // before. Their ladders are also longer (see totalRoundsFor) and their
+  // wolves bite sooner and in better disguise (see wolfModeFactors).
+  insane: {
+    growth: 3.0,
+    maxSheep: 12,
+    rampRounds: 3,
+    speedRamp: 2.5,
+    overRate: 0.16,
+    jitterScale: 0.45,
+  },
+  chaos: {
+    growth: 3.0,
+    maxSheep: 12,
+    rampRounds: 2,
+    speedRamp: 2.8,
+    overRate: 0.2,
+    jitterScale: 0.5,
+  },
+  legend: {
+    growth: 3.0,
+    maxSheep: 12,
+    rampRounds: 2,
+    speedRamp: 3.2,
+    overRate: 0.24,
+    jitterScale: 0.55,
   },
 };
 
@@ -213,9 +244,12 @@ export function roundLabel(round) {
 // spawn draw, the round seed), so /?round=N reproduces the same wolf every
 // time it is loaded, exactly like the rest of the difficulty curve.
 //
-// Every function takes an optional trailing `mode` argument reserved for
-// the future Easy/Expert difficulty work: the existing call sites pass
-// nothing, so nothing changes until the modes land.
+// Every function takes an optional trailing `mode` argument naming the
+// difficulty level: the wolf bites harder the higher the level, so Easy's
+// wolf is rarer and later in plainer disguise while the challenge levels
+// above Expert draw sooner and disguise earlier. The existing call sites
+// pass the player's difficulty; the frozen fixtures pass nothing and so
+// keep Normal.
 
 const WOLF_BASE_CHANCE = 0.15;
 const WOLF_CHANCE_STEP = 0.05;
@@ -224,7 +258,11 @@ export const WOLF_BONUS = 2;
 
 function wolfModeFactors(mode = 'normal') {
   if (mode === 'easy') return { chance: 0.5, tier2: 7, tier3: 10 };
+  if (mode === 'hard') return { chance: 1.2, tier2: 5, tier3: 7 };
   if (mode === 'expert') return { chance: 1.5, tier2: 4, tier3: 6 };
+  if (mode === 'insane') return { chance: 1.8, tier2: 4, tier3: 7 };
+  if (mode === 'chaos') return { chance: 2.2, tier2: 4, tier3: 6 };
+  if (mode === 'legend') return { chance: 2.5, tier2: 3, tier3: 5 };
   return { chance: 1, tier2: 5, tier3: 8 };
 }
 
@@ -268,19 +306,29 @@ const WOLF_CUES = {
   3: 'its eyes glint',
 };
 
-export function wolfCueText(round) {
-  return WOLF_CUES[wolfDisguiseTier(round)] || WOLF_CUES[3];
+export function wolfCueText(round, mode = 'normal') {
+  return WOLF_CUES[wolfDisguiseTier(round, mode)] || WOLF_CUES[3];
+}
+
+// The level's ladder length. The round pill reads "Round 5 of 9" (or
+// "of 12" on the levels above Expert) so a player always knows how far the
+// run goes; see roundBadgeText.
+export function totalRoundsFor(difficulty = DEFAULT_DIFFICULTY) {
+  const d = normalizeDifficulty(difficulty);
+  return d === 'insane' || d === 'chaos' || d === 'legend' ? 12 : TOTAL_ROUNDS;
 }
 
 // The on-screen round text: "Round 5 of 9" while the ladder has more
 // rungs above it, and plain "Round 9" once the flock has reached its cap
 // and the ladder has no further rung to name. The Speed Round keeps its
-// mode prefix so the badge stays honest about what is being played.
-export function roundBadgeText(round, speedOn = false) {
+// mode prefix so the badge stays honest about what is being played. The
+// levels above Expert run a longer 12-round ladder (totalRoundsFor).
+export function roundBadgeText(round, speedOn = false, difficulty = DEFAULT_DIFFICULTY) {
   const r = normalizeRound(round);
+  const total = totalRoundsFor(difficulty);
   const prefix = speedOn ? 'Speed round ' : 'Round ';
-  return r < TOTAL_ROUNDS
-    ? `${prefix}${r} of ${TOTAL_ROUNDS}`
+  return r < total
+    ? `${prefix}${r} of ${total}`
     : `${prefix}${r}`;
 }
 

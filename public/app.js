@@ -1085,7 +1085,7 @@ function dismissDuelPanel() {
 // button starts counting. The difficulty picker lives on the card. Selecting a level
 // immediately rewrites the briefing line, so the player can see what each
 // level means before committing to Start counting.
-const DIFFICULTY_LABELS = { calm: 'Calm', easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert' };
+const DIFFICULTY_LABELS = { calm: 'Calm', easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert', insane: 'Insane', chaos: 'Chaos', legend: 'Legend' };
 
 // Calm drops the card's challenge lines: its rule line promises the
 // forgiving tap, and the wolf warning, Speed Round and Duel (each a way
@@ -1139,7 +1139,7 @@ function syncDuelToggle(state) {
 // touch it: it sits above the canvas and the DOM grid, so both frame the
 // flock exactly as before.
 function syncRoundBadge(state) {
-  const badge = roundBadgeText(state.round, state.speedOn && state.phase !== RUN_OVER);
+  const badge = roundBadgeText(state.round, state.speedOn && state.phase !== RUN_OVER, state.difficulty);
   els.roundBadge.textContent = badge;
   els.a11yRoundProgress.textContent = `${badge}.`;
 }
@@ -1469,7 +1469,7 @@ function renderA11yList(state) {
       : (state.counted.includes(i)
         ? `Sheep ${i + 1}, counted` : `Sheep ${i + 1}, not counted yet`);
     // The wolf's entry names what gives it away on screen (wolfCueText).
-    btn.textContent = state.wolfIndex === i ? `${label}, and ${wolfCueText(state.round)}` : label;
+    btn.textContent = state.wolfIndex === i ? `${label}, and ${wolfCueText(state.round, state.difficulty)}` : label;
   });
   // The countdown mirrors into the a11y channel too, appended after the
   // clock line, so when the round goes live the clock is the last thing

@@ -19,7 +19,7 @@ export function bestRoundsCsv(state) {
   const rows = [
     csvRow(['difficulty', 'best_round']),
   ];
-  for (const difficulty of ['easy', 'normal', 'hard', 'expert']) {
+  for (const difficulty of ['easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend']) {
     rows.push(csvRow([difficulty, (state.bestRounds && state.bestRounds[difficulty]) || 1]));
   }
   return rows.join('\r\n') + '\r\n';
