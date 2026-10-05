@@ -48,8 +48,9 @@ keeping track of who you already counted does not.
   grassy field). Devices without WebGL, or `?renderer=dom`, fall back to
   a grid of big round cards that drift with the same seeded motion and
   share the same counting logic.
-- **Sound is off by default.** Soft chimes only play once a grown-up
-  turns sound on.
+- **Sound is on by default.** Every counted sheep gives a soft baa (plus
+  a gentle chime, Web Audio only, no asset files). A grown-up can mute
+  it with the Sound effects toggle in the grown-ups panel.
 - **The grown-ups panel** (sound, progress, start over) is reached by a
   ~1.5 second press-and-hold on the small gear icon in the corner, or
   Enter/Space with a keyboard. A quick tap does nothing, so a child
