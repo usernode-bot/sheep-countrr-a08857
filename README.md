@@ -34,9 +34,9 @@ keeping track of who you already counted does not.
   with sheep left wiggles the ones still awake, and there is no wolf,
   Speed Round, Duel or game over. Calm rounds keep their own best round
   but never count toward the Global, Friends or weekly leaderboards.
-- **Finishing a round.** Tap every sheep and the round completes itself,
-  or tap "Done counting" when you think you have them all. A correct
-  count shows a short round-complete message and moves on.
+- **Finishing a round.** Tapping the last sheep only marks it; the round
+  waits for the "Done counting" tap. Saying done with every sheep counted
+  shows a short round-complete message and moves on.
 - **Ending a run.** Tapping a sheep you already counted, or saying you
   are done while sheep are still uncounted, ends the run. The game-over
   screen names the round you reached and offers "Start again", which

@@ -230,6 +230,12 @@
       ]
     },
     {
+      "name": "A fully counted flock waits for Done counting",
+      "path": "/?scene=allcounted",
+      "expectSelector": "#round-complete[hidden]",
+      "expectText": "Tap Done counting"
+    },
+    {
       "name": "Game over shows the round reached and a restart",
       "path": "/?scene=gameover",
       "expectSelector": "#restart-btn",

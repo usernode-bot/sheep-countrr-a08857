@@ -136,9 +136,6 @@ const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-m
 // How long the success message sits before the next round starts. Long
 // enough for the praise line to be read; the Next round button skips it.
 const ADVANCE_DELAY_MS = 2600;
-// A beat after the last sheep is tapped, so the tap reads before the round
-// settles itself.
-const AUTO_SUBMIT_MS = 650;
 // One second per countdown number, per the brief.
 const COUNTDOWN_STEP_MS = 1000;
 
@@ -321,7 +318,6 @@ document.querySelectorAll('.panel-backdrop').forEach((el) => {
 });
 
 let advanceTimer = null;
-let autoSubmitTimer = null;
 // True while the pre-round briefing covers the board, so no tap or
 // submit can register before the player taps Start counting.
 let introOpen = false;
@@ -394,6 +390,14 @@ function buildStaticState() {
   if (sceneParam === 'roundcomplete') {
     const n = sheepForRound(4, difficultyParam);
     return at(4, { count: n, counted: [...Array(n).keys()], phase: ROUND_PASSED });
+  }
+  if (sceneParam === 'allcounted') {
+    // A fully counted flock that is still waiting for the Done tap: the
+    // round no longer closes itself when the last sheep is tapped, so the
+    // play screen holds the board (and the count plate) with no success
+    // card. No wolf: every animal in this fixture is a real sheep.
+    const n = sheepForRound(5, difficultyParam);
+    return at(5, { count: n, counted: [...Array(n).keys()] });
   }
   if (sceneParam === 'gameover') {
     return at(6, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
@@ -824,14 +828,12 @@ function handleTap(index) {
       playBaa();
       playTapChime(result.number);
     }
+    // The flock is fully counted: hold the Speed Round clock here while
+    // the player decides to tap Done counting, so a complete count can
+    // never be lost to the clock. The round itself no longer closes on
+    // the last tap; the success message only comes from Done counting.
+    if (store.isComplete()) stopSpeedClock();
     renderA11yList(store.state);
-    if (store.isComplete()) {
-      // Auto-complete: every sheep is marked, so the round closes itself.
-      clearTimeout(autoSubmitTimer);
-      autoSubmitTimer = setTimeout(() => {
-        if (store.state.phase === COUNTING && store.isComplete()) store.submitCount();
-      }, AUTO_SUBMIT_MS);
-    }
     return;
   }
   if (result.outcome === 'doubleTap' || result.outcome === 'wiggle') {
@@ -850,7 +852,6 @@ function handleTap(index) {
 function submitCount() {
   if (introOpen) return;
   if (countdownOpen) return;
-  clearTimeout(autoSubmitTimer);
   const result = store.submitCount();
   // Calm never ends a run on a short count: the sheep still awake give a
   // sleepy wiggle so the player can see who is left, and counting goes on.
@@ -1265,7 +1266,10 @@ function startSpeedClock() {
   updateChrome(store.state);
   renderA11yList(store.state);
   speedClockTimer = setInterval(() => {
-    if (store.state.phase !== COUNTING || !store.state.speedOn) {
+    // A fully counted flock stops the clock the same way a passed or lost
+    // round does: the player still owes the Done tap, and a complete
+    // count must never be lost to the countdown while they make it.
+    if (store.state.phase !== COUNTING || !store.state.speedOn || store.isComplete()) {
       clearInterval(speedClockTimer);
       return;
     }
@@ -1304,7 +1308,6 @@ function advanceRound() {
 
 function restartRun() {
   clearTimeout(advanceTimer);
-  clearTimeout(autoSubmitTimer);
   stopSpeedClock();
   stopDuelClock();
   duelState = null;
@@ -1331,7 +1334,7 @@ function hintFor(state) {
   if (state.phase === RUN_OVER) return 'Tap Start again for round 1.';
   if (state.count === 0) return state.sheepCount === 1 ? 'Tap the sheep.' : 'Tap every sheep.';
   const wolves = state.wolfIndex != null ? 1 : 0;
-  if (state.count >= state.sheepCount - wolves) return 'That is all of them.';
+  if (state.count >= state.sheepCount - wolves) return 'That is all of them. Tap Done counting.';
   return 'Tap every sheep, then tap Done counting.';
 }
 
