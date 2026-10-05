@@ -933,7 +933,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       g.scale.setScalar(scale);
 
       const isWolf = state.wolfIndex === i;
-      const tier = isWolf ? wolfDisguiseTier(state.round) : 0;
+      const tier = isWolf ? wolfDisguiseTier(state.round, state.difficulty) : 0;
       const body = new THREE.Mesh(
         isWolf ? wolfBodyGeos[tier - 1][i % 3] : bodyGeos[i % bodyGeos.length],
         sheepMat

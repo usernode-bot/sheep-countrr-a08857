@@ -145,7 +145,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       }
       const isWolf = state.wolfIndex === i;
       if (isWolf) {
-        const tier = wolfDisguiseTier(state.round);
+        const tier = wolfDisguiseTier(state.round, state.difficulty);
         btn.dataset.wolf = 'true';
         btn.dataset.wolfTier = String(tier);
         btn.innerHTML = SHEEP_SVG.replace('</svg>', WOLF_CUES_SVG + '\n</svg>')

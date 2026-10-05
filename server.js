@@ -105,7 +105,7 @@ const MAX_TAPS_PER_SYNC = 12;
 // bedtime level: it keeps its own best round in best_rounds but never
 // raises best_round (the Global and Friends score) and never records a run
 // (the weekly score), so Calm play stays out of the challenge leaderboards.
-const DIFFICULTIES = new Set(['calm', 'easy', 'normal', 'hard', 'expert']);
+const DIFFICULTIES = new Set(['calm', 'easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend']);
 
 // URL-safe code shapes. The client copies full URLs, but the key/code itself
 // never carries anything else, so a strict charset check is all the input
@@ -399,6 +399,9 @@ app.get('/api/export', async (req, res) => {
       normal: stored.normal || 1,
       hard: stored.hard || 1,
       expert: stored.expert || 1,
+      insane: stored.insane || 1,
+      chaos: stored.chaos || 1,
+      legend: stored.legend || 1,
     };
 
     const { rows: runRows } = await pool.query(
@@ -520,7 +523,7 @@ app.get('/api/state', async (req, res) => {
 
     // bestRounds holds one best round per difficulty; the legacy best_round
     // column stays the all-time best and still folds in for old clients.
-    const bestRounds = { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1, ...(row.best_rounds || {}) };
+    const bestRounds = { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1, insane: 1, chaos: 1, legend: 1, ...(row.best_rounds || {}) };
 
     res.json({
       round: row.round,

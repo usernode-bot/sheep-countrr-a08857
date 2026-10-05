@@ -50,6 +50,10 @@ import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
 import { isSoundEnabled, setSoundEnabled } from '../public/sound.js';
 import { bestRoundsCsv, weeklyHistoryCsv } from '../public/export.js';
 
+// Every challenge level: Calm is excluded because it never ramps and never
+// hides a wolf, and the per-difficulty loops below cover the rest.
+const CHALLENGE_LEVELS = ['easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend'];
+
 // A store that behaves exactly like a /?round=N deep link: fixed seeds, and
 // no localStorage or network to reach for from a test process.
 function newStore(recorded) {
@@ -97,8 +101,18 @@ test('the round badge names the round and the ladder length', () => {
   // A Speed Round keeps its mode prefix on every rung.
   assert.equal(roundBadgeText(1, true), 'Speed round 1 of 9');
   assert.equal(roundBadgeText(9, true), 'Speed round 9');
+  // The levels above Expert run a longer 12-round ladder; the original
+  // five keep "of 9" whatever the round.
+  assert.equal(roundBadgeText(5, false, 'legend'), 'Round 5 of 12');
+  assert.equal(roundBadgeText(9, false, 'chaos'), 'Round 9 of 12');
+  assert.equal(roundBadgeText(12, false, 'insane'), 'Round 12');
+  assert.equal(roundBadgeText(5, true, 'legend'), 'Speed round 5 of 12');
+  assert.equal(roundBadgeText(5, false, 'normal'), 'Round 5 of 9');
+  assert.equal(roundBadgeText(5, false, 'calm'), 'Round 5 of 9');
   // Deep-link normalization: a bogus round reads as round 1.
   assert.equal(roundBadgeText('bogus'), 'Round 1 of 9');
+  // A bogus level falls back to Normal's ladder, never a crash.
+  assert.equal(roundBadgeText(5, false, 'bogus'), 'Round 5 of 9');
 });
 
 test('rounds get faster and more erratic, and never tame down', () => {
@@ -308,6 +322,70 @@ test('wolfIndexForRound is deterministic, in range, and null on no-wolf rounds',
   assert.ok(draws.has('none'), 'no round ever drew a plain flock');
 });
 
+test('the wolf bites in proportion to the level', () => {
+  // Round 1 is the tap-to-learn round at every level, wolf or not.
+  for (const d of CHALLENGE_LEVELS) {
+    assert.equal(wolfChance(1, d), 0, `${d} round 1 wolf`);
+  }
+  // Easy's wolf is gentler than Normal's, and every step up the ladder
+  // draws at least as often as the one below it.
+  for (let round = 2; round <= 24; round++) {
+    const easy = wolfChance(round, 'easy');
+    const normal = wolfChance(round, 'normal');
+    const hard = wolfChance(round, 'hard');
+    const expert = wolfChance(round, 'expert');
+    const insane = wolfChance(round, 'insane');
+    const chaos = wolfChance(round, 'chaos');
+    const legend = wolfChance(round, 'legend');
+    assert.ok(easy <= normal, `round ${round} easy wolf sharper than normal`);
+    assert.ok(normal <= hard, `round ${round} normal wolf sharper than hard`);
+    assert.ok(hard <= expert, `round ${round} hard wolf sharper than expert`);
+    assert.ok(expert <= insane, `round ${round} expert wolf sharper than insane`);
+    assert.ok(insane <= chaos, `round ${round} insane wolf sharper than chaos`);
+    assert.ok(chaos <= legend, `round ${round} chaos wolf sharper than legend`);
+    assert.ok(easy > 0 && legend > 0, `round ${round} chance vanished`);
+  }
+  // The cap is the global 0.7, so Legend's steeper multiplier reaches it
+  // by round 5: from there every Legend round hides a wolf, which is the
+  // top level's signature.
+  assert.equal(wolfChance(2, 'legend'), 0.375);
+  assert.equal(wolfChance(4, 'legend'), 0.625);
+  assert.equal(wolfChance(5, 'legend'), 0.7);
+  assert.equal(wolfChance(24, 'legend'), 0.7);
+  // A per-level draw is still deterministic and in range.
+  const n = sheepForRound(5, 'legend');
+  const a = wolfIndexForRound(5, roundSeed(5), n, 'legend');
+  assert.deepEqual(a, wolfIndexForRound(5, roundSeed(5), n, 'legend'));
+  if (a !== null) assert.ok(a >= 0 && a < n, 'legend wolf index out of range');
+});
+
+test('the wolf disguise follows the level, and the cue copy matches', () => {
+  // The named tiers on Normal (the pre-difficulty game) are unchanged.
+  assert.equal(wolfDisguiseTier(4), 1);
+  assert.equal(wolfDisguiseTier(7), 2);
+  assert.equal(wolfDisguiseTier(8), 3);
+  // Higher levels disguise earlier: Legend reaches near-perfect by round 5.
+  assert.equal(wolfDisguiseTier(3, 'legend'), 2);
+  assert.equal(wolfDisguiseTier(5, 'legend'), 3);
+  assert.equal(wolfDisguiseTier(4, 'expert'), 2);
+  assert.equal(wolfDisguiseTier(7, 'expert'), 3);
+  assert.equal(wolfDisguiseTier(6, 'easy'), 1, 'easy wolf keeps its bushy tail');
+  assert.equal(wolfDisguiseTier(7, 'easy'), 2);
+  // The screen-reader cue names what the renderer draws for that tier, at
+  // every level, so the list never promises the wrong giveaway.
+  for (const d of CHALLENGE_LEVELS) {
+    for (let round = 2; round <= 24; round++) {
+      const tier = wolfDisguiseTier(round, d);
+      const cue = wolfCueText(round, d);
+      assert.equal(cue, wolfCueText(tier === 1 ? 1 : tier === 2 ? 5 : 8), `${d} round ${round} cue mismatch`);
+      assert.ok(!cue.includes('—'), `em dash in ${d} round ${round} cue`);
+    }
+  }
+  // A missing or mangled level still reads as Normal, never a crash.
+  assert.equal(wolfCueText(8, 'bogus'), wolfCueText(8));
+  assert.equal(wolfDisguiseTier(8, 'bogus'), 3);
+});
+
 test('wolfDisguiseTier never regresses and follows the ramp', () => {
   assert.equal(wolfDisguiseTier(1), 1);
   assert.equal(wolfDisguiseTier(2), 1);
@@ -434,7 +512,7 @@ test('sheep phrases and pace lines read naturally at their edges', () => {
   }
 });
 test('every difficulty keeps round 1 as one motionless sheep', () => {
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of CHALLENGE_LEVELS) {
     assert.equal(sheepForRound(1, d), 1, `${d} round 1 flock`);
     const m = motionForRound(1, d);
     assert.equal(m.speed, 0, `${d} round 1 speed`);
@@ -456,13 +534,18 @@ test('each difficulty grows its flock on its own curve, capped', () => {
   assert.equal(sheepForRound(5, 'normal'), 7);
   assert.equal(sheepForRound(5, 'hard'), 9);
   assert.equal(sheepForRound(5, 'expert'), 11);
+  // The levels above Expert grow at 3 sheep a round and so reach the shared
+  // cap by round 5; named from the legend deep-link fixture.
+  assert.equal(sheepForRound(5, 'insane'), MAX_SHEEP);
+  assert.equal(sheepForRound(5, 'chaos'), MAX_SHEEP);
+  assert.equal(sheepForRound(10, 'legend'), MAX_SHEEP);
   // Easy stops at 6 sheep; the others at the shared MAX_SHEEP cap.
   assert.equal(sheepForRound(30, 'easy'), 6);
-  for (const d of ['normal', 'hard', 'expert']) {
+  for (const d of ['normal', 'hard', 'expert', 'insane', 'chaos', 'legend']) {
     assert.equal(sheepForRound(30, d), MAX_SHEEP, `${d} cap`);
   }
   // A level never shrinks its flock as rounds go on.
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of CHALLENGE_LEVELS) {
     let prev = sheepForRound(1, d);
     for (let round = 2; round <= 20; round++) {
       const n = sheepForRound(round, d);
@@ -473,7 +556,7 @@ test('each difficulty grows its flock on its own curve, capped', () => {
 });
 
 test('later rounds never tame down, at any difficulty', () => {
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of CHALLENGE_LEVELS) {
     let prev = motionForRound(1, d);
     for (let round = 2; round <= 24; round++) {
       const m = motionForRound(round, d);
@@ -488,17 +571,32 @@ test('later rounds never tame down, at any difficulty', () => {
   // The levels are meaningfully apart where the ramps bite.
   assert.ok(motionForRound(5, 'expert').speed > motionForRound(5, 'normal').speed * 1.5);
   assert.ok(motionForRound(5, 'easy').speed < motionForRound(5, 'normal').speed);
+  assert.ok(motionForRound(5, 'insane').speed > motionForRound(5, 'expert').speed);
+  assert.ok(motionForRound(5, 'chaos').speed > motionForRound(5, 'insane').speed);
+  assert.ok(motionForRound(5, 'legend').speed > motionForRound(5, 'chaos').speed);
 });
 
 test('wandering stays deterministic, bounded and continuous at every difficulty', () => {
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of CHALLENGE_LEVELS) {
     // A sheep must stay followable by eye, never warping. The drift term
     // has a corner at each reversal, so a single frame at the corner is
     // allowed to move up to DRIFT_MAX; everything above that is a warp. The
     // bound scales with the level: a faster difficulty legitimately covers
     // more ground in the same 1/30th of a second.
+    // Insane/Chaos/Legend reach full chaos by round 4-5 and a higher
+    // post-ramp ceiling, so their frames cover proportionally more ground;
+    // the limits below are pinned from the sweep (worst measured frame:
+    // insane 1.02, chaos 1.18, legend 1.37), not guessed.
     const DRIFT_MAX = 0.5;
-    const JUMP_LIMIT = { easy: DRIFT_MAX, normal: DRIFT_MAX * 1.2, hard: DRIFT_MAX * 1.5, expert: DRIFT_MAX * 2 }[d];
+    const JUMP_LIMIT = {
+      easy: DRIFT_MAX,
+      normal: DRIFT_MAX * 1.2,
+      hard: DRIFT_MAX * 1.5,
+      expert: DRIFT_MAX * 2,
+      insane: DRIFT_MAX * 2.2,
+      chaos: DRIFT_MAX * 2.5,
+      legend: DRIFT_MAX * 2.9,
+    }[d];
     for (let round = 1; round <= 16; round++) {
       const m = motionForRound(round, d);
       const bound = Math.max(roamRadius(round, d), 0.35);
@@ -549,7 +647,7 @@ test('the briefing names the right flock per difficulty', () => {
   assert.equal(roundIntroText(3, 'easy'), 'Round 3 has 3 sheep. They start to wander.');
   assert.equal(roundIntroText(1, 'expert'), 'Round 1 has 1 sheep. This one stands still.');
   // No em dashes in anything the player reads, at any level.
-  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+  for (const d of CHALLENGE_LEVELS) {
     for (const round of [1, 5, 12]) {
       assert.ok(!roundIntroText(round, d).includes('\u2014'), `em dash in ${d} round ${round}`);
       assert.ok(!paceLine(round, d).includes('\u2014'), `em dash in pace ${d} round ${round}`);
@@ -795,7 +893,7 @@ test('a passed Speed Round advances with a fresh clock and keeps the mode', () =
 
 test('calm mode slows the flock without changing what the round asks for', () => {
   // The motion profile keeps its shape: same roam radius, a slower clock.
-  for (const difficulty of ['easy', 'normal', 'hard', 'expert']) {
+  for (const difficulty of CHALLENGE_LEVELS) {
     const raw = motionForRound(6, difficulty);
     const calm = calmMotion(6, difficulty);
     assert.ok(calm.speed < raw.speed, `${difficulty} calm speed did not slow`);
@@ -1027,14 +1125,15 @@ test('a duel turn that double-taps still lands in the run-over path', () => {
 // The grown-ups export: the CSV builders are pure, so the browser button and
 // these assertions share one source of truth for the file's exact shape.
 test('the best-rounds export names every difficulty and folds legacy data', () => {
-  const csv = bestRoundsCsv({ bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2 } });
+  const csv = bestRoundsCsv({ bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2, insane: 4, chaos: 3, legend: 2 } });
   assert.equal(
     csv,
-    'difficulty,best_round\r\neasy,3\r\nnormal,7\r\nhard,5\r\nexpert,2\r\n',
+    'difficulty,best_round\r\neasy,3\r\nnormal,7\r\nhard,5\r\nexpert,2\r\ninsane,4\r\nchaos,3\r\nlegend,2\r\n',
     'one header and one row per level, CRLF-terminated'
   );
   const legacy = bestRoundsCsv({});
   assert.match(legacy, /normal,1/, 'a store with no bestRounds yet exports defaults');
+  assert.match(legacy, /legend,1/, 'a level nobody has played exports its default too');
 });
 
 test('the weekly history export carries the clock tag and quotes commas', () => {
