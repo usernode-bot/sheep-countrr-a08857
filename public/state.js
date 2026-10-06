@@ -73,6 +73,18 @@ function normalizeStreakCount(raw) {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+// ---- Sound default ----
+// Sound defaults ON: every counted sheep gives a soft baa. Saves written
+// before that was the default carry soundOn:false only because off was
+// what the app shipped with, not because a grown-up chose silence. The
+// soundSet marker (written with every save since) separates "never chose"
+// from "chose off": a pre-marker save takes the new default once, and a
+// mute made after it persists the marker and stays off.
+function restoredSound(saved) {
+  const chose = saved.soundSet === true;
+  return { soundOn: chose ? !!saved.soundOn : true, preBaaSave: !chose };
+}
+
 function normalizeBestRounds(raw, fallback) {
   const out = { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1 };
   const source = raw && typeof raw === 'object' ? raw : {};
@@ -107,7 +119,7 @@ export function createDefaultState() {
     bestRounds: { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1 },
     totalCounted: 0,
     communityTotal: 0,
-    soundOn: false,
+    soundOn: true,
     nightOn: false,
     calmOn: false,
     namesOn: false,
@@ -164,6 +176,11 @@ export class StateStore {
     this.roundClock = null;
     // True while a resumable board is on screen (see hasMidRoundSnapshot).
     this._hasMidRoundSnapshot = false;
+    // Sound settings: whether a saved choice exists (the soundSet marker)
+    // and whether the local save read last boot predated the baa default,
+    // which also decides how this boot's server sync reads soundOn.
+    this._soundChosen = false;
+    this._preBaaSave = false;
     // A counting tap's localStorage write, deferred off the tap path (see
     // flushPendingSave). Any other storage write flushes it first, so it
     // can never land after (and undo) a later clearMidRound.
@@ -212,10 +229,17 @@ export class StateStore {
         // Nothing saved on this device: a new player opens on Calm. A
         // level saved on the server still wins in loadRemote.
         this.state = { ...this.state, difficulty: NEW_PLAYER_DIFFICULTY };
+        this._soundChosen = true;
         this.startRound(1, { silent: true });
         return this.state;
       }
       const saved = JSON.parse(raw);
+      const sound = restoredSound(saved);
+      // Reading the save decides the sound value either way (restored, or
+      // the baa default applied once), so this boot's saves carry the
+      // marker and later boots restore instead of re-applying.
+      this._soundChosen = true;
+      this._preBaaSave = sound.preBaaSave;
       // Only the run-spanning values are restored. A half-counted round
       // is never resumed: coming back mid-round and finding taps you do
       // not remember making is a run-ending trap.
@@ -226,7 +250,7 @@ export class StateStore {
         bestSafeStreak: Math.max(0, Number(saved.bestSafeStreak) || 0),
         bonusCounted: Math.max(0, Number(saved.bonusCounted) || 0),
         totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
-        soundOn: !!saved.soundOn,
+        soundOn: sound.soundOn,
         nightOn: !!saved.nightOn,
         calmOn: normalizeCalm(saved.calmOn),
         namesOn: !!saved.namesOn,
@@ -270,6 +294,7 @@ export class StateStore {
         bonusCounted: this.state.bonusCounted,
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
+        soundSet: this._soundChosen === true,
         nightOn: this.state.nightOn,
         calmOn: this.state.calmOn,
         namesOn: this.state.namesOn,
@@ -310,7 +335,12 @@ export class StateStore {
         bonusCounted: Math.max(0, Number(data.bonusCounted) || 0),
         totalCounted: Math.max(0, Number(data.totalCounted) || 0),
         communityTotal: Math.max(0, Number(data.communityTotal) || 0),
-        soundOn: !!data.soundOn,
+        // A save that predates the baa default carries soundOn:false only
+        // because off was the old default, and the server row says the
+        // same; neither is a choice, so the new default stands and the
+        // next sync writes it up. A post-change mute rides the normal
+        // restore.
+        soundOn: this._preBaaSave ? true : !!data.soundOn,
         nightOn: !!data.nightOn,
         calmOn: normalizeCalm(data.calmOn),
         // A null difficulty means the server has no saved pick (its row
@@ -441,12 +471,15 @@ export class StateStore {
   // A pure save/restore shape used by the tests to exercise the same
   // normalization loadLocal applies, without touching localStorage.
   loadLocalFrom(saved) {
+    const sound = restoredSound(saved);
+    this._soundChosen = true;
+    this._preBaaSave = sound.preBaaSave;
     this.state = {
       ...this.state,
       round: normalizeRound(saved.round),
       bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
           totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
-          soundOn: !!saved.soundOn,
+          soundOn: sound.soundOn,
           nightOn: !!saved.nightOn,
           calmOn: normalizeCalm(saved.calmOn),
           namesOn: !!saved.namesOn,
@@ -837,6 +870,10 @@ export class StateStore {
   }
 
   setSoundOn(on) {
+    // Touching the toggle is a real choice: mark the save so later boots
+    // restore exactly this value instead of re-applying the default.
+    this._soundChosen = true;
+    this._preBaaSave = false;
     this.state = { ...this.state, soundOn: !!on };
     this.saveLocal();
     this.scheduleSync();

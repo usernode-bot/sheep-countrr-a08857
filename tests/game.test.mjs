@@ -601,19 +601,58 @@ test('the sound enabled flag gates before any AudioContext work', () => {
   assert.equal(isSoundEnabled(), false);
 });
 
+test('sound is on for a fresh run, before any grown-up touches settings', () => {
+  const { store } = newStore();
+  assert.equal(store.state.soundOn, true);
+});
+
 test('the sound toggle persists through save and load', () => {
   const { store } = newStore();
   store.setSoundOn(true);
   assert.equal(store.state.soundOn, true);
   // A fresh store reading the same storage shape restores the toggle.
-  const saved = { round: 2, difficulty: 'normal', totalCounted: 4, soundOn: true };
+  const saved = { round: 2, difficulty: 'normal', totalCounted: 4, soundOn: true, soundSet: true };
   const { store: restored } = newStore();
   restored.loadLocalFrom(saved);
   assert.equal(restored.state.soundOn, true);
-  // And off again stays off.
+  // A save from before sound defaulted on carries soundOn:false as the
+  // old shipped default, not a choice: the baa default applies once.
+  const { store: upgraded } = newStore();
+  upgraded.loadLocalFrom({ round: 2, difficulty: 'normal', totalCounted: 4, soundOn: false });
+  assert.equal(upgraded.state.soundOn, true);
+  // And a grown-up's mute, made after the default flipped, stays off.
   const { store: muted } = newStore();
-  muted.loadLocalFrom({ round: 2, difficulty: 'normal', totalCounted: 4, soundOn: false });
+  muted.loadLocalFrom({ round: 2, difficulty: 'normal', totalCounted: 4, soundOn: false, soundSet: true });
   assert.equal(muted.state.soundOn, false);
+});
+
+test('a nightly player saved before the baa default hears sound on the next boot', async () => {
+  // The device save and the server row both still say soundOn:false,
+  // because off was the old shipped default. Neither was a choice: the
+  // new default stands, the boot writes the marker, and the next sync
+  // upgrades the server row too.
+  await withFakeBrowser(
+    { round: 2, difficulty: 'normal', totalCounted: 9, soundOn: false },
+    { round: 2, difficulty: 'normal', totalCounted: 9, soundOn: false, nightOn: false, calmOn: false },
+    async (store, mem) => {
+      store.loadLocal();
+      await store.loadRemote();
+      assert.equal(store.state.soundOn, true);
+      const written = JSON.parse(mem.get(store.storageKey));
+      assert.equal(written.soundOn, true);
+      assert.equal(written.soundSet, true);
+    }
+  );
+  // And a mute a grown-up made after the flip survives both restores.
+  await withFakeBrowser(
+    { round: 2, difficulty: 'normal', totalCounted: 9, soundOn: false, soundSet: true },
+    { round: 2, difficulty: 'normal', totalCounted: 9, soundOn: false, nightOn: false, calmOn: false },
+    async (store) => {
+      store.loadLocal();
+      await store.loadRemote();
+      assert.equal(store.state.soundOn, false);
+    }
+  );
 });
 
 test('the per-difficulty best map survives a local save and load', () => {
