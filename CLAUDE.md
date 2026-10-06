@@ -88,8 +88,9 @@ cannot wander in. See `README.md` for the full feature description.
   or writes localStorage or the server. That is what lets it share the
   auth exemption with `?scene=`; keep it side-effect-free.
 - **Frozen screenshot fixtures live behind `?scene=`** (`portrait`,
-  `empty`, `midcount`, `roundcomplete`, `gameover`, `grownups`, `flock`
-  — see `dapp.json`'s `tests`). `public/app.js`'s `staticMode` branch
+  `empty`, `midcount`, `allcounted`, `roundcomplete`, `gameover`,
+  `grownups`, `flock` — see `dapp.json`'s `tests`). `public/app.js`'s
+  `staticMode` branch
   renders these from hardcoded data only (`buildStaticState()`) and never
   touches localStorage or the server — keep it that way, since these
   routes are exempted from the auth gate in `server.js` specifically
