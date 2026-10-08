@@ -837,8 +837,13 @@ function handleTap(index) {
     return;
   }
   if (result.outcome === 'doubleTap' || result.outcome === 'wiggle') {
-    // On Calm ('wiggle') this is the whole response: the sheep wiggles
-    // sleepily and the round carries on.
+    // Every tap on a sheep baas. On Calm ('wiggle') this is the whole
+    // response: the sheep wiggles sleepily and the round carries on.
+    // A solo doubleTap already baas from the game-over card in syncPanels,
+    // so only the wiggle and duel paths play it here.
+    if (store.state.soundOn && (result.outcome === 'wiggle' || store.state.duel)) {
+      playBaa();
+    }
     renderer.wiggleSheep(index);
     renderA11yList(store.state);
     return;

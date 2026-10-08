@@ -67,7 +67,7 @@ already counted is the difficulty. Tapping an uncounted sheep counts it
 and marks it permanently (numbered ribbon, eyes closed, motion stopped);
 tapping a counted sheep, or submitting a short count, ends the run and
 shows the round reached with a restart button. Sound is on by default: a
-soft Web Audio baa plays each time a sheep is counted, and a grown-up
+soft Web Audio baa plays each time a sheep is tapped, and a grown-up
 mutes it (and reaches settings: progress, start over) only via a ~1.5s
 press-and-hold on the corner gear icon, so a child mashing the screen
 cannot wander in. The on-by-default flip carries a one-time migration
