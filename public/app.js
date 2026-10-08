@@ -838,8 +838,10 @@ function handleTap(index) {
   }
   if (result.outcome === 'doubleTap' || result.outcome === 'wiggle') {
     // On Calm ('wiggle') this is the whole response: the sheep wiggles
-    // sleepily and the round carries on.
+    // sleepily and the round carries on. The tap did land on a sheep
+    // body, so it baas like any other tap on a sheep.
     renderer.wiggleSheep(index);
+    if (store.state.soundOn) playBaa();
     renderA11yList(store.state);
     return;
   }
