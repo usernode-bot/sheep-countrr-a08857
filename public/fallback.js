@@ -2,7 +2,7 @@
 // is set for testing. Shares the exact same counting semantics as the
 // 3D scene: same tap contract (onTap(index)), same counted-badge numbers,
 // same pastel per number.
-import { NUMBER_COLORS, sheepName } from './layout.js';
+import { nearestForgivenTap, NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
 import { calmMotion, isCalmLevel, motionForRound, wolfDisguiseTier } from './rounds.js';
 
@@ -287,6 +287,29 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   }
 
   function celebrate() {}
+
+  // Tap forgiveness, same rule as the 3D scene: a click that lands in the
+  // gap between cards counts the uncounted, non-wolf card nearest to it,
+  // within a fingertip of its edge. A click on a card itself keeps the
+  // card's own listener, with today's rules (a counted card still ends the
+  // run), so a sloppy near miss can never end one.
+  field.addEventListener('click', (evt) => {
+    if (evt.target && evt.target.closest && evt.target.closest('.sheep-card')) return;
+    const targets = [];
+    for (let i = 0; i < cards.length; i++) {
+      const btn = cards[i];
+      const box = btn.getBoundingClientRect();
+      targets.push({
+        index: i,
+        x: box.left + box.width / 2,
+        y: box.top + box.height / 2,
+        r: Math.min(box.width, box.height) / 2,
+        eligible: !btn.classList.contains('is-counted') && btn.dataset.wolf !== 'true',
+      });
+    }
+    const forgiven = nearestForgivenTap(targets, evt.clientX, evt.clientY);
+    if (forgiven >= 0) onTap(forgiven);
+  });
 
   // Night Meadow: the field's ground gradients are CSS variables on the
   // body class (see index.html), so the DOM renderer only has to mirror

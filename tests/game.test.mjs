@@ -45,7 +45,7 @@ import {
 import { readFileSync } from 'node:fs';
 import { wanderOffset } from '../public/movement.js';
 import { weekStartUtc, sortScoreRows } from '../public/leaderboard.js';
-import { sheepName } from '../public/layout.js';
+import { nearestForgivenTap, sheepName, TAP_FORGIVE_PX } from '../public/layout.js';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
 import { isSoundEnabled, setSoundEnabled } from '../public/sound.js';
 import { bestRoundsCsv, weeklyHistoryCsv } from '../public/export.js';
@@ -169,6 +169,62 @@ test('name labels are playful, deterministic and drift by seed', () => {
   for (const name of Array.from({ length: 24 }, (_, i) => sheepName(roundSeed(4) + i, i))) {
     assert.ok(!name.includes('\u2014'), name);
   }
+});
+
+test('a near miss counts the closest uncounted sheep', () => {
+  // A fingertip lands just off a sheep's edge: it still counts that sheep.
+  const single = [{ index: 0, x: 100, y: 100, r: 20, eligible: true }];
+  assert.equal(nearestForgivenTap(single, 140, 100), 0);
+  assert.equal(nearestForgivenTap(single, 118, 130), 0);
+  // Of two eligible sheep, the one whose edge is nearest the tap wins.
+  const pair = [
+    { index: 0, x: 100, y: 100, r: 20, eligible: true },
+    { index: 1, x: 220, y: 100, r: 20, eligible: true },
+  ];
+  assert.equal(nearestForgivenTap(pair, 145, 100), 0);
+  assert.equal(nearestForgivenTap(pair, 175, 100), 1);
+  // The forgiveness distance is a fingertip, not a shot in the dark.
+  assert.ok(TAP_FORGIVE_PX >= 20 && TAP_FORGIVE_PX <= 40);
+});
+
+test('a tap far from every sheep counts nothing', () => {
+  const single = [{ index: 0, x: 100, y: 100, r: 20, eligible: true }];
+  // One pixel past the forgiveness radius from the edge: nothing.
+  assert.equal(nearestForgivenTap(single, 151, 100), -1);
+  assert.equal(nearestForgivenTap(single, 100, 300), -1);
+  // An empty pasture forgives nothing.
+  assert.equal(nearestForgivenTap([], 100, 100), -1);
+});
+
+test('forgiveness never lands on a counted sheep or the wolf', () => {
+  // The counted sheep is closer, but only the uncounted one is eligible.
+  const mixed = [
+    { index: 0, x: 110, y: 100, r: 20, eligible: false },
+    { index: 1, x: 160, y: 100, r: 20, eligible: true },
+  ];
+  assert.equal(nearestForgivenTap(mixed, 130, 100), 1);
+  // Only counted or wolf cards nearby: the tap is ignored, so a sloppy
+  // near miss cannot end a run.
+  const allIneligible = [
+    { index: 0, x: 100, y: 100, r: 20, eligible: false },
+    { index: 1, x: 140, y: 100, r: 20, eligible: false },
+  ];
+  assert.equal(nearestForgivenTap(allIneligible, 110, 100), -1);
+});
+
+test('forgiven taps break ties deterministically', () => {
+  // Two eligible sheep exactly equidistant from the tap: the lower index
+  // wins, on every run.
+  const tied = [
+    { index: 3, x: 90, y: 100, r: 0, eligible: true },
+    { index: 7, x: 150, y: 100, r: 0, eligible: true },
+  ];
+  assert.equal(nearestForgivenTap(tied, 120, 100), 3);
+  const tiedReversed = [
+    { index: 7, x: 150, y: 100, r: 0, eligible: true },
+    { index: 3, x: 90, y: 100, r: 0, eligible: true },
+  ];
+  assert.equal(nearestForgivenTap(tiedReversed, 120, 100), 3);
 });
 
 test('a deep-link round is reproducible and never grows past the cap', () => {

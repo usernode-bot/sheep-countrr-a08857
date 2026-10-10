@@ -8,6 +8,34 @@ export const NUMBER_COLORS = [
   '#b28dff', '#ff7eb6', '#6ee7c8', '#ffa07a', '#9ad0ff',
 ];
 
+// Tap forgiveness: how far, in CSS pixels, a tap may land outside a
+// sheep's edge and still count it. Sized to a typical adult fingertip, so
+// a slightly-off tap on a moving sheep does not waste the touch. Shared
+// by both renderers so they forgive identically.
+export const TAP_FORGIVE_PX = 30;
+
+// Pick the eligible target nearest to a tap, measuring from the target's
+// edge (its own screen radius subtracted), not its centre. Returns the
+// target's index, or -1 when nothing eligible is within `radius`. Ineligible
+// targets (already counted, or the wolf) are never returned, so a sloppy
+// near miss cannot end a run. Ties go to the earlier entry, so the result
+// is deterministic. Pure, like every other helper here.
+export function nearestForgivenTap(targets, x, y, radius = TAP_FORGIVE_PX) {
+  let best = -1;
+  let bestEdge = Infinity;
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i];
+    if (!t || !t.eligible) continue;
+    const edge = Math.max(0, Math.hypot(t.x - x, t.y - y) - (t.r || 0));
+    if (edge > radius) continue;
+    if (edge < bestEdge || (edge === bestEdge && t.index < best)) {
+      bestEdge = edge;
+      best = t.index;
+    }
+  }
+  return best;
+}
+
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
