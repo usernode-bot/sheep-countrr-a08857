@@ -824,6 +824,13 @@
       text-transform: uppercase;
       color: var(--plum-soft);
     }
+    /* The Get ready card's eyebrow, though: sentence case at the body
+       size, so the briefing opens in the same voice as its body lines. */
+    #round-intro .bedtime-eyebrow {
+      font-size: 1.05rem;
+      letter-spacing: normal;
+      text-transform: none;
+    }
     .bedtime-message {
       margin: 0;
       font-size: 1.05rem;
@@ -873,7 +880,7 @@
 
     <!-- Round and running tap count, on screen at all times. -->
     <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex flex-col items-center gap-2">
-      <div id="round-badge" class="round-pill">Round 1</div>
+      <div id="round-badge" class="round-pill">Round 1 of 9</div>
       <div id="speed-timer" class="round-pill speed-timer" hidden aria-live="off">30</div>
       <div id="duel-turn-clock" class="round-pill duel-timer" hidden aria-live="off">45</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
@@ -1212,7 +1219,7 @@
       .panel-card { gap: 0.7rem; }
       .panel-card.p-7 { padding: 1.35rem; }
       .panel-card.p-6 { padding: 1.35rem; }
-      .difficulty-pill { min-height: 2.4rem; padding: 0 1rem; font-size: 1rem; }
+      .difficulty-pill { min-height: 2.75rem; padding: 0 1rem; font-size: 1rem; }
       .celebration-title { font-size: 1.6rem; }
     }
 
