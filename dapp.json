@@ -483,10 +483,10 @@
     },
     {
       "id": "wolf.round",
-      "name": "The wolf round renders a five-sheep flock with the wolf hiding",
+      "name": "The visiting wolf is out mid-count with its own hint",
       "path": "/?scene=wolfround",
-      "expectSelector": "#a11y-sheep-list button:nth-child(5)",
-      "expectText": "Round 5",
+      "expectSelector": "#a11y-sheep-list button.a11y-wolf",
+      "expectText": "A wolf appeared. Tap it before it gets away.",
       "visual": true,
       "impact": [
         "public/rounds.js",
@@ -549,25 +549,25 @@
       ]
     },
     {
-      "name": "Wolf game over names the trick",
+      "name": "Wolf game over names the escape",
       "id": "wolf.gameover",
       "path": "/?scene=wolfgameover",
       "expectSelector": "#game-over-reason",
-      "expectText": "The wolf tricked you."
+      "expectText": "The wolf got away."
     },
     {
-      "name": "Wolf fallback card shows the disguise cues",
+      "name": "Wolf fallback strolls in its own card outside the grid",
       "id": "wolf.fallback",
       "path": "/?scene=wolfround&renderer=dom",
-      "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(5)",
-      "expectText": "Round 5"
+      "expectSelector": ".wolf-card:not([hidden])",
+      "expectText": "Round 6"
     },
     {
       "name": "Grown-ups panel shows the wolf record",
       "id": "wolf.stats",
       "path": "/?scene=grownups",
       "expectSelector": "#grownups-panel",
-      "expectText": "Best safe streak"
+      "expectText": "Best wolf streak"
     },
     {
       "id": "duel.result",

@@ -37,10 +37,8 @@ import {
   normalizeRound,
   successMessage,
   WOLF_BONUS,
-  wolfChance,
-  wolfCueText,
-  wolfDisguiseTier,
-  wolfIndexForRound,
+  WOLF_EVERY,
+  wolfWindowSeconds,
 } from '../public/rounds.js';
 import { readFileSync } from 'node:fs';
 import { wanderOffset } from '../public/movement.js';
@@ -276,117 +274,170 @@ test('all plush sheep and wolf variants have finite geometry and stay inside the
   }
 });
 
-test('wolfChance starts at round 2, climbs monotonically and caps', () => {
-  assert.equal(wolfChance(1), 0);
-  assert.equal(wolfChance(2), 0.15);
-  let prev = 0;
-  for (let round = 2; round <= 24; round++) {
-    const c = wolfChance(round);
-    assert.ok(c >= prev, `round ${round} chance dropped`);
-    assert.ok(c <= 0.7, `round ${round} chance over cap`);
-    prev = c;
-  }
-  assert.equal(wolfChance(13), 0.7);
-  assert.equal(wolfChance(24), 0.7);
-});
-
-test('wolfIndexForRound is deterministic, in range, and null on no-wolf rounds', () => {
-  assert.equal(wolfIndexForRound(1, roundSeed(1), sheepForRound(1)), null);
-  const n = sheepForRound(5);
-  const a = wolfIndexForRound(5, roundSeed(5), n);
-  const b = wolfIndexForRound(5, roundSeed(5), n);
-  assert.deepEqual(a, b);
-  if (a !== null) {
-    assert.ok(Number.isInteger(a) && a >= 0 && a < n, `index ${a} out of range`);
-  }
-  // The draw itself decides: across many rounds both outcomes occur.
-  const draws = new Set();
-  for (let round = 2; round <= 24; round++) {
-    draws.add(wolfIndexForRound(round, roundSeed(round), sheepForRound(round)) === null ? 'none' : 'wolf');
-  }
-  assert.ok(draws.has('wolf'), 'no round ever drew a wolf');
-  assert.ok(draws.has('none'), 'no round ever drew a plain flock');
-});
-
-test('wolfDisguiseTier never regresses and follows the ramp', () => {
-  assert.equal(wolfDisguiseTier(1), 1);
-  assert.equal(wolfDisguiseTier(2), 1);
-  assert.equal(wolfDisguiseTier(4), 1);
-  assert.equal(wolfDisguiseTier(5), 2);
-  assert.equal(wolfDisguiseTier(7), 2);
-  assert.equal(wolfDisguiseTier(8), 3);
-  assert.equal(wolfDisguiseTier(24), 3);
-  let prev = 1;
-  for (let round = 2; round <= 24; round++) {
-    const t = wolfDisguiseTier(round);
-    assert.ok(t >= prev, `round ${round} tier regressed`);
-    prev = t;
-  }
-});
-
-test('a forced wolf round ends on the wolf tap and accepts nothing after', () => {
+test('the 5th counted tap brings the wolf out, on a flock big enough to spare it', () => {
   const { store } = newStore();
-  store.startRound(5, { silent: true });
-  const wolfIndex = store.state.sheepCount - 1;
-  store.state = { ...store.state, wolfIndex };
-  assert.deepEqual(store.tapSheep(wolfIndex), { outcome: 'wolfTap' });
-  assert.equal(store.state.phase, RUN_OVER);
-  assert.equal(store.state.endedBy, ENDED_WOLF);
-  assert.equal(store.state.count, 0);
-  assert.equal(store.state.totalCounted, 0);
-  assert.deepEqual(store.tapSheep(0), { outcome: 'ignored' });
-  assert.deepEqual(store.submitCount(), { outcome: 'ignored' });
-});
-
-test('completing a wolf round passes, grows the streak and pays the bonus', () => {
-  const { store } = newStore();
-  store.startRound(5, { silent: true });
-  const wolfIndex = 2;
-  store.state = { ...store.state, wolfIndex };
-  const n = store.state.sheepCount;
-  const realSheep = [...Array(n).keys()].filter((i) => i !== wolfIndex);
-  for (const i of realSheep) {
+  // Round 6 on Normal carries 8 sheep: past the six-sheep floor, with
+  // counting left after the milestone so the visit has something to
+  // interrupt.
+  store.startRound(6, { silent: true });
+  assert.equal(store.state.sheepCount, 8);
+  for (let i = 0; i < 4; i++) {
     assert.equal(store.tapSheep(i).outcome, 'counted');
   }
-  assert.ok(store.isComplete());
-  assert.deepEqual(store.submitCount(), { outcome: 'passed', round: 5 });
+  assert.equal(store.state.wolf, null, 'four taps bring no wolf');
+  assert.deepEqual(store.tapSheep(4), { outcome: 'counted', number: 5 });
+  const wolf = store.state.wolf;
+  assert.ok(wolf, 'the fifth tap brings the wolf out');
+  assert.equal(wolf.caught, false);
+  assert.equal(wolf.n, 1, 'the round\'s first visit');
+  assert.equal(wolf.window, wolfWindowSeconds(6, 'normal'));
+  assert.ok(Number.isFinite(wolf.at) && wolf.at >= 0, 'the visit is stamped with the round clock');
+  // The wolf is not a sheep: it never joins the count or the counted list.
+  assert.equal(store.state.count, 5);
+  assert.deepEqual(store.state.counted, [0, 1, 2, 3, 4]);
+  assert.equal(store.isComplete(), false);
+  // One visit at a time: while one is out, later milestones are skipped,
+  // not queued.
+  store.tapSheep(5);
+  assert.equal(store.state.wolf, wolf, 'the visit already out holds the field');
+
+  // A flock too small to spare a visitor never draws one, even on the
+  // milestone. Easy round 5 carries exactly 5 sheep.
+  const small = newStore().store;
+  small.setDifficulty('easy');
+  small.startRound(5, { silent: true });
+  assert.equal(small.state.sheepCount, 5);
+  for (let i = 0; i < 5; i++) small.tapSheep(i);
+  assert.equal(small.state.wolf, null, 'a 5-sheep flock gets no wolf');
+
+  // Calm never shows a wolf, whatever the numbers say.
+  const calm = newStore().store;
+  calm.setDifficulty('calm');
+  calm.startRound(7, { silent: true });
+  for (let i = 0; i < calm.state.sheepCount; i++) calm.tapSheep(i);
+  assert.equal(calm.state.wolf, null, 'Calm keeps its no-wolf promise');
+});
+
+test('catching the wolf pays the bonus and grows the streak', () => {
+  const { store } = newStore();
+  store.startRound(6, { silent: true });
+  for (let i = 0; i < 5; i++) store.tapSheep(i);
+  assert.deepEqual(store.tapWolf(), { outcome: 'wolfCaught' });
+  assert.equal(store.state.wolf.caught, true);
+  assert.ok(Number.isFinite(store.state.wolf.caughtAt), 'the catch is stamped');
   assert.equal(store.state.safeStreak, 1);
   assert.equal(store.state.bestSafeStreak, 1);
   assert.equal(store.state.bonusCounted, WOLF_BONUS);
-  assert.equal(store.state.totalCounted, n - 1 + WOLF_BONUS);
+  assert.equal(store.state.totalCounted, 5 + WOLF_BONUS);
   // The bonus rides its own accumulator, so one sync carries both.
   assert.equal(store.unsyncedBonus, WOLF_BONUS);
-  assert.equal(store.unsyncedTaps, n - 1);
+  assert.equal(store.unsyncedTaps, 5);
+  // The wolf never joins the flock's count.
+  assert.equal(store.state.count, 5);
+  // A caught wolf accepts nothing more, and pays nothing twice.
+  assert.deepEqual(store.tapWolf(), { outcome: 'ignored' });
+  assert.equal(store.state.bonusCounted, WOLF_BONUS);
+  assert.equal(store.state.safeStreak, 1);
+  // Catching it does not finish the round for you: the sheep are still
+  // what the round asks for.
+  assert.equal(store.isComplete(), false);
 });
 
-test('a missed run resets the current streak but keeps the best', () => {
+test('a wolf out blocks Done counting until it is caught', () => {
   const { store } = newStore();
-  store.startRound(5, { silent: true });
-  store.state = { ...store.state, wolfIndex: 2 };
-  for (const i of [0, 1, 3, 4, 5, 6]) store.tapSheep(i);
-  store.submitCount();
+  store.startRound(6, { silent: true });
+  const n = store.state.sheepCount;
+  for (let i = 0; i < n; i++) store.tapSheep(i);
+  assert.ok(store.isComplete());
+  assert.deepEqual(store.submitCount(), { outcome: 'wolfOut' });
+  assert.equal(store.state.phase, COUNTING, 'the round does not pass under the wolf\'s nose');
+  assert.deepEqual(store.tapWolf(), { outcome: 'wolfCaught' });
+  assert.deepEqual(store.submitCount(), { outcome: 'passed', round: 6 });
+  assert.equal(store.state.safeStreak, 1, 'the catch still pays its streak');
+  assert.equal(store.state.bonusCounted, WOLF_BONUS);
+});
+
+test('catches add up across rounds, and the streak carries', () => {
+  const { store } = newStore();
+  store.startRound(6, { silent: true });
+  for (let i = 0; i < 5; i++) store.tapSheep(i);
+  assert.deepEqual(store.tapWolf(), { outcome: 'wolfCaught' });
   assert.equal(store.state.safeStreak, 1);
+  for (let i = 5; i < store.state.sheepCount; i++) store.tapSheep(i);
+  assert.deepEqual(store.submitCount(), { outcome: 'passed', round: 6 });
   store.nextRound();
-  assert.equal(store.state.safeStreak, 1, 'a plain round keeps the streak');
-  store.state = { ...store.state, wolfIndex: 3 };
-  for (const i of [0, 1, 2, 4, 5, 6, 7]) store.tapSheep(i);
-  store.submitCount();
+  assert.equal(store.state.safeStreak, 1, 'a passed round keeps the streak');
+  assert.equal(store.state.wolf, null, 'the new round starts with no visit out');
+  for (let i = 0; i < 5; i++) store.tapSheep(i);
+  assert.ok(store.state.wolf, 'the next round brings its own wolf');
+  assert.deepEqual(store.tapWolf(), { outcome: 'wolfCaught' });
   assert.equal(store.state.safeStreak, 2);
   assert.equal(store.state.bestSafeStreak, 2);
-  store.endRun(ENDED_MISSED);
-  assert.equal(store.state.safeStreak, 2, 'the run-over card still shows the run streak');
+});
+
+test('an escaped wolf ends the run, and a restart keeps the best streak', () => {
+  const { store } = newStore();
+  store.startRound(6, { silent: true });
+  // Round 6 first: a catch grows the streak the restart must keep.
+  for (let i = 0; i < 5; i++) store.tapSheep(i);
+  store.tapWolf();
+  assert.equal(store.state.bestSafeStreak, 1);
+  store.roundClock = null;
+
+  // A fresh round, a visit left alone: the walk is the timer, so push the
+  // round clock past the visit's window, the way the app's wolf tick would
+  // read it.
+  store.startRound(7, { silent: true });
+  for (let i = 0; i < 5; i++) store.tapSheep(i);
+  const wolf = store.state.wolf;
+  assert.ok(wolf && !wolf.caught, 'the visit is out and uncaught');
+  store.roundClock = () => wolf.at + wolf.window + 0.05;
+  assert.deepEqual(store.escapeWolf(), { outcome: 'wolfEscaped' });
+  assert.equal(store.state.phase, RUN_OVER);
+  assert.equal(store.state.endedBy, ENDED_WOLF);
+  store.roundClock = null;
+  // A dead run accepts nothing.
+  assert.deepEqual(store.tapWolf(), { outcome: 'ignored' });
+  assert.deepEqual(store.submitCount(), { outcome: 'ignored' });
   store.restartRun();
-  assert.equal(store.state.safeStreak, 0);
-  assert.equal(store.state.bestSafeStreak, 2);
+  assert.equal(store.state.round, 1);
+  assert.equal(store.state.safeStreak, 0, 'a new run starts its streak over');
+  assert.equal(store.state.bestSafeStreak, 1, 'the best streak survives the restart');
+  assert.equal(store.state.wolf, null);
+});
+
+test('wolfWindowSeconds tightens with the round and loosens on the easier levels', () => {
+  for (const d of ['easy', 'normal', 'hard', 'expert']) {
+    let prev = Infinity;
+    for (let round = 1; round <= 30; round++) {
+      const w = wolfWindowSeconds(round, d);
+      assert.ok(w >= 2.5 && w <= 7.5, `${d} round ${round} window ${w} outside the envelope`);
+      assert.ok(w <= prev, `${d} round ${round} window grew`);
+      prev = w;
+    }
+  }
+  // A first visit on Normal gets six seconds; early rounds clamp at the
+  // top of the envelope instead of growing past it.
+  assert.equal(wolfWindowSeconds(6, 'normal'), 6);
+  assert.equal(wolfWindowSeconds(7, 'normal'), 5.5);
+  assert.ok(wolfWindowSeconds(1, 'normal') === 7.5);
+  // The levels sit apart at the same round, easier means longer.
+  assert.ok(wolfWindowSeconds(6, 'easy') > wolfWindowSeconds(6, 'normal'));
+  assert.ok(wolfWindowSeconds(6, 'expert') < wolfWindowSeconds(6, 'normal'));
+  // Hostile inputs read as round 1 on Normal rather than crashing.
+  assert.equal(wolfWindowSeconds('bogus', 'bogus'), wolfWindowSeconds(1, 'normal'));
 });
 
 test('the wolf copy carries no em dash', () => {
   const strings = [
-    'The wolf tricked you.',
-    'You dodged 1 wolf round in a row.',
-    'You dodged 3 wolf rounds in a row.',
-    'One of the flock might be a wolf. Counting it ends the run.',
-    'Best safe streak',
+    'The wolf got away.',
+    'You caught 1 wolf in a row.',
+    'You caught 3 wolves in a row.',
+    'Every few sheep a wolf sneaks in. Tap it before it gets away.',
+    'Tap the wolf before it gets away!',
+    'A wolf appeared. Tap it before it gets away.',
+    'You caught the wolf. 2 bonus sheep.',
+    'Best wolf streak',
     'Bonus sheep',
   ];
   for (const s of strings) assert.ok(!s.includes('\u2014'), s);
@@ -793,8 +844,6 @@ test('the Speed Round clock ticks whole seconds and ends the run at zero', () =>
   const { store, recordedRuns } = newStore(true);
   store.setSpeedOn(true);
   store.startRound(2, { silent: true });
-  // The clock is what's under test here, not the wolf: pin this round wolf-free.
-  store.state = { ...store.state, wolfIndex: null };
   assert.equal(store.state.secondsLeft, SPEED_ROUND_SECONDS);
   store.tapSheep(0);
   assert.equal(store.tickClock(), true);
@@ -974,13 +1023,9 @@ test('a Speed Round snapshot carries its remaining clock, and 0 reads as gone', 
   const { store } = newStore();
   store.setSpeedOn(true);
   store.startRound(2, { silent: true });
-  // The clock is what's under test here, not the wolf: pin this round
-  // wolf-free, and count a sheep the round's wolf is not. A resume re-draws
-  // the wolf and never restores it as counted, since the 3D renderer cannot
-  // draw a counted wolf.
-  const drawnWolf = store.state.wolfIndex;
-  store.state = { ...store.state, wolfIndex: null };
-  store.tapSheep(drawnWolf === 0 ? 1 : 0);
+  // The clock is what's under test here, and round 2's flock is far below
+  // the six-sheep floor, so no wolf can join the count mid-test.
+  store.tapSheep(0);
   const snapshot = store.snapshotRound();
   assert.equal(snapshot.speedOn, true);
   assert.equal(snapshot.secondsLeft, SPEED_ROUND_SECONDS);
@@ -1023,8 +1068,8 @@ test('a duel turn miss count comes straight off the shared state shape', () => {
   const round = 4;
   const n = sheepForRound(round);
   store.startRound(round, { silent: true });
-  // The miss count is what's under test here, not the wolf: pin this round wolf-free.
-  store.state = { ...store.state, wolfIndex: null };
+  // The miss count is what's under test here, and round 4's flock sits
+  // below the six-sheep floor, so no wolf can gate the submit mid-test.
   for (let i = 0; i < n - 1; i++) store.tapSheep(i);
   store.submitCount();
   assert.equal(store.state.phase, RUN_OVER);
@@ -1053,8 +1098,8 @@ test('duel misses compare the way the results card announces', () => {
 test('a duel turn that double-taps still lands in the run-over path', () => {
   const { store } = newStore();
   store.startRound(2, { silent: true });
-  // The double-tap path is what's under test here, not the wolf: pin this round wolf-free.
-  store.state = { ...store.state, wolfIndex: null };
+  // The double-tap path is what's under test here, and round 2's flock is
+  // far below the six-sheep floor, so no wolf can appear mid-test.
   store.tapSheep(0);
   store.tapSheep(0);
   assert.equal(store.state.phase, RUN_OVER);
@@ -1291,7 +1336,7 @@ test('calm: a double tap only wiggles, a short count never ends the run, no wolf
   const { store, recordedRuns } = newStore(true);
   store.setDifficulty('calm');
   store.startRound(7, { silent: true });
-  assert.equal(store.state.wolfIndex, null);
+  assert.equal(store.state.wolf, null);
   assert.equal(store.tapSheep(0).outcome, 'counted');
   assert.deepEqual(store.tapSheep(0), { outcome: 'wiggle' });
   assert.equal(store.state.phase, COUNTING);
@@ -1354,23 +1399,13 @@ test('a new player opens on calm; any saved pick keeps its level', async () => {
   assert.equal(store.state.sheepCount, 11);
 });
 
-// A board saved mid-round before the wolf existed (#37 shipped save/resume a
-// day before #38 added the wolf) can list, as counted, the sheep the wolf now
-// hides behind. Resuming it put a counted wolf on screen, which the 3D
-// renderer cannot draw (a wolf has no ribbon), so boot failed on every reload.
-test('a board saved before the wolf existed resumes without a counted wolf', () => {
-  let round = 2;
-  let seed = roundSeed(round);
-  let n = sheepForRound(round);
-  let wolf = wolfIndexForRound(round, seed, n);
-  while (wolf === null && round < 60) {
-    round += 1;
-    seed = roundSeed(round);
-    n = sheepForRound(round);
-    wolf = wolfIndexForRound(round, seed, n);
-  }
-  assert.notEqual(wolf, null, 'some round hides a wolf');
-  const sheep = [...Array(n).keys()].find((i) => i !== wolf);
+// A snapshot saved before the visiting wolf existed carries no wolf field
+// at all. It must read as a plain board: no wolf out, nothing run over,
+// the counted sheep exactly as saved.
+test('a snapshot saved before the visiting wolf existed resumes as a plain board', () => {
+  const round = 6;
+  const seed = roundSeed(round);
+  const n = sheepForRound(round);
   const { store } = newStore();
   store.loadLocalFrom({
     round,
@@ -1380,8 +1415,8 @@ test('a board saved before the wolf existed resumes without a counted wolf', () 
       difficulty: 'normal',
       sheepCount: n,
       seed,
-      counted: [sheep, wolf],
-      countedAt: [{ index: sheep, elapsed: 1 }, { index: wolf, elapsed: 2 }],
+      counted: [0, 1, 2],
+      countedAt: [{ index: 0, elapsed: 1 }, { index: 1, elapsed: 2 }, { index: 2, elapsed: 3 }],
       roundElapsed: 3,
       phase: COUNTING,
       speedOn: false,
@@ -1389,24 +1424,55 @@ test('a board saved before the wolf existed resumes without a counted wolf', () 
     },
   });
   assert.equal(store.state.phase, COUNTING, 'the board still resumes');
-  assert.equal(store.state.wolfIndex, wolf);
-  assert.deepEqual(store.state.counted, [sheep], 'the wolf is not counted');
-  assert.deepEqual(store.state.countedAt, [{ index: sheep, elapsed: 1 }]);
-  assert.equal(store.state.count, 1);
+  assert.equal(store.state.wolf, null, 'a snapshot with no wolf field reads as no wolf');
+  assert.deepEqual(store.state.counted, [0, 1, 2]);
+  assert.equal(store.state.count, 3);
 });
 
-test('the screen-reader wolf cue names what a sighted player can see at each tier', () => {
-  const seen = new Set();
-  for (let round = 1; round <= 40; round += 1) {
-    const cue = wolfCueText(round);
-    assert.equal(typeof cue, 'string');
-    assert.ok(cue.length > 0);
-    assert.doesNotMatch(cue, /\u2014/, 'user-facing copy carries no em dashes');
-    seen.add(`${wolfDisguiseTier(round)}:${cue}`);
-  }
-  // One wording per tier, and the obvious tier-1 disguise names its ears.
-  assert.equal(new Set([...seen].map((k) => k.split(':')[0])).size, seen.size);
-  assert.match(wolfCueText(1), /ears/);
+test('a caught wolf rides the snapshot, and a visit still out is dropped penalty-free', () => {
+  const { store } = newStore();
+  store.startRound(6, { silent: true });
+  for (let i = 0; i < 5; i++) store.tapSheep(i);
+  store.roundClock = () => 2.5;
+  assert.deepEqual(store.tapWolf(), { outcome: 'wolfCaught' });
+  const snapshot = store.snapshotRound();
+  assert.equal(snapshot.wolf.caught, true);
+  assert.equal(snapshot.wolf.caughtAt, 2.5);
+  store.roundClock = null;
+
+  // The caught visit comes back with the board, exactly as saved.
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({ round: 6, difficulty: 'normal', midCountdown: snapshot });
+  assert.equal(restored.state.phase, COUNTING);
+  assert.equal(restored.state.wolf.caught, true);
+  assert.equal(restored.state.wolf.n, 1);
+  assert.equal(restored.state.count, 5, 'the wolf is not a sheep: the flock count is unchanged');
+
+  // A visit still walking when the app closed has certainly outlived its
+  // window by the time a reload lands: dropped, and never resumed into a
+  // run-over.
+  const { store: out } = newStore();
+  out.startRound(6, { silent: true });
+  for (let i = 0; i < 5; i++) out.tapSheep(i);
+  const outSnapshot = {
+    ...out.snapshotRound(),
+    wolf: { at: 1, window: 5, n: 1, caught: false, caughtAt: null },
+  };
+  const { store: resumed } = newStore();
+  resumed.loadLocalFrom({ round: 6, difficulty: 'normal', midCountdown: outSnapshot });
+  assert.equal(resumed.state.phase, COUNTING, 'the board resumes with no wolf');
+  assert.equal(resumed.state.wolf, null);
+  assert.equal(resumed.state.endedBy, null);
+
+  // A mangled wolf blob reads as no wolf rather than crashing the boot.
+  const { store: mangled } = newStore();
+  mangled.loadLocalFrom({
+    round: 6,
+    difficulty: 'normal',
+    midCountdown: { ...outSnapshot, wolf: { caught: true, at: 'oops', window: -3 } },
+  });
+  assert.equal(mangled.state.phase, COUNTING);
+  assert.equal(mangled.state.wolf, null);
 });
 
 // The 3D frame loop runs on the round's clock. #37 moved it there but never

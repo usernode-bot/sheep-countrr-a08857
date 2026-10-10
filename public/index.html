@@ -645,21 +645,31 @@
       box-shadow: 0 4px 0 rgba(74, 59, 92, 0.15);
     }
 
-    /* ---- The wolf in the flock ---- */
-    /* Cues scale with the disguise tier and swing fully visible on reveal. */
-    .wolf-cues { transform-box: fill-box; }
-    .wolf-ears, .wolf-tail, .wolf-glint { transition: transform 0.3s ease, opacity 0.3s ease; }
-    .sheep-card[data-wolf-tier="1"] .wolf-ears { opacity: 1; }
-    .sheep-card[data-wolf-tier="1"] .wolf-tail { opacity: 1; }
-    .sheep-card[data-wolf-tier="2"] .wolf-ears { transform: scale(0.6); transform-origin: 60px 30px; }
-    .sheep-card[data-wolf-tier="2"] .wolf-tail { transform: scale(0.5); transform-origin: 97px 86px; }
-    .sheep-card[data-wolf-tier="3"] .wolf-ears,
-    .sheep-card[data-wolf-tier="3"] .wolf-tail { opacity: 0; }
-    .sheep-card[data-wolf-tier="3"] .wolf-glint { opacity: 0.75; }
-    .sheep-card[data-wolf-tier="1"] { --fleece: #cfc9bd; --fleece-light: #e2ddd2; --fleece-shade: #b3ada2; }
-    .sheep-card[data-revealed] .wolf-ears,
-    .sheep-card[data-revealed] .wolf-tail { transform: none; opacity: 1; }
-    .sheep-card[data-revealed] { --fleece: #cfc9bd; --fleece-light: #e2ddd2; --fleece-shade: #b3ada2; }
+    /* ---- The visiting wolf ---- */
+    /* A standalone card outside the fallback grid, strolling across the
+       field. Same shell as .sheep-card; the grey fleece variables recolor
+       the shared sheep SVG into the wolf. The walk moves it with the
+       individual `translate` property (set from JS), which composes with,
+       so leaves alone, any transform on the card. */
+    .wolf-card {
+      position: fixed;
+      left: 0;
+      width: 118px;
+      aspect-ratio: 1 / 1;
+      border-radius: 32%;
+      background: rgba(255, 255, 255, 0.55);
+      border: 4px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 0 8px 0 rgba(255, 255, 255, 0.55), 0 12px 24px rgba(90, 60, 120, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6%;
+      --fleece: #cfc9bd;
+      --fleece-light: #e2ddd2;
+      --fleece-shade: #b3ada2;
+      z-index: 10;
+    }
+    .wolf-card:active { transform: scale(0.96); }
 
     /* ---- Leaderboard card ---- */
     #leaderboard-tabs {
@@ -904,7 +914,7 @@
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
         <p class="bedtime-eyebrow">The flock scattered</p>
         <p id="game-over-reason" class="bedtime-message">Some sheep were left uncounted.</p>
-        <p id="game-over-streak" class="bedtime-message" hidden>You dodged some wolf rounds in a row.</p>
+        <p id="game-over-streak" class="bedtime-message" hidden>You caught wolves in a row.</p>
         <p class="celebration-title">You reached round <span id="game-over-round" class="celebration-total">1</span>.</p>
         <p id="shared-by" hidden class="bedtime-message"></p>
         <button id="restart-btn" type="button" class="big-btn">
@@ -943,7 +953,7 @@
         <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
         <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
-        <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Counting it ends the run.</p>
+        <p id="round-intro-wolf" class="bedtime-message">Every few sheep a wolf sneaks in. Tap it before it gets away.</p>
         <div class="intro-chip-row">
         <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
         <p id="streak-chip" class="best-round-chip" aria-live="off"><svg class="streak-flame" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 C 13 6, 17 8, 17 13 A 5 5.5 0 0 1 7 13 C 7 8, 11 6, 12 2 Z" fill="#ffb347"></path><path d="M12 8.6 C 12.8 10.8, 15 11.8, 15 14.6 A 3 3.4 0 0 1 9 14.6 C 9 11.8, 11.2 10.8, 12 8.6 Z" fill="#ff8fab"></path></svg><span class="chip-label">Day streak</span> <span id="streak-value" class="chip-value">1</span> <span id="streak-best" class="chip-label streak-best-label">Best 1</span></p>
@@ -1003,7 +1013,7 @@
           <div class="flex justify-between"><span>Difficulty</span><span id="difficulty-value" class="stat-value">Normal</span></div>
           <div class="flex justify-between"><span>Best round</span><span id="best-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="stat-value">0</span></div>
-          <div class="flex justify-between"><span>Best safe streak</span><span id="best-streak-value" class="stat-value">0</span></div>
+          <div class="flex justify-between"><span>Best wolf streak</span><span id="best-streak-value" class="stat-value">0</span></div>
           <div class="flex justify-between"><span>Bonus sheep</span><span id="bonus-value" class="stat-value">0</span></div>
           <div class="flex justify-between"><span>Sheep counted (everyone)</span><span id="community-value" class="stat-value">0</span></div>
         </div>

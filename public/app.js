@@ -26,13 +26,11 @@ import {
   speedRoundClock,
   successMessage,
   WOLF_BONUS,
-  wolfCueText,
-  wolfDisguiseTier,
-  wolfIndexForRound,
+  wolfWindowSeconds,
   roundBadgeText,
   weeklyScoreLabel,
 } from './rounds.js';
-import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
+import { playTapChime, playBaa, playHowl, playCelebration, setSoundEnabled } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
 import { sheepName } from './layout.js';
 import { bestRoundsCsv, weeklyHistoryCsv } from './export.js';
@@ -65,8 +63,9 @@ if (params.get('token')) {
 const sceneParam = params.get('scene');
 const rendererParam = params.get('renderer');
 const roundParam = params.get('round');
-// Deep-link-only knob: /?round=N&wolf=1 always hides a wolf, &wolf=0 never
-// does. Normal play stays chance-based.
+// Deep-link-only knob: /?round=N&wolf=1 opens the linked round with a wolf
+// already out, and &wolf=0 keeps every visit out of that run. Normal play
+// follows the milestone rule alone.
 const wolfParam = params.get('wolf');
 // A deep link may name a difficulty; an unknown value falls back to Normal.
 // It composes with /?round=N and /?scene=X and, like them, is never
@@ -403,13 +402,27 @@ function buildStaticState() {
     return at(6, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
   }
   if (sceneParam === 'wolfround') {
-    return at(5, { count: 3, counted: [0, 1, 2], wolfIndex: 4 });
+    // The visiting wolf mid-walk: round 6 counted to the first milestone,
+    // the wolf is out strolling toward the edge, two taps still to find.
+    // The visit is written literally, never derived from a timer.
+    return at(6, {
+      count: 5,
+      counted: [0, 1, 2, 3, 4],
+      wolf: {
+        at: 2,
+        window: wolfWindowSeconds(6, difficultyParam),
+        n: 1,
+        caught: false,
+        caughtAt: null,
+      },
+    });
   }
   if (sceneParam === 'wolfgameover') {
+    // A run the wolf walked out of: its own reason line, with two catches
+    // already banked so the streak line renders too.
     return at(6, {
       count: 4,
       counted: [0, 1, 2, 3],
-      wolfIndex: 5,
       phase: RUN_OVER,
       endedBy: ENDED_WOLF,
       safeStreak: 2,
@@ -532,16 +545,25 @@ async function boot() {
       store.state = { ...store.state, duel: true };
     }
     store.startRound(normalizeRound(roundParam), { silent: true });
-    if (wolfParam === '1' && !isCalmLevel(store.state.difficulty)) {
-      // A wolf needs a flock to hide in: round 1's single sheep stays a
-      // sheep even when the deep link asks for one.
+    if (wolfParam === '1' && !isCalmLevel(store.state.difficulty) && store.state.sheepCount >= 6) {
+      // Force a visit at boot on the linked round: the same shape a
+      // milestone spawn makes, stamped with the round clock's start. Small
+      // flocks and Calm keep no wolf, exactly as the milestone rule draws.
       store.state = {
         ...store.state,
-        wolfIndex: store.state.sheepCount < 2 ? null
-          : (wolfIndexForRound(store.state.round, store.state.seed, store.state.sheepCount) ?? store.state.sheepCount - 1),
+        wolf: {
+          at: store.currentElapsed(),
+          window: wolfWindowSeconds(store.state.round, store.state.difficulty),
+          n: 1,
+          caught: false,
+          caughtAt: null,
+        },
       };
     } else if (wolfParam === '0') {
-      store.state = { ...store.state, wolfIndex: null };
+      // Suppress every visit in this run: the milestone rule reads the
+      // flag before it spawns. In-memory only, like the other deep-link
+      // knobs; nothing persists it.
+      store.state = { ...store.state, wolfSuppressed: true };
     }
   } else {
     // A /?duel=1 run with no round names a fresh duel at round 1. The flag
@@ -722,7 +744,7 @@ async function bootShareView() {
     : data.endedBy === ENDED_TIME_UP
       ? 'The clock ran out.'
       : data.endedBy === ENDED_WOLF
-        ? 'The wolf tricked you.'
+        ? 'The wolf got away.'
         : 'Some sheep were left uncounted.';
   els.gameOver.hidden = false;
   els.sharedBy.textContent = `Counted by ${data.username}.`;
@@ -761,6 +783,7 @@ async function mountScene() {
       container: els.sceneRoot,
       reducedMotion,
       onTap: handleTap,
+      onWolfTap: handleWolfTap,
       // The number plate covers the top of the screen and the Done button
       // the bottom; the camera frames the flock in the space between.
       getOverlayRect: () => {
@@ -784,7 +807,7 @@ async function mountScene() {
 
 async function mountFallback() {
   const { createFallbackRenderer } = await loadRendererModule(true);
-  const fallback = createFallbackRenderer({ container: els.sceneRoot, onTap: handleTap, reducedMotion });
+  const fallback = createFallbackRenderer({ container: els.sceneRoot, onTap: handleTap, onWolfTap: handleWolfTap, reducedMotion });
   syncBackdropMode(fallback);
   return fallback;
 }
@@ -843,10 +866,66 @@ function handleTap(index) {
     renderA11yList(store.state);
     return;
   }
-  if (result.outcome === 'wolfTap') {
-    renderer.revealWolf(index);
-    renderA11yList(store.state);
+}
+
+function handleWolfTap() {
+  // The same guards a sheep tap has: the briefing and the countdown both
+  // cover the board, so no catch can land behind a card.
+  if (introOpen) return;
+  if (countdownOpen) return;
+  renderer?.catchWolf?.();
+  const result = store.tapWolf();
+  if (result.outcome === 'wolfCaught' && store.state.soundOn) {
+    // The brightest chime step, so the catch reads as a reward above the
+    // counting chimes.
+    playTapChime(12);
   }
+  renderA11yList(store.state);
+}
+
+// ---- The visiting wolf ----
+// The renderer learns about a visit here, the one place every state change
+// flows through. spawnWolf is keyed on the visit's spawn stamp so a state
+// that merely re-renders never re-spawns it; the catch path is
+// handleWolfTap above, and an escaped visit hides itself in the renderer's
+// own frame loop once the clock passes the window.
+let wolfSpawnKey = null;
+function syncWolfScene(state) {
+  const wolf = state.phase === COUNTING ? state.wolf : null;
+  if (!wolf || wolf.caught) {
+    wolfSpawnKey = null;
+    return;
+  }
+  const key = `${state.round}:${state.seed}:${wolf.at}:${wolf.n}`;
+  if (key === wolfSpawnKey) return;
+  wolfSpawnKey = key;
+  renderer?.spawnWolf?.({ at: wolf.at, window: wolf.window, seed: state.seed, n: wolf.n, hold: staticMode });
+  // A howl announces the visitor. Frozen fixtures stay silent: they exist
+  // to be photographed, not listened to.
+  if (!staticMode && state.soundOn) playHowl();
+}
+
+// The escape judge: a short interval reads the round clock through the
+// store (the same clock the walk is drawn from, so a hidden tab pauses
+// both together) and ends the run the moment a visit outlives its window.
+// Frozen fixtures never run it, so their wolf holds still for the camera.
+let wolfWatchTimer = null;
+function syncWolfWatch(state) {
+  const out = state.phase === COUNTING && state.wolf && !state.wolf.caught;
+  if (!out || staticMode) {
+    clearInterval(wolfWatchTimer);
+    wolfWatchTimer = null;
+    return;
+  }
+  if (wolfWatchTimer) return;
+  wolfWatchTimer = setInterval(() => {
+    if (store.state.phase !== COUNTING || !store.state.wolf || store.state.wolf.caught) {
+      clearInterval(wolfWatchTimer);
+      wolfWatchTimer = null;
+      return;
+    }
+    store.escapeWolf();
+  }, 150);
 }
 
 function submitCount() {
@@ -978,10 +1057,10 @@ function resolveDuelTurn() {
   duelResolving = true;
   stopDuelClock();
   const misses = duelState.misses;
-  // Misses are real sheep left uncounted. The wolf is not a sheep to count,
-  // so it never adds a miss (a perfect wolf round used to read "1 missed").
-  const realSheep = store.state.sheepCount - (store.state.wolfIndex != null ? 1 : 0);
-  misses[duelState.turn] = Math.max(0, realSheep - store.state.count);
+  // Misses are sheep left uncounted. The wolf is not a sheep to count, so
+  // it never adds a miss: catching it pays a bonus, missing it ends the
+  // turn like any other loss, and neither touches this arithmetic.
+  misses[duelState.turn] = Math.max(0, store.state.sheepCount - store.state.count);
   const isLast = duelState.turn === DUEL_PLAYERS.length - 1;
   if (isLast) {
     duelState.done = true;
@@ -1332,9 +1411,11 @@ function restartRun() {
 function hintFor(state) {
   if (state.phase === ROUND_PASSED) return 'Nicely counted.';
   if (state.phase === RUN_OVER) return 'Tap Start again for round 1.';
+  // A visit outshouts the counting hints: while the wolf is walking, that
+  // is the thing to do, ahead of any sheep still uncounted.
+  if (state.wolf && !state.wolf.caught) return 'Tap the wolf before it gets away!';
   if (state.count === 0) return state.sheepCount === 1 ? 'Tap the sheep.' : 'Tap every sheep.';
-  const wolves = state.wolfIndex != null ? 1 : 0;
-  if (state.count >= state.sheepCount - wolves) return 'That is all of them. Tap Done counting.';
+  if (state.count >= state.sheepCount) return 'That is all of them. Tap Done counting.';
   return 'Tap every sheep, then tap Done counting.';
 }
 
@@ -1362,9 +1443,10 @@ function updateChrome(state) {
   els.speedTimer.hidden = !showTimer;
   if (showTimer) els.speedTimer.textContent = speedRoundClock(state.secondsLeft);
   els.countDisplay.textContent = String(state.count);
-  // The total is the real sheep only. A round's wolf is not one to count:
-  // counting "of N" with the wolf in N led a child straight to tapping it.
-  els.countWord.textContent = `of ${sheepPhrase(realSheepCount(state))}`;
+  // The total is the flock's sheep count. The wolf is never one of them:
+  // it does not join counted/count, so "of N" stays the sheep the round
+  // holds whether a wolf is out or not.
+  els.countWord.textContent = `of ${sheepPhrase(state.sheepCount)}`;
   els.playHint.textContent = hintFor(state);
   els.submitBtn.disabled = state.phase !== COUNTING;
 
@@ -1381,6 +1463,8 @@ function updateChrome(state) {
   els.namesToggle.checked = !!state.namesOn;
   applyTheme(state);
   applyNames(state);
+  syncWolfScene(state);
+  syncWolfWatch(state);
 
   syncPanels(state);
 }
@@ -1410,16 +1494,16 @@ function syncPanels(state) {
   if (over) {
     els.gameOverRound.textContent = String(state.round);
     els.gameOverReason.textContent =
-      state.endedBy === ENDED_WOLF ? 'The wolf tricked you.'
+      state.endedBy === ENDED_WOLF ? 'The wolf got away.'
       : state.endedBy === ENDED_DOUBLE_TAP ? 'You counted the same sheep twice.'
       : state.endedBy === ENDED_TIME_UP ? 'The clock ran out.'
-      : `You said done with ${state.count} of ${sheepPhrase(realSheepCount(state))} counted.`;
-    const dodged = state.safeStreak || 0;
-    els.gameOverStreak.hidden = !(dodged > 0);
+      : `You said done with ${state.count} of ${sheepPhrase(state.sheepCount)} counted.`;
+    const caughtWolves = state.safeStreak || 0;
+    els.gameOverStreak.hidden = !(caughtWolves > 0);
     if (!els.gameOverStreak.hidden) {
-      els.gameOverStreak.textContent = dodged === 1
-        ? 'You dodged 1 wolf round in a row.'
-        : `You dodged ${dodged} wolf rounds in a row.`;
+      els.gameOverStreak.textContent = caughtWolves === 1
+        ? 'You caught 1 wolf in a row.'
+        : `You caught ${caughtWolves} wolves in a row.`;
     }
     playBaa();
   }
@@ -1437,16 +1521,12 @@ function syncPanels(state) {
   }
 }
 
-// How many animals in the round are real sheep: everything but the wolf.
-function realSheepCount(state) {
-  return state.sheepCount - (state.wolfIndex != null ? 1 : 0);
-}
-
 function renderA11yList(state) {
   // Keep the focused button alive while announcing its new counted state.
-  // Only buttons are sheep; the Speed Round clock line below is plain
-  // status text and must never be counted as a sheep slot.
-  let buttons = els.a11yList.querySelectorAll('button');
+  // Only sheep are sheep: the wolf's button below carries .a11y-wolf and
+  // the Speed Round clock line is plain status text, and neither may ever
+  // be counted as a sheep slot.
+  let buttons = els.a11yList.querySelectorAll('button:not(.a11y-wolf)');
   if (buttons.length !== state.sheepCount) {
     els.a11yList.replaceChildren();
     for (let i = 0; i < state.sheepCount; i++) {
@@ -1455,7 +1535,7 @@ function renderA11yList(state) {
       btn.addEventListener('click', () => handleTap(i));
       els.a11yList.appendChild(btn);
     }
-    buttons = els.a11yList.querySelectorAll('button');
+    buttons = els.a11yList.querySelectorAll('button:not(.a11y-wolf)');
   }
   buttons.forEach((btn, i) => {
     // The briefing card or the countdown is open: no tap can land, so the
@@ -1471,8 +1551,7 @@ function renderA11yList(state) {
         : `${sheepName(state.seed, i)} is grazing`)
       : (state.counted.includes(i)
         ? `Sheep ${i + 1}, counted` : `Sheep ${i + 1}, not counted yet`);
-    // The wolf's entry names what gives it away on screen (wolfCueText).
-    btn.textContent = state.wolfIndex === i ? `${label}, and ${wolfCueText(state.round)}` : label;
+    btn.textContent = label;
   });
   // The countdown mirrors into the a11y channel too, appended after the
   // clock line, so when the round goes live the clock is the last thing
@@ -1505,6 +1584,37 @@ function renderA11yList(state) {
     clockLine.textContent = `Speed Round, ${speedRoundClock(state.secondsLeft)} seconds left.`;
   } else if (clockLine) {
     clockLine.remove();
+  }
+  // The visiting wolf mirrors here too. While it is out it is a real
+  // button, so a screen-reader player can catch it the same way a sighted
+  // one taps it; once caught the button becomes the catch line, following
+  // the countdown and clock lines above. Either way it leaves when the
+  // visit resolves.
+  const wolfOut = state.phase === COUNTING && state.wolf && !state.wolf.caught;
+  let wolfBtn = els.a11yList.querySelector('button.a11y-wolf');
+  if (wolfOut) {
+    if (!wolfBtn) {
+      wolfBtn = document.createElement('button');
+      wolfBtn.type = 'button';
+      wolfBtn.className = 'a11y-wolf';
+      wolfBtn.addEventListener('click', () => handleWolfTap());
+      els.a11yList.appendChild(wolfBtn);
+    }
+    wolfBtn.disabled = introOpen || countdownOpen;
+    wolfBtn.textContent = 'A wolf appeared. Tap it before it gets away.';
+  } else if (wolfBtn) {
+    wolfBtn.remove();
+  }
+  let wolfLine = els.a11yList.querySelector('p.a11y-wolf-status');
+  if (state.wolf && state.wolf.caught) {
+    if (!wolfLine) {
+      wolfLine = document.createElement('p');
+      wolfLine.className = 'a11y-wolf-status';
+      els.a11yList.appendChild(wolfLine);
+    }
+    wolfLine.textContent = `You caught the wolf. ${WOLF_BONUS} bonus sheep.`;
+  } else if (wolfLine) {
+    wolfLine.remove();
   }
 }
 

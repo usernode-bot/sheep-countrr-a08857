@@ -22,7 +22,8 @@ import {
   roundSeed,
   sheepForRound,
   WOLF_BONUS,
-  wolfIndexForRound,
+  WOLF_EVERY,
+  wolfWindowSeconds,
 } from './rounds.js';
 
 const STORAGE_PREFIX = 'sheep-countrr:';
@@ -48,10 +49,24 @@ export const ENDED_TIME_UP = 'timeUp';
 // masquerade as one on Hard.
 export const DIFFICULTY_KEYS = ['calm', 'easy', 'normal', 'hard', 'expert'];
 
-// Calm never hides a wolf: the impostor is a challenge mechanic, and
-// counting it would end the run, which Calm never does.
-function wolfFor(round, seed, sheepCount, difficulty) {
-  return isCalmLevel(difficulty) ? null : wolfIndexForRound(round, seed, sheepCount);
+// The visiting wolf, sanitized. A snapshot carries the wolf only when it
+// was caught (a visit still walking when the app closed has certainly
+// outlived its window by the time a reload lands, so it is dropped
+// penalty-free rather than resuming into a run-over). Anything mangled
+// reads as no wolf.
+function restoreWolf(raw) {
+  if (!raw || typeof raw !== 'object' || raw.caught !== true) return null;
+  const at = Number(raw.at);
+  const window = Number(raw.window);
+  if (!Number.isFinite(at) || at < 0 || !Number.isFinite(window) || window <= 0) return null;
+  const caughtAt = Number(raw.caughtAt);
+  return {
+    at,
+    window,
+    n: Number.isFinite(Number(raw.n)) && Number(raw.n) >= 1 ? Math.floor(Number(raw.n)) : 1,
+    caught: true,
+    caughtAt: Number.isFinite(caughtAt) && caughtAt >= 0 ? caughtAt : at,
+  };
 }
 
 // Calm's forgiving rules apply to a solo run. A pass-and-play duel keeps
@@ -112,7 +127,11 @@ export function createDefaultState() {
     counted: [],
     phase: COUNTING,
     endedBy: null,
-    wolfIndex: null,
+    // The visiting wolf, or null while none is out: when it appeared on the
+    // round clock, how long it takes to reach the edge, which visit of the
+    // round this is, and whether it has been caught. It is not a sheep: it
+    // never joins counted/count, and the round only counts the flock.
+    wolf: null,
     safeStreak: 0,
     bestSafeStreak: 0,
     bonusCounted: 0,
@@ -400,8 +419,8 @@ export class StateStore {
   }
 
   // Start (or restart) a round: fresh flock, nothing counted, run alive.
-  // The wolf draw happens here, from the round's seed, so a round that is
-  // never resumed mid-count always re-derives exactly what was hiding.
+  // A fresh round starts with no wolf out: a visit only ever spawns inside
+  // tapSheep, when a counted tap reaches a multiple of WOLF_EVERY.
   startRound(round, { silent, keepBoard } = {}) {
     const next = normalizeRound(round);
     const bestRound = Math.max(this.state.bestRounds[this.state.difficulty] || 1, next);
@@ -428,7 +447,9 @@ export class StateStore {
       roundElapsed: keepBoard ? this.state.roundElapsed : 0,
       phase: COUNTING,
       endedBy: null,
-      wolfIndex: keepBoard ? this.state.wolfIndex : wolfFor(next, seed, sheepCount, this.state.difficulty),
+      // keepBoard: the restored board's wolf travels with it (a caught one
+      // was saved in the snapshot; the store drops anything still out).
+      wolf: keepBoard ? this.state.wolf : null,
       // A restart to round 1 is a new run, so the current streak resets.
       // bestSafeStreak survives, like bestRounds.
       safeStreak: next === 1 ? 0 : this.state.safeStreak,
@@ -540,26 +561,23 @@ export class StateStore {
     const seed = Number.isFinite(Number(snapshot.seed)) && Number(snapshot.seed) >= 0
       ? Number(snapshot.seed)
       : this.seedFor(round);
-    // Re-derived from the same round/seed/sheepCount, exactly like
-    // startRound: the wolf draw is a pure function of these, so a resumed
-    // board always shows the same animal that was hiding.
-    const wolfIndex = wolfFor(round, seed, sheepCount, difficulty);
-    // A board saved before the wolf existed can list, as counted, the sheep
-    // the wolf now hides behind. Resuming it put a counted wolf on screen,
-    // which the 3D renderer could not draw, so the game failed on every
-    // reload. That animal is the wolf now: drop it from the counted list.
-    const keptCounted = uniqueCounted.filter((i) => i !== wolfIndex);
-    const keptAt = countedAt.filter((at) => at.index !== wolfIndex);
+    // The wolf travels with the snapshot only when it was caught. A visit
+    // still walking when the app closed has certainly outlived its window
+    // by the time a reload lands, so it is dropped penalty-free rather
+    // than resuming into a run-over. Old snapshots without the field read
+    // as no wolf; the milestone spawns the next visit on the next multiple
+    // of five, as it always would.
+    const wolf = restoreWolf(snapshot.wolf);
     this.state = {
       ...this.state,
       round,
       difficulty,
       sheepCount,
       seed,
-      wolfIndex,
-      count: keptCounted.length,
-      counted: keptCounted,
-      countedAt: keptAt,
+      wolf,
+      count: uniqueCounted.length,
+      counted: uniqueCounted,
+      countedAt,
       roundElapsed: Number.isFinite(Number(snapshot.roundElapsed)) && Number(snapshot.roundElapsed) >= 0
         ? Number(snapshot.roundElapsed)
         : 0,
@@ -603,6 +621,7 @@ export class StateStore {
       phase: this.state.phase,
       speedOn: this.state.speedOn,
       secondsLeft: this.state.secondsLeft,
+      wolf: this.state.wolf,
     };
   }
 
@@ -727,7 +746,6 @@ export class StateStore {
   //   { outcome: 'doubleTap' }        already counted, so the run ends
   //   { outcome: 'wiggle' }           already counted on Calm: a sleepy
   //                                   wiggle, and the round carries on
-  //   { outcome: 'wolfTap' }          the wolf: the run ends immediately
   //   { outcome: 'ignored' }          the run is not accepting taps
   tapSheep(index) {
     if (this.state.phase !== COUNTING) return { outcome: 'ignored' };
@@ -739,18 +757,36 @@ export class StateStore {
       this.endRun(ENDED_DOUBLE_TAP);
       return { outcome: 'doubleTap' };
     }
-    if (this.state.wolfIndex != null && index === this.state.wolfIndex) {
-      // The wolf tap counts nothing anywhere: no tap, no sheep, no bonus.
-      // The run just ends, like any other run-ending mistake.
-      this.endRun(ENDED_WOLF);
-      return { outcome: 'wolfTap' };
-    }
     const counted = [...this.state.counted, index];
     this.unsyncedTaps += 1;
     // Stamp the tap with the round's animation clock, so a resumed board
     // can show the counted ribbon exactly where the tap left it.
     const elapsed = this.currentElapsed();
     const countedAt = [...this.state.countedAt, { index, elapsed }];
+    // Milestone rule: every WOLF_EVERY-th counted sheep brings the wolf
+    // out, when all of these hold. The level is a challenge one (Calm
+    // never shows a wolf and never ends a run), no visit is already out
+    // (a milestone landing mid-visit is skipped, not queued), at least one
+    // sheep remains uncounted (a visit needs counting left to interrupt),
+    // and the flock is big enough to be worth one.
+    let wolf = this.state.wolf;
+    if (
+      !isCalmLevel(this.state.difficulty)
+      && counted.length > 0
+      && counted.length % WOLF_EVERY === 0
+      && !wolf
+      && !this.state.wolfSuppressed
+      && this.state.sheepCount - counted.length >= 1
+      && this.state.sheepCount >= 6
+    ) {
+      wolf = {
+        at: elapsed,
+        window: wolfWindowSeconds(this.state.round, this.state.difficulty),
+        n: counted.length / WOLF_EVERY,
+        caught: false,
+        caughtAt: null,
+      };
+    }
     this.state = {
       ...this.state,
       counted,
@@ -758,6 +794,7 @@ export class StateStore {
       countedAt,
       roundElapsed: elapsed,
       totalCounted: this.state.totalCounted + 1,
+      wolf,
     };
     // The ribbon and count update first; the two localStorage writes
     // follow right after, coalesced across back-to-back taps.
@@ -770,34 +807,60 @@ export class StateStore {
     return { outcome: 'counted', number: counted.length };
   }
 
+  // A tap on the wolf while it is out. Catching it pays the bonus, grows
+  // the run's wolf streak, and the scamper begins; the wolf never joins
+  // counted/count, so the flock is still what the round asks for. Any
+  // other moment reads as an ordinary tap on the pasture.
+  tapWolf() {
+    if (this.state.phase !== COUNTING || !this.state.wolf || this.state.wolf.caught) {
+      return { outcome: 'ignored' };
+    }
+    const wolf = { ...this.state.wolf, caught: true, caughtAt: this.currentElapsed() };
+    const safeStreak = this.state.safeStreak + 1;
+    this.unsyncedBonus += WOLF_BONUS;
+    this.state = {
+      ...this.state,
+      wolf,
+      safeStreak,
+      bestSafeStreak: Math.max(this.state.bestSafeStreak, safeStreak),
+      bonusCounted: this.state.bonusCounted + WOLF_BONUS,
+      totalCounted: this.state.totalCounted + WOLF_BONUS,
+    };
+    this.saveLocal();
+    this.scheduleSync();
+    this.onChange(this.state);
+    return { outcome: 'wolfCaught' };
+  }
+
+  // The visit's clock ran out: called by app.js's wolf tick each frame the
+  // round clock moves, so the walk and the timer are the same thing. Ends
+  // the run exactly like any other losing mistake.
+  escapeWolf() {
+    if (this.state.phase !== COUNTING) return { outcome: 'ignored' };
+    const wolf = this.state.wolf;
+    if (!wolf || wolf.caught) return { outcome: 'ignored' };
+    if (this.currentElapsed() <= wolf.at + wolf.window) return { outcome: 'ignored' };
+    this.endRun(ENDED_WOLF);
+    return { outcome: 'wolfEscaped' };
+  }
+
   isComplete() {
-    // A round that hides a wolf auto-passes once every real sheep is
-    // counted; the impostor is the one animal left uncounted.
-    const wolves = this.state.wolfIndex != null ? 1 : 0;
-    return this.state.count >= this.state.sheepCount - wolves;
+    return this.state.count >= this.state.sheepCount;
   }
 
   // The player says that is all of them. Right count passes the round;
   // anything short ends the run, except on Calm, where it answers
-  // 'notYet' with the sheep still awake and the round carries on.
+  // 'notYet' with the sheep still awake and the round carries on. A wolf
+  // still out holds the door: Done counting waits until it is resolved,
+  // because submitting under its nose would end the run a breath later
+  // anyway.
   submitCount() {
     if (this.state.phase !== COUNTING) return { outcome: 'ignored' };
+    if (this.state.wolf && !this.state.wolf.caught) return { outcome: 'wolfOut' };
     if (this.isComplete()) {
-      let { safeStreak, bestSafeStreak } = this.state;
-      if (this.state.wolfIndex != null) {
-        // Dodged: the streak grows, the best streak is kept forever, and
-        // two bonus sheep join the lifetime count.
-        safeStreak += 1;
-        bestSafeStreak = Math.max(bestSafeStreak, safeStreak);
-        this.unsyncedBonus += WOLF_BONUS;
-      }
       this.state = {
         ...this.state,
         phase: ROUND_PASSED,
-        safeStreak,
-        bestSafeStreak,
-        bonusCounted: this.state.bonusCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
-        totalCounted: this.state.totalCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
       };
       this.saveLocal();
       // A passed round is over; resuming into it would show a board with
@@ -811,7 +874,7 @@ export class StateStore {
     if (forgiving(this.state)) {
       const awake = [];
       for (let i = 0; i < this.state.sheepCount; i++) {
-        if (!this.state.counted.includes(i) && i !== this.state.wolfIndex) awake.push(i);
+        if (!this.state.counted.includes(i)) awake.push(i);
       }
       return { outcome: 'notYet', awake };
     }

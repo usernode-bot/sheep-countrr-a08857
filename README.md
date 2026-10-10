@@ -41,6 +41,19 @@ keeping track of who you already counted does not.
   are done while sheep are still uncounted, ends the run. The game-over
   screen names the round you reached and offers "Start again", which
   returns to round 1.
+- **The visiting wolf.** From round 6 on (flocks of six or more sheep),
+  every fifth counted tap brings a wolf strolling out from one side of
+  the field. It is a wolf-shaped visitor with upright ears and amber eye
+  glints, clearly not one of the sheep, and it walks straight for the
+  edge: tap it before it gets away. A catch pays 2 bonus sheep (the
+  plate says so, and the counted total grows past the flock size) and
+  grows a wolf streak; a wolf still out blocks "Done counting"; a wolf
+  that reaches the edge ends the run with its own game-over line, "The
+  wolf got away.", and the streak line "You caught N wolves in a row."
+  when catches were banked. The window tightens as rounds climb (7.5
+  seconds at round 6, down to 2.5 at the hardest) and the easier levels
+  get more time; Calm never spawns a wolf. At most one visit comes per
+  round.
 - **Touch first.** The whole board is taps: big hit targets, no drag, no
   pinch, and the Done button sits clear of the safe area at the bottom.
   The camera reframes on rotation so the whole flock stays visible.
@@ -85,7 +98,8 @@ Review fixtures, all of which avoid localStorage and the server:
   `/?scene=portrait`, which shows no card.
 - `/?scene=midcount`, `/?scene=roundcomplete`, `/?scene=gameover`,
   `/?scene=grownups`, `/?scene=flock`, `/?scene=portrait`,
-  `/?scene=empty` freeze one screen for a screenshot.
+  `/?scene=empty`, `/?scene=wolfround` (the wolf mid-stroll),
+  `/?scene=wolfgameover` freeze one screen for a screenshot.
 - `?renderer=dom` forces the card fallback and composes with either
   (`/?round=8&renderer=dom`).
 

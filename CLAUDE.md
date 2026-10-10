@@ -66,7 +66,10 @@ raises the movement speed and randomness, so remembering which sheep you
 already counted is the difficulty. Tapping an uncounted sheep counts it
 and marks it permanently (numbered ribbon, eyes closed, motion stopped);
 tapping a counted sheep, or submitting a short count, ends the run and
-shows the round reached with a restart button. Sound is on by default: a
+shows the round reached with a restart button. From round 6 a visiting
+wolf strolls in every fifth counted tap; catching it before it leaves
+the field pays bonus sheep, letting it escape ends the run. Sound is on
+by default: a
 soft Web Audio baa plays each time a sheep is counted, and a grown-up
 mutes it (and reaches settings: progress, start over) only via a ~1.5s
 press-and-hold on the corner gear icon, so a child mashing the screen
@@ -78,10 +81,11 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
 ## App-specific conventions
 
 - **The round difficulty curve lives in `public/rounds.js`** and nowhere
-  else: `sheepForRound`, `motionForRound`, `roundSeed` and `roamRadius`
-  are pure functions of the round number, which is what makes `/?round=N`
-  reproducible and lets `tests/game.test.mjs` assert the escalation
-  without a browser. Tune difficulty there rather than in a renderer.
+  else: `sheepForRound`, `motionForRound`, `roundSeed`, `roamRadius`,
+  `WOLF_EVERY` and `wolfWindowSeconds` are pure functions of the round
+  number (and level), which is what makes `/?round=N` reproducible and
+  lets `tests/game.test.mjs` assert the escalation without a browser.
+  Tune difficulty there rather than in a renderer.
   `roamRadius(round)` must stay a genuine upper bound on
   `wanderOffset`'s vector magnitude — `scene.js` pads the camera by it,
   so an under-estimate lets a late-round sheep wander off screen. The
@@ -102,6 +106,20 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   the store or network. `staticMode` also suppresses the round-complete
   auto-advance timer, so `?scene=roundcomplete` holds still long enough
   to photograph.
+- **The visiting wolf** is the milestone rule in `state.js`'s
+  `tapSheep`: on a non-Calm level, in a flock of six or more sheep, when
+  the counted tap count hits a multiple of `WOLF_EVERY` (5) and no visit
+  is out, a wolf spawns with `wolfWindowSeconds(round, difficulty)` on
+  the clock. At most one visit per round (a caught or escaped one holds
+  `state.wolf` until the next round start), catching pays `WOLF_BONUS`
+  bonus sheep and grows `safeStreak`/`bestSafeStreak`, a visit still out
+  blocks `submitCount`, and `escapeWolf()` (driven by app.js's 150ms
+  wolf watch) ends the run with `ENDED_WOLF` — the `'wolf'` end reason
+  string the server already accepts. `?round=N&wolf=1` / `&wolf=0`
+  force/suppress a visit on a deep link (in-memory only),
+  `?scene=wolfround` / `?scene=wolfgameover` freeze it for the camera.
+  Small flocks (fewer than six sheep) are naturally wolf-free, so older
+  tests on rounds 2-5 need no wolf handling.
 - **Speed Round fixtures**: `?scene=speed` (board mid-count with the
   countdown pill), `?scene=speedgameover` (the clock ran out), and
   `?round=N&speed=1` (a playable timed run). All ride the existing

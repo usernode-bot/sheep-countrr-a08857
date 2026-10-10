@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
+import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius } from './rounds.js';
 
 const COLORS = {
   wool: '#f4eadb',
@@ -391,10 +391,9 @@ export function buildWolfEyeGeometry() {
 }
 
 // The wolf reuses the sheep's merge pipeline: same silhouette, same wool
-// locks, different disguise. Tier 1 wears grey with upright ears and a
-// tail; tier 2 keeps small grey ears and a tail peek under a flock-pastel
-// fleece; tier 3 is a sheep except for the eyes, which carry the glint.
-export function buildWolfBodyGeometry(variant, tier, fleece = FLEECES[0]) {
+// locks, but in its own grey outfit with upright ears and a tail, so it
+// reads as a different animal the moment it steps into the pasture.
+export function buildWolfBodyGeometry(variant, tier = 1, fleece = FLEECES[0]) {
   const isGrey = tier === 1;
   const wolfFleece = isGrey
     ? { wool: COLORS.wolfWool, woolLight: '#e2ddd2', woolShade: COLORS.wolfWoolShade }
@@ -666,7 +665,7 @@ function detectTier() {
   return 'high';
 }
 
-export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, getOverlayRect, getBottomOverlayRect }) {
+export function createSceneRenderer({ container, onTap, onWolfTap, reducedMotion, onFatal, getOverlayRect, getBottomOverlayRect }) {
   let tier = detectTier();
   let night = false;
   let calm = false;
@@ -840,8 +839,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const bodyGeos = FLEECES.map((fleece, i) => buildSheepBodyGeometry(i % 3, fleece));
   const eyeGeo = buildEyeGeometry();
   const wolfEyeGeo = buildWolfEyeGeometry();
-  const wolfBodyGeos = [1, 2, 3].map((tier) =>
-    [0, 1, 2].map((variant) => buildWolfBodyGeometry(variant, tier, FLEECES[variant % FLEECES.length])));
+  // The visiting wolf wears the grey tier-1 outfit only: it is never in
+  // disguise, so one geometry serves every visit.
+  const wolfBodyGeo = buildWolfBodyGeometry(0, 1);
   const ribbonGeo = buildRibbonGeometry();
   // One material for every sheep body and eye, so the low tier can swap
   // the whole flock to cheaper Lambert shading in one place.
@@ -884,9 +884,42 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   let sheep = [];
   let flockCenter = { x: 0, z: 0 };
   let flockSpread = 3;
+  let flockBounds = { minX: -3, maxX: 3, minZ: -3, maxZ: 3 };
   const sparklePool = createSparklePool(scene, tier === 'low' ? 14 : 26, starTexture);
   const confettiPool = createConfettiPool(scene, tier === 'low' ? 40 : 90, dotTexture);
   const ripplePool = createRipplePool(scene, tier === 'low' ? 4 : 6, buildRippleTexture());
+
+  // The visiting wolf: one standalone group built once and hidden until a
+  // visit spawns. The grey tier-1 body from the shared merge pipeline, the
+  // amber-glint eyes, its own shadow, and an oversized pick sphere so
+  // small fingers land the tap. It never joins the flock's draw budget
+  // while hidden (visible=false skips the draw entirely).
+  const wolfGroup = new THREE.Group();
+  wolfGroup.visible = false;
+  scene.add(wolfGroup);
+  const wolfBody = new THREE.Mesh(wolfBodyGeo, sheepMat);
+  wolfGroup.add(wolfBody);
+  const wolfEyes = [-1, 1].map((side) => {
+    const eye = new THREE.Mesh(wolfEyeGeo, sheepMat);
+    eye.position.set(side * 0.123, 0.867, 0.709);
+    wolfGroup.add(eye);
+    return eye;
+  });
+  const wolfShadow = new THREE.Mesh(shadowGeo, shadowMat);
+  wolfShadow.rotation.x = -Math.PI / 2;
+  wolfShadow.position.set(0, 0.012, 0.05);
+  wolfGroup.add(wolfShadow);
+  const wolfPick = new THREE.Mesh(new THREE.SphereGeometry(1.4, 8, 6), pickMat);
+  wolfPick.position.y = 0.62;
+  wolfGroup.add(wolfPick);
+
+  // The visit out right now: { at, window, seed, n, angle } once spawned,
+  // or null. wolfCaughtAt starts the scamper on the round clock.
+  let wolfVisit = null;
+  let wolfCaughtAt = -1;
+  // The floating "+2" pill on a catch, built like the name labels and
+  // reused across visits.
+  let bonusSprite = null;
 
   let lastState = null;
   // How this round's flock moves. Round 1 is perfectly still; later
@@ -932,16 +965,11 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       const scale = 0.92 + seededRand(state.seed, i) * 0.16;
       g.scale.setScalar(scale);
 
-      const isWolf = state.wolfIndex === i;
-      const tier = isWolf ? wolfDisguiseTier(state.round) : 0;
-      const body = new THREE.Mesh(
-        isWolf ? wolfBodyGeos[tier - 1][i % 3] : bodyGeos[i % bodyGeos.length],
-        sheepMat
-      );
+      const body = new THREE.Mesh(bodyGeos[i % bodyGeos.length], sheepMat);
       g.add(body);
 
       const eyes = [-1, 1].map((side) => {
-        const eye = new THREE.Mesh(isWolf ? wolfEyeGeo : eyeGeo, sheepMat);
+        const eye = new THREE.Mesh(eyeGeo, sheepMat);
         eye.position.set(side * 0.123, 0.867, 0.709);
         g.add(eye);
         return eye;
@@ -952,23 +980,18 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       shadow.position.set(0, 0.012, 0.05);
       g.add(shadow);
 
-      let ribbonMat = null;
-      let ribbon = null;
-      let numberSprite = null;
-      if (!isWolf) {
-        ribbonMat = new THREE.MeshLambertMaterial({ color: '#fff8ed' });
-        ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
-        ribbon.visible = false;
-        g.add(ribbon);
+      const ribbonMat = new THREE.MeshLambertMaterial({ color: '#fff8ed' });
+      const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
+      ribbon.visible = false;
+      g.add(ribbon);
 
-        numberSprite = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: numberTextures[0], transparent: true, depthTest: false, fog: false })
-        );
-        numberSprite.scale.set(0.62, 0.62, 1);
-        numberSprite.position.set(0, 1.55, 0.1);
-        numberSprite.visible = false;
-        g.add(numberSprite);
-      }
+      const numberSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: numberTextures[0], transparent: true, depthTest: false, fog: false })
+      );
+      numberSprite.scale.set(0.62, 0.62, 1);
+      numberSprite.position.set(0, 1.55, 0.1);
+      numberSprite.visible = false;
+      g.add(numberSprite);
 
       // Optional playful name label above the head. Uncounted sheep float
       // it where the number plate would sit; counted sheep lift it above
@@ -1019,13 +1042,19 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         nextHop: 5 + Math.random() * 8,
         hopStart: -1,
         ribbonPop: -1,
-        isWolf,
-        tier,
       });
     }
 
     flockCenter = { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 };
     flockSpread = Math.max(maxX - minX, maxZ - minZ, 1.5) / 2 + 0.8;
+    flockBounds = { minX, maxX, minZ, maxZ };
+    // A new flock has no visit out. A wolf on the old board must not
+    // survive the rebuild; app.js re-spawns one if the new state still
+    // carries a visit.
+    wolfVisit = null;
+    wolfCaughtAt = -1;
+    wolfGroup.visible = false;
+    if (bonusSprite) bonusSprite.visible = false;
     butterflies.forEach((b, i) => {
       b.cx = flockCenter.x + (i - 1) * Math.max(1.2, flockSpread * 0.7);
       b.cz = flockCenter.z - 0.5 + i * 0.6;
@@ -1110,8 +1139,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function markCounted(index, number, animate = true) {
     const s = sheep[index];
-    // The wolf has no ribbon or number to show: it is never counted.
-    if (!s || s.counted || s.isWolf) return;
+    if (!s || s.counted) return;
     s.counted = true;
     if (lastState && !lastState.counted.includes(index)) {
       lastState = { ...lastState, counted: [...lastState.counted, index] };
@@ -1144,21 +1172,55 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     s.wiggle = true;
   }
 
-  // The disguise drops: on reveal the wolf hops on the existing
-  // tap-reaction plumbing and, from tier 2 up, swaps to the fully grey
-  // tier-1 body so the reveal has something to show even late in the game.
-  function revealWolf(index) {
-    const s = sheep[index];
-    if (!s) return;
-    // The frame measures reactions on the round's clock, not the raw one.
-    s.bounceStart = elapsedSeconds();
-    s.bounceDur = 0.9;
-    s.wiggle = false;
-    if (s.tier >= 2) s.body.geometry = wolfBodyGeos[0][index % 3];
-  }
-
   function celebrate() {
     // Counted sheep settle quietly. No confetti or synchronized jumping.
+  }
+
+  // A visit begins: the wolf steps out at `at` on the round clock and
+  // strolls outward for `window` seconds. The angle is drawn from the
+  // round seed twisted with the visit number, so the same round always
+  // greets the same stroll and a deep link reproduces it exactly.
+  function spawnWolf({ at, window, seed, n, hold }) {
+    wolfVisit = {
+      at,
+      window,
+      seed,
+      n,
+      // A held visit (a frozen fixture) never times out on screen: the
+      // frame loop pins it mid-walk so a capture can land whenever.
+      hold: !!hold,
+      angle: seededRand(seed, 500 + (n || 1)) * Math.PI * 2,
+    };
+    wolfCaughtAt = -1;
+    wolfGroup.visible = false; // the frame loop raises it at `at`
+  }
+
+  // The tap landed: the wolf turns and bounds away over about a second,
+  // trailing a sparkle burst and a floating "+2".
+  function catchWolf() {
+    if (!wolfVisit || wolfCaughtAt >= 0) return;
+    wolfCaughtAt = elapsedSeconds();
+    // Freeze the escape line where the tap found the wolf, so the scamper
+    // reads as a reaction rather than a teleport.
+    wolfVisit.angle = Math.atan2(
+      wolfGroup.position.z - flockCenter.z,
+      wolfGroup.position.x - flockCenter.x
+    );
+    wolfVisit.catchR = Math.hypot(
+      wolfGroup.position.x - flockCenter.x,
+      wolfGroup.position.z - flockCenter.z
+    );
+    sparklePool.burst(wolfGroup.position.x, 0.8, wolfGroup.position.z);
+    if (!bonusSprite) {
+      bonusSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: nameTexture('+2'), transparent: true, depthTest: false, fog: false })
+      );
+      bonusSprite.scale.set(1.1, 0.28, 1);
+      scene.add(bonusSprite);
+    }
+    bonusSprite.material.opacity = 1;
+    bonusSprite.position.set(wolfGroup.position.x, 1.5, wolfGroup.position.z);
+    bonusSprite.visible = true;
   }
 
   const raycaster = new THREE.Raycaster();
@@ -1180,10 +1242,15 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     pointerVec.set(((evt.clientX - rect.left) / rect.width) * 2 - 1, -((evt.clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointerVec, camera);
     const targets = sheep.map((s) => s.pick);
+    // The wolf's oversized pick sphere joins the targets only while its
+    // visit is out and not yet caught, so a tap landing on it routes to
+    // onWolfTap instead of counting whichever sheep sits behind it.
+    if (wolfGroup.visible && wolfCaughtAt < 0) targets.push(wolfPick);
     const hits = raycaster.intersectObjects(targets, false);
     if (hits.length) {
       const idx = targets.findIndex((t) => t === hits[0].object);
-      if (idx >= 0) onTap(idx);
+      if (idx === sheep.length) onWolfTap?.();
+      else if (idx >= 0) onTap(idx);
     }
   }
   canvas.addEventListener('pointerdown', onPointerDown, { passive: true });
@@ -1328,10 +1395,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       // Seeded, bounded wandering gets gently more varied as the flock
       // grows. Counted sheep stop where they are, ready for sleep.
       if (!reducedMotion && !s.counted) {
-        // Tiers 1 and 2 wander a beat out of step with the flock; tier 3
-        // keeps perfect time, which is exactly what makes it hard to spot.
-        const wolfLag = s.isWolf && s.tier < 3 ? -0.8 : 0;
-        const offset = wanderOffset(lastState.seed, s.index, lastState.sheepCount, t + wolfLag, motion);
+        const offset = wanderOffset(lastState.seed, s.index, lastState.sheepCount, t, motion);
         s.group.position.x = s.origin.x + offset.x;
         s.group.position.z = s.origin.z + offset.z;
         s.group.rotation.y = s.heading + offset.turn;
@@ -1410,6 +1474,66 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       if (c.sprite.position.x > 18) c.sprite.position.x = -18;
     });
 
+    // The visiting wolf is a pure function of the round clock, exactly
+    // like the flock's wander: a scale-in pop at spawn, an outward walk
+    // with a light bounce until the window ends, and a caught scamper
+    // with its "+2" floating up. Nothing here runs on wall time, so a
+    // frozen fixture holds its visit mid-walk forever.
+    if (wolfVisit) {
+      if (wolfCaughtAt >= 0) {
+        const p = (rt - wolfCaughtAt) / 1.1;
+        if (p >= 1) {
+          wolfVisit = null;
+          wolfCaughtAt = -1;
+          wolfGroup.visible = false;
+          if (bonusSprite) bonusSprite.visible = false;
+        } else {
+          wolfGroup.visible = true;
+          const r = wolfVisit.catchR + p * 1.9;
+          const hop = reducedMotion ? 0 : Math.abs(Math.sin(rt * 9)) * 0.14 * (1 - p * 0.6);
+          wolfGroup.position.set(
+            flockCenter.x + Math.cos(wolfVisit.angle) * r,
+            hop,
+            flockCenter.z + Math.sin(wolfVisit.angle) * r
+          );
+          wolfGroup.rotation.y = Math.atan2(Math.cos(wolfVisit.angle), Math.sin(wolfVisit.angle));
+          wolfGroup.scale.setScalar(Math.max(0.05, 1 - p * 0.3));
+          if (bonusSprite) {
+            bonusSprite.position.y = 1.5 + p * 0.9;
+            bonusSprite.material.opacity = 1 - p;
+          }
+        }
+      } else if (!wolfVisit.hold && (rt < wolfVisit.at || rt > wolfVisit.at + wolfVisit.window)) {
+        // Not yet out, or the window closed (the run ends from app.js's
+        // tick): gone either way. A held visit (a frozen fixture) stays
+        // put so it can be photographed whenever the capture lands.
+        wolfGroup.visible = false;
+      } else {
+        wolfGroup.visible = true;
+        const pop = reducedMotion ? 1 : Math.max(0.01, easeOutBack(Math.min(1, (rt - wolfVisit.at) / 0.35)));
+        const walk = wolfVisit.hold ? 0.35 : Math.min(1, (rt - wolfVisit.at) / wolfVisit.window);
+        // From just outside the flock outward as the window closes: the
+        // stroll IS the timer. The direction is the seeded angle, but the
+        // position is clamped into the same padded box fitCamera frames
+        // (flock bounds plus the wander pad), so however the angle points
+        // the wolf stays somewhere the player can see and tap it.
+        const r = flockSpread + 0.4 + walk * 0.9;
+        const pad = 1.0 + roamRadius(lastState ? lastState.round : 1, lastState && lastState.difficulty);
+        const margin = 0.35;
+        const wx = Math.min(Math.max(
+          flockCenter.x + Math.cos(wolfVisit.angle) * r,
+          flockBounds.minX - pad + margin), flockBounds.maxX + pad - margin);
+        const wz = Math.min(Math.max(
+          flockCenter.z + Math.sin(wolfVisit.angle) * r,
+          flockBounds.minZ - pad + margin), flockBounds.maxZ + pad - margin);
+        const hop = reducedMotion ? 0 : Math.abs(Math.sin(rt * 5.5)) * 0.05 * pop;
+        wolfGroup.position.set(wx, hop, wz);
+        // Face its direction of travel.
+        wolfGroup.rotation.y = Math.atan2(Math.cos(wolfVisit.angle), Math.sin(wolfVisit.angle));
+        wolfGroup.scale.setScalar(pop);
+      }
+    }
+
     butterflies.forEach((b) => {
       const tt = t * 0.45 + b.phase;
       b.group.position.set(
@@ -1461,8 +1585,14 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     countSheep(index, number) {
       markCounted(index, number, true);
     },
-    revealWolf(index) {
-      revealWolf(index);
+    // A visit begins: app.js calls this the moment the store puts a wolf
+    // out. The frame loop raises the wolf at `at` on the round clock.
+    spawnWolf(opts) {
+      spawnWolf(opts);
+    },
+    // The tap landed on the wolf: scamper away with the bonus float.
+    catchWolf() {
+      catchWolf();
     },
     // Live ground position of a sheep, for the tap ripple. The ripple
     // scale divides by the sheep's own scale so the ring footprint is
