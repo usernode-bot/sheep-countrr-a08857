@@ -822,10 +822,14 @@ function handleTap(index) {
   }
   const result = store.tapSheep(index);
   if (store.state.duel && store.state.phase !== COUNTING) stopDuelClock();
+  // Every tap on a sheep's body baas, counted or not. The wolf is not a
+  // sheep, and an ignored tap touched nothing, so neither baas.
+  const sheepTapped = result.outcome === 'counted'
+    || result.outcome === 'doubleTap' || result.outcome === 'wiggle';
+  if (sheepTapped && store.state.soundOn) playBaa();
   if (result.outcome === 'counted') {
     renderer.countSheep(index, result.number);
     if (store.state.soundOn) {
-      playBaa();
       playTapChime(result.number);
     }
     // The flock is fully counted: hold the Speed Round clock here while
