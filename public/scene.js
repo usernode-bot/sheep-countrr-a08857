@@ -8,7 +8,7 @@
 // ribbon and a number plate. Ten sheep is under a hundred draw calls, which
 // is what keeps the low tier smooth.
 import * as THREE from 'three';
-import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
+import { layoutPositions, nearestForgivenTap, NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
 import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
 
@@ -1164,6 +1164,11 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const raycaster = new THREE.Raycaster();
   const pointerStart = { x: 0, y: 0, t: 0 };
   const pointerVec = new THREE.Vector2();
+  // Scratch vectors for the tap-forgiveness projection below: reused every
+  // miss so a failed raycast never allocates per sheep.
+  const forgivePos = new THREE.Vector3();
+  const forgiveEdge = new THREE.Vector3();
+  const forgiveRight = new THREE.Vector3();
 
   function onPointerDown(evt) {
     pointerStart.x = evt.clientX;
@@ -1184,7 +1189,41 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     if (hits.length) {
       const idx = targets.findIndex((t) => t === hits[0].object);
       if (idx >= 0) onTap(idx);
+      return;
     }
+    // Missed every pick sphere: count the uncounted sheep the tap landed
+    // closest to, within a fingertip of its edge, so a slightly-off tap
+    // still counts while the flock moves. Forgiveness never lands on a
+    // counted sheep or the wolf, since tapping either ends the run, and a
+    // direct hit above keeps today's rules (including the counted tap).
+    forgiveRight.setFromMatrixColumn(camera.matrixWorld, 0);
+    const forgiveTargets = [];
+    const tapX = evt.clientX - rect.left;
+    const tapY = evt.clientY - rect.top;
+    for (let i = 0; i < sheep.length; i++) {
+      const s = sheep[i];
+      s.pick.getWorldPosition(forgivePos);
+      // The pick sphere's edge along the camera's right vector, projected
+      // the same way, gives the sheep's radius in CSS pixels.
+      forgiveEdge.copy(forgivePos).addScaledVector(forgiveRight, 0.9 * s.group.scale.x);
+      forgivePos.project(camera);
+      forgiveEdge.project(camera);
+      // Behind the camera or outside the frustum: not a tap target.
+      if (forgivePos.z < -1 || forgivePos.z > 1) continue;
+      const cx = ((forgivePos.x + 1) / 2) * rect.width;
+      const cy = ((1 - forgivePos.y) / 2) * rect.height;
+      const ex = ((forgiveEdge.x + 1) / 2) * rect.width;
+      const ey = ((1 - forgiveEdge.y) / 2) * rect.height;
+      forgiveTargets.push({
+        index: i,
+        x: cx,
+        y: cy,
+        r: Math.hypot(ex - cx, ey - cy),
+        eligible: !s.counted && !s.isWolf,
+      });
+    }
+    const forgiven = nearestForgivenTap(forgiveTargets, tapX, tapY);
+    if (forgiven >= 0) onTap(forgiven);
   }
   canvas.addEventListener('pointerdown', onPointerDown, { passive: true });
   canvas.addEventListener('pointerup', onPointerUp, { passive: true });
