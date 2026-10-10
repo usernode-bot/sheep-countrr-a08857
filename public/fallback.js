@@ -4,7 +4,7 @@
 // same pastel per number.
 import { NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { calmMotion, isCalmLevel, motionForRound, wolfDisguiseTier } from './rounds.js';
+import { calmMotion, isCalmLevel, motionForRound } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -72,6 +72,17 @@ const SHEEP_SVG = `
 // nudges, so the same round profile reads as the same kind of restlessness.
 const PX_PER_UNIT = 22;
 
+// Same deterministic hash the 3D scene uses, so the wolf's choice of side
+// matches between renderers on the same seed.
+function seededRand(seed, salt) {
+  let a = (seed ^ (salt * 2654435761)) >>> 0;
+  a |= 0;
+  a = (a + 0x6d2b79f5) | 0;
+  let t = Math.imul(a ^ (a >>> 15), 1 | a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 // Same pastel palette the 3D renderer uses, so a sheep looks like itself
 // whichever way the device draws it.
 const FLEECES = [
@@ -83,9 +94,9 @@ const FLEECES = [
   { fleece: '#f8ecc9', 'fleece-light': '#fdf6e0', 'fleece-shade': '#e3d2a4' },
 ];
 
-// Wolf-only SVG cues, added to the plain sheep SVG on the wolf's card.
-// The groups carry classes so the card's data attributes and CSS decide
-// how much of the disguise shows per tier and after the reveal.
+// Wolf-only SVG cues, drawn over the plain sheep SVG on the visiting
+// wolf's card: upright ears, a tail and the amber eye glints. The card's
+// grey fleece variables (see .wolf-card in index.html) recolor the body.
 const WOLF_CUES_SVG = `
   <g class="wolf-cues">
     <g class="wolf-ears">
@@ -104,13 +115,26 @@ const WOLF_CUES_SVG = `
     </g>
   </g>`;
 
-export function createFallbackRenderer({ container, onTap, reducedMotion }) {
+export function createFallbackRenderer({ container, onTap, onWolfTap, reducedMotion }) {
   const field = document.createElement('div');
   field.className = 'sheep-fallback-field';
   const grid = document.createElement('div');
   grid.className = 'sheep-fallback-grid';
   field.appendChild(grid);
   container.appendChild(field);
+
+  // The visiting wolf lives outside the scrolling grid, in its own fixed
+  // card, so the flock's layout never makes room for it and it can stroll
+  // clean off the screen.
+  const wolfBtn = document.createElement('button');
+  wolfBtn.type = 'button';
+  wolfBtn.className = 'wolf-card';
+  wolfBtn.setAttribute('aria-hidden', 'true');
+  wolfBtn.tabIndex = -1;
+  wolfBtn.innerHTML = SHEEP_SVG.replace('</svg>', WOLF_CUES_SVG + '\n</svg>');
+  wolfBtn.hidden = true;
+  wolfBtn.addEventListener('click', () => onWolfTap?.());
+  field.appendChild(wolfBtn);
 
   let cards = [];
   let current = null;
@@ -143,25 +167,18 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       for (const [name, value] of Object.entries(FLEECES[i % FLEECES.length])) {
         btn.style.setProperty(`--${name}`, value);
       }
-      const isWolf = state.wolfIndex === i;
-      if (isWolf) {
-        const tier = wolfDisguiseTier(state.round);
-        btn.dataset.wolf = 'true';
-        btn.dataset.wolfTier = String(tier);
-        btn.innerHTML = SHEEP_SVG.replace('</svg>', WOLF_CUES_SVG + '\n</svg>')
-          + '<span class="sheep-name-label" hidden></span>'
-          + '<span class="sheep-card-badge" hidden></span>'
-          + '<span class="sheep-tap-ripple" hidden></span>';
-      } else {
-        btn.innerHTML = SHEEP_SVG
-          + '<span class="sheep-name-label" hidden></span>'
-          + '<span class="sheep-card-badge" hidden></span>'
-          + '<span class="sheep-tap-ripple" hidden></span>';
-      }
+      btn.innerHTML = SHEEP_SVG
+        + '<span class="sheep-name-label" hidden></span>'
+        + '<span class="sheep-card-badge" hidden></span>'
+        + '<span class="sheep-tap-ripple" hidden></span>';
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
       cards.push(btn);
     }
+    // A new flock has no visit out. A wolf on the old board must not
+    // survive the rebuild; app.js re-spawns one if the new state still
+    // carries a visit.
+    hideWolf();
     state.counted.forEach((idx, order) => markCounted(idx, order + 1, false));
     syncNames(state);
     startDrift();
@@ -204,10 +221,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       for (let i = 0; i < cards.length; i++) {
         const btn = cards[i];
         if (btn.classList.contains('is-counted')) continue;
-        // Tiers 1 and 2 wander a beat out of step with the flock, matching
-        // the 3D scene; tier 3 keeps perfect time.
-        const lag = btn.dataset.wolf === 'true' && Number(btn.dataset.wolfTier) < 3 ? -0.8 : 0;
-        const offset = wanderOffset(current.seed, i, cards.length, t + lag, motion);
+        const offset = wanderOffset(current.seed, i, cards.length, t, motion);
         btn.style.translate = `${(offset.x * PX_PER_UNIT).toFixed(1)}px ${(offset.z * PX_PER_UNIT * 0.6).toFixed(1)}px`;
       }
     };
@@ -258,13 +272,102 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     );
   }
 
-  // The disguise drops: the same wiggle the double-tap uses, plus the
-  // data attribute that swings every cue to its fully-visible form.
-  function revealWolf(index) {
-    const btn = cards[index];
-    if (!btn) return;
-    btn.dataset.revealed = 'true';
-    wiggle(index);
+  // --- The visiting wolf ---
+  // A standalone card outside the grid. The walk across the field is the
+  // escape timer, driven by the Web Animations API rather than a CSS
+  // transition, so the global reduced-motion rule (which kills CSS
+  // transitions and animations) cannot stop it: the stroll must still
+  // run, only the hop and the scamper's flourish are skipped.
+
+  let wolfVisit = null;
+  let wolfCaughtAt = -1;
+  let wolfWalkAnim = null;
+
+  function hideWolf() {
+    if (wolfWalkAnim) { wolfWalkAnim.cancel(); wolfWalkAnim = null; }
+    wolfVisit = null;
+    wolfCaughtAt = -1;
+    wolfBtn.hidden = true;
+    wolfBtn.style.translate = '';
+    wolfBtn.style.scale = '';
+  }
+
+  // A visit begins: the wolf steps out at `at` on the round clock and
+  // strolls off the near edge over `window` seconds. The side is drawn
+  // from the round seed twisted with the visit number, so the same round
+  // always greets the same stroll and a deep link reproduces it exactly.
+  function spawnWolf({ at, window: win, seed, n, hold }) {
+    wolfVisit = { at, window: win, n, hold: !!hold, side: seededRand(seed, 500 + (n || 1)) < 0.5 ? -1 : 1 };
+    wolfCaughtAt = -1;
+    wolfBtn.classList.remove('is-caught');
+    wolfBtn.hidden = false;
+    startWalk();
+  }
+
+  function startWalk() {
+    if (wolfWalkAnim) { wolfWalkAnim.cancel(); wolfWalkAnim = null; }
+    if (!wolfVisit || wolfCaughtAt >= 0) return;
+    const rect = field.getBoundingClientRect();
+    const size = wolfBtn.offsetWidth || 118;
+    const side = wolfVisit.side;
+    // From just inside the field's side edge to clean off-screen, level
+    // with the middle of the flock.
+    const startX = side < 0 ? rect.width * 0.16 : rect.width * 0.84 - size;
+    const endX = side < 0 ? -size - 24 : rect.width + 24;
+    wolfBtn.style.left = '0px';
+    wolfBtn.style.top = `${Math.round(rect.top + rect.height * 0.44)}px`;
+    if (wolfVisit.hold) {
+      // A frozen fixture holds its visit mid-stride so it can be
+      // photographed whenever the capture lands.
+      wolfBtn.style.translate = `${Math.round(startX + (endX - startX) * 0.35)}px 0px`;
+      return;
+    }
+    // Resume support: a board saved mid-visit rejoins the walk at the
+    // round clock's position, never back at the start.
+    const into = Math.max(0, elapsedSeconds() - wolfVisit.at);
+    const frac = Math.min(1, into / wolfVisit.window);
+    if (frac >= 1) {
+      wolfBtn.style.translate = `${Math.round(endX)}px 0px`;
+      return;
+    }
+    const fromX = startX + (endX - startX) * frac;
+    wolfWalkAnim = wolfBtn.animate(
+      [{ translate: `${fromX.toFixed(1)}px 0px` }, { translate: `${Math.round(endX)}px 0px` }],
+      { duration: Math.round((wolfVisit.window - into) * 1000), easing: 'linear', fill: 'forwards' }
+    );
+  }
+
+  // The tap landed: the wolf turns and bounds away off the same edge,
+  // shrinking as it goes. Reduced motion skips the flourish and just
+  // steps the wolf out of sight.
+  function catchWolf() {
+    if (!wolfVisit || wolfCaughtAt >= 0) return;
+    wolfCaughtAt = elapsedSeconds();
+    if (wolfWalkAnim) { wolfWalkAnim.cancel(); wolfWalkAnim = null; }
+    // Freeze the walk where the tap found it, so the scamper starts from
+    // there rather than teleporting.
+    const held = getComputedStyle(wolfBtn).translate;
+    wolfBtn.style.translate = held && held !== 'none' ? held : '0px 0px';
+    const side = wolfVisit.side;
+    if (reducedMotion || !wolfBtn.animate) {
+      wolfBtn.hidden = true;
+      return;
+    }
+    const rect = field.getBoundingClientRect();
+    const farX = side < 0 ? -rect.width * 0.4 : rect.width * 1.4;
+    const scamper = wolfBtn.animate(
+      [
+        { translate: wolfBtn.style.translate, scale: '1', opacity: 1 },
+        { translate: `${Math.round(farX)}px -40px`, scale: '0.6', opacity: 0.9 },
+      ],
+      { duration: 900, easing: 'ease-in', fill: 'forwards' }
+    );
+    scamper.onfinish = () => {
+      wolfBtn.hidden = true;
+      scamper.cancel();
+      wolfBtn.style.translate = '';
+      wolfBtn.style.scale = '';
+    };
   }
 
   // Soft expanding ring where the card was tapped. One span per card,
@@ -306,9 +409,11 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     kind: 'dom',
     elapsedSeconds,
     // Resume support: pin the drift clock at the board's saved position.
+    // A visit out rejoins its walk at the new clock position.
     setRoundClock(seconds) {
       clockOffset = Number.isFinite(Number(seconds)) && Number(seconds) >= 0 ? Number(seconds) : 0;
       startedAt = performance.now();
+      if (wolfVisit && wolfCaughtAt < 0) startWalk();
     },
     setState(state) {
       render(state);
@@ -321,8 +426,14 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     wiggleSheep(index) {
       wiggle(index);
     },
-    revealWolf(index) {
-      revealWolf(index);
+    // A visit begins: app.js calls this the moment the store puts a wolf
+    // out. The card appears at `at` and strolls for `window` seconds.
+    spawnWolf(opts) {
+      spawnWolf(opts);
+    },
+    // The tap landed on the wolf: scamper away off the edge.
+    catchWolf() {
+      catchWolf();
     },
     tapRipple(index) {
       tapRipple(index);

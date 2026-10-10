@@ -98,3 +98,34 @@ export function playBaa() {
   osc.stop(t + 0.35);
   wobble.stop(t + 0.35);
 }
+
+// The visiting wolf's call: a quiet rising two-note glide, the opposite
+// direction of the baa's downward drift so the two never read as the same
+// animal. Played when a wolf steps into the pasture, as a heads-up rather
+// than a jump scare.
+export function playHowl() {
+  if (!enabled) return;
+  const c = getCtx();
+  if (!c) return;
+  const notes = [
+    { freq: 300, at: 0, until: 0.3 },
+    { freq: 430, at: 0.26, until: 0.62 },
+  ];
+  notes.forEach(({ freq, at, until }) => {
+    const start = c.currentTime + at;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, start);
+    // Each note rises a little before it settles, which is what makes a
+    // howl read as a howl rather than a chime.
+    osc.frequency.linearRampToValueAtTime(freq * 1.25, start + (until - at) * 0.6);
+    osc.frequency.linearRampToValueAtTime(freq * 1.1, start + (until - at));
+    osc.connect(gain).connect(c.destination);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.03, start + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + (until - at) + 0.08);
+    osc.start(start);
+    osc.stop(start + (until - at) + 0.12);
+  });
+}

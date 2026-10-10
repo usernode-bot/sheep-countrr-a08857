@@ -1,5 +1,3 @@
-import { mulberry32 } from './layout.js';
-
 // Round progression: the single source of truth for how many sheep a round
 // holds and how wildly they move, per difficulty. Everything here is a pure
 // function of the round number and the difficulty, so the
@@ -208,68 +206,30 @@ export function roundLabel(round) {
   return 'Round ' + normalizeRound(round);
 }
 
-// --- The wolf in the flock ---
-// Everything below is a pure function of the round number (and, for the
-// spawn draw, the round seed), so /?round=N reproduces the same wolf every
-// time it is loaded, exactly like the rest of the difficulty curve.
-//
-// Every function takes an optional trailing `mode` argument reserved for
-// the future Easy/Expert difficulty work: the existing call sites pass
-// nothing, so nothing changes until the modes land.
+// --- The visiting wolf ---
+// Every 5th counted sheep, a wolf steps into the pasture and strolls toward
+// the edge. Tapping it in time pays a bonus; letting it walk off ends the
+// run. Everything here stays a pure function of the round number and
+// difficulty, so /?round=N reproduces the same visit every time it is
+// loaded, exactly like the rest of the difficulty curve.
 
-const WOLF_BASE_CHANCE = 0.15;
-const WOLF_CHANCE_STEP = 0.05;
-const WOLF_MAX_CHANCE = 0.7;
+// The reward for catching the wolf: two bonus sheep on the lifetime count.
 export const WOLF_BONUS = 2;
 
-function wolfModeFactors(mode = 'normal') {
-  if (mode === 'easy') return { chance: 0.5, tier2: 7, tier3: 10 };
-  if (mode === 'expert') return { chance: 1.5, tier2: 4, tier3: 6 };
-  return { chance: 1, tier2: 5, tier3: 8 };
-}
+// A visit spawns after every 5th counted tap, when the round still has a
+// sheep left to interrupt and the flock is big enough to be worth one.
+export const WOLF_EVERY = 5;
 
-// Round 1 is the gentle tap-to-learn round: it never hides a wolf. After
-// that the chance climbs one step per round until it caps.
-export function wolfChance(round, mode = 'normal') {
+// How long the wolf takes to reach the edge of the screen, in round-clock
+// seconds. Normal starts at about 6 seconds and the stroll shortens as
+// rounds climb; Easy gives more time, Hard and Expert less; everything is
+// clamped to a window a young player can still make. Calm never calls
+// this, because Calm never shows a wolf.
+export function wolfWindowSeconds(round, difficulty = DEFAULT_DIFFICULTY) {
   const r = normalizeRound(round);
-  if (r <= 1) return 0;
-  const { chance } = wolfModeFactors(mode);
-  return Math.min(WOLF_MAX_CHANCE, (WOLF_BASE_CHANCE + (r - 2) * WOLF_CHANCE_STEP) * chance);
-}
-
-// Deterministic per-round draw: one value from a seed twisted away from
-// the layout seed decides whether this round hides a wolf, and a second
-// decides which flock member it is. Returns null on a no-wolf round.
-export function wolfIndexForRound(round, seed, sheepCount, mode = 'normal') {
-  if (wolfChance(round, mode) === 0 || sheepCount < 2) return null;
-  const rand = mulberry32((seed ^ 0x9e3779b9) >>> 0);
-  if (rand() >= wolfChance(round, mode)) return null;
-  return Math.floor(rand() * sheepCount);
-}
-
-// How good the disguise is. Three stages line up with the movement ramp:
-// fair but findable, matching fleece with small grey cues, then near-perfect
-// with only an amber glint in the eyes left to spot.
-export function wolfDisguiseTier(round, mode = 'normal') {
-  const r = normalizeRound(round);
-  const { tier2, tier3 } = wolfModeFactors(mode);
-  if (r < tier2) return 1;
-  if (r < tier3) return 2;
-  return 3;
-}
-
-// What a sighted player can see give the wolf away at each disguise tier
-// (the renderers draw ears and a tail, then smaller ears, then only a
-// glint), said in words for the screen-reader list, which otherwise called
-// the wolf a sheep like any other and left those players no way to avoid it.
-const WOLF_CUES = {
-  1: 'it has pointy ears and a bushy tail',
-  2: 'its ears look a little pointy',
-  3: 'its eyes glint',
-};
-
-export function wolfCueText(round) {
-  return WOLF_CUES[wolfDisguiseTier(round)] || WOLF_CUES[3];
+  const d = normalizeDifficulty(difficulty);
+  const offset = d === 'easy' ? 1.5 : d === 'hard' ? -0.5 : d === 'expert' ? -1 : 0;
+  return Math.min(7.5, Math.max(2.5, Math.max(3, 6 - 0.5 * (r - 6)) + offset));
 }
 
 // The on-screen round text: "Round 5 of 9" while the ladder has more
