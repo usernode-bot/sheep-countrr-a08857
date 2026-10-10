@@ -13,14 +13,16 @@ keeping track of who you already counted does not.
   adds roughly one or two more sheep (up to twelve, so every sheep stays
   tappable on a phone) and turns up the movement: a slow drift at first,
   then pacing and bouncing, then a nervous jitter on top.
-- **Counting.** Tap a sheep to count it. It stops, closes its eyes and
-  puts on a numbered ribbon, so a counted sheep is impossible to mistake
-  for an uncounted one. The current round and the running tap count sit
-  at the top of the screen the whole time.
+- **Counting.** Tap a sheep to count it: it baas, puffs up, pops like a
+  piñata and is gone, leaving a little pile of pastel confetti and candy
+  on the grass where it stood for the rest of the round. A popped sheep's
+  spot cannot be tapped, so a counted sheep is impossible to mistake for
+  an uncounted one and empty grass never ends a run. The current round
+  and the running tap count sit at the top of the screen the whole time.
 - **Before you start.** The first round of a run opens on a short "Get
-  ready" card that names the round and its flock, explains that a tap
-  counts a sheep and gives it a number, and warns that counting the same
-  sheep twice ends the run. Its one button, "Start counting", dismisses
+  ready" card that names the round and its flock, explains that tapping a
+  sheep pops it, and warns that saying done too early ends the run. Its
+  one button, "Start counting", dismisses
   the card and begins the round. It returns at the start of every run
   (after "Start again" or "Start over at round 1"), and later rounds in
   a run skip it since the round-complete message already previews the
@@ -30,17 +32,17 @@ keeping track of who you already counted does not.
   Easy, Normal, Hard and Expert. A player with no saved level starts on
   Calm; a saved pick is kept. On Calm the sheep only ever drift as slowly
   as an early round, the flock grows by one every two rounds and stops at
-  five, a sheep tapped twice just gives a sleepy wiggle, "Done counting"
+  five, the confetti falls more slowly after each pop, "Done counting"
   with sheep left wiggles the ones still awake, and there is no wolf,
   Speed Round, Duel or game over. Calm rounds keep their own best round
   but never count toward the Global, Friends or weekly leaderboards.
 - **Finishing a round.** Tapping the last sheep only marks it; the round
   waits for the "Done counting" tap. Saying done with every sheep counted
   shows a short round-complete message and moves on.
-- **Ending a run.** Tapping a sheep you already counted, or saying you
-  are done while sheep are still uncounted, ends the run. The game-over
-  screen names the round you reached and offers "Start again", which
-  returns to round 1.
+- **Ending a run.** Saying you are done while sheep are still uncounted
+  ends the run; a popped sheep's spot ignores taps, so it can never end
+  one. The game-over screen names the round you reached and offers
+  "Start again", which returns to round 1.
 - **Touch first.** The whole board is taps: big hit targets, no drag, no
   pinch, and the Done button sits clear of the safe area at the bottom.
   The camera reframes on rotation so the whole flock stays visible.

@@ -1315,11 +1315,32 @@ test('calm: a double tap only wiggles, a short count never ends the run, no wolf
 });
 
 test('the briefing rule line names the calm tap only on calm', () => {
-  assert.match(introRuleText('calm'), /sleepy wiggle/);
+  assert.match(introRuleText('calm'), /pop it/);
   assert.match(introRuleText('normal'), /ends the run/);
   assert.match(introRuleText('expert'), /ends the run/);
   assert.ok(!/\u2014/.test(introRuleText('calm')));
+  assert.ok(!/\u2014/.test(introRuleText('normal')));
   assert.equal(isCalmLevel(NEW_PLAYER_DIFFICULTY), true);
+});
+
+// A counted sheep pops like a pi\u00f1ata and is gone: no body, no ribbon, no
+// number. Its spot must not swallow a tap (a child would end the run by
+// tapping empty grass), so the 3D raycast skips counted sheep and
+// handleTap ignores a counted index before it even ripples. Pinned at the
+// source because both renderers run in a browser this suite cannot start.
+test('a popped sheep cannot be tapped again', () => {
+  const scene = readFileSync(new URL('../public/scene.js', import.meta.url), 'utf8');
+  const up = scene.slice(scene.indexOf('function onPointerUp'));
+  assert.match(up, /filter\(\(s\) => !s\.counted\)/,
+    'the raycast targets skip counted sheep, so a tap passes through to a sheep behind');
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const tap = app.slice(app.indexOf('function handleTap'));
+  const early = tap.indexOf('store.state.counted.includes(index)');
+  assert.ok(early > 0, 'handleTap checks for a counted index');
+  assert.ok(early < tap.indexOf('store.tapSheep'),
+    'before the ripple and the count, so a second tap does nothing at all');
+  const fallback = readFileSync(new URL('../public/fallback.js', import.meta.url), 'utf8');
+  assert.match(fallback, /is-popped/, 'the card view empties the popped card');
 });
 
 test('a new player opens on calm; any saved pick keeps its level', async () => {

@@ -589,6 +589,24 @@
     }
     .sheep-bow { opacity: 0; transform: scale(0); transform-origin: 60px 80px; transition: transform 0.35s cubic-bezier(.34,1.56,.64,1), opacity 0.2s; }
     .is-counted .sheep-bow { opacity: 1; transform: scale(1); }
+    /* A counted sheep pops like a piñata: the card empties out and holds a
+       little pile of confetti and candy. No body, no bow, no badge. The
+       pop itself is the Web Animations API on the SVG and the pieces; this
+       CSS is the state they settle into (and the reduced-motion endpoint). */
+    .sheep-card.is-popped {
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+      pointer-events: none;
+      animation: none;
+    }
+    .sheep-card.is-popped .sheep-svg { opacity: 0; }
+    .sheep-card.is-popped .sheep-card-badge { display: none; }
+    .sheep-card.is-popped .sheep-bow { opacity: 0; transform: scale(0); }
+    .sheep-confetti { position: absolute; left: 50%; top: 64%; width: 0; height: 0; pointer-events: none; }
+    .sheep-confetti .cf, .sheep-confetti .cd { position: absolute; left: 0; top: 0; }
+    .sheep-confetti .cf { width: 9px; height: 5px; border-radius: 1px; }
+    .sheep-confetti .cd { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.08); }
     /* Calm mode: a gentle recolor of the fleece SVG instead of a new
        drawing. The sheep keeps its shape, its eyes and its badge; only
        the wash gets softer. */
@@ -942,7 +960,7 @@
         <p class="celebration-title">Tap every sheep.</p>
         <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
-        <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
+        <p id="round-intro-rule" class="bedtime-message">Tap each sheep once to pop it, then tap Done counting. Saying done too early ends the run.</p>
         <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Counting it ends the run.</p>
         <div class="intro-chip-row">
         <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>

@@ -64,9 +64,10 @@ A round-based tap-to-count game for young children. Round 1 is one
 stationary sheep; each completed round adds roughly one or two more and
 raises the movement speed and randomness, so remembering which sheep you
 already counted is the difficulty. Tapping an uncounted sheep counts it
-and marks it permanently (numbered ribbon, eyes closed, motion stopped);
-tapping a counted sheep, or submitting a short count, ends the run and
-shows the round reached with a restart button. Sound is on by default: a
+and pops it like a piñata: it puffs up, vanishes, and leaves a pile of
+pastel confetti and candy where it stood for the rest of the round; a
+popped spot ignores taps, so it can never end a run. Submitting a short
+count ends the run and shows the round reached with a restart button. Sound is on by default: a
 soft Web Audio baa plays each time a sheep is counted, and a grown-up
 mutes it (and reaches settings: progress, start over) only via a ~1.5s
 press-and-hold on the corner gear icon, so a child mashing the screen
@@ -176,10 +177,11 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   moves sheep in world units; `fallback.js` applies the same offsets via
   the individual CSS `translate` property (compositor-only, no per-frame
   layout), deliberately leaving `transform` to the tap and wiggle
-  animations. A counted sheep snaps
-  back to its home spot and stops moving in both.
-- **`NUMBER_COLORS` in `layout.js`** is the one pastel-per-number palette
-  used by the 3D ribbon/number plate and the DOM fallback badge. Both
+  animations. A counted sheep pops away (its group hides and a seeded
+  confetti-and-candy burst settles where it stood), so its spot is
+  untappable and never moves again, in both renderers.
+- **`NUMBER_COLORS` in `layout.js`** is the one pastel-per-number palette,
+  used by the pop burst's confetti and candy in both renderers. Both
   renderers also expose an optional `celebrate()`; `app.js` calls it
   when a round is passed.
 - **User-facing copy carries no em dashes** (index.html and every string
