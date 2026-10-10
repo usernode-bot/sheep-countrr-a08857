@@ -187,6 +187,53 @@
         linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
     }
 
+    /* Moon: the same scenery-only move as Night Meadow. Lavender-blue sky,
+       grey ground and ridges; the plate, pills, buttons and text keep the
+       day palette. Placed after theme-calm so picking the Moon with Calm
+       on keeps the Moon's colors (Calm keeps its tempo only). */
+    body.theme-moon {
+      --sky-top: #2f3466;
+      --sky-mid: #4f5390;
+      --sky-low: #8183b8;
+      --horizon: #bdb8da;
+      --meadow-ground-1: #b3b1c2;
+      --meadow-ground-2: #a7a5b8;
+      --meadow-ground-3: #9d9bb0;
+      --meadow-glow: rgba(226, 224, 244, 0.5);
+      --meadow-hill-a: #8c8aa0;
+      --meadow-hill-b: #7f7d95;
+      --meadow-hill-c: #737189;
+      --meadow-fog: #6e7199;
+    }
+    body.theme-moon #scene-root {
+      /* A handful of small, still stars in the top of the sky, then the
+         same gradient shape the other themes use. */
+      background:
+        radial-gradient(1.5px 1.5px at 12% 8%, #fff 99%, transparent),
+        radial-gradient(2px 2px at 30% 18%, #fff 99%, transparent),
+        radial-gradient(1.5px 1.5px at 52% 6%, #fff 99%, transparent),
+        radial-gradient(2px 2px at 68% 22%, #fff 99%, transparent),
+        radial-gradient(1.5px 1.5px at 84% 12%, #fff 99%, transparent),
+        radial-gradient(1.5px 1.5px at 92% 30%, #fff 99%, transparent),
+        radial-gradient(2px 2px at 8% 32%, #fff 99%, transparent),
+        radial-gradient(1.5px 1.5px at 44% 34%, #fff 99%, transparent),
+        linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
+    }
+    /* The DOM fallback's field gains two shallow crater blobs on the Moon;
+       the ground wash itself comes from the same variables as the meadow. */
+    body.theme-moon .sheep-fallback-field {
+      background:
+        radial-gradient(9% 4% at 18% 84%, #9593a8 0 60%, transparent 61%),
+        radial-gradient(11% 5% at 76% 92%, #9593a8 0 60%, transparent 61%),
+        radial-gradient(45% 22% at 12% 92%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(60% 26% at 70% 96%, var(--meadow-ground-2) 0 60%, transparent 61%),
+        radial-gradient(70% 30% at 40% 104%, var(--meadow-ground-3) 0 60%, transparent 61%),
+        radial-gradient(30% 14% at 88% 78%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(14% 8% at 22% 66%, var(--meadow-glow) 0 60%, transparent 61%),
+        radial-gradient(18% 9% at 74% 58%, var(--meadow-glow) 0 60%, transparent 61%),
+        transparent;
+    }
+
     html, body { height: 100%; overscroll-behavior: none; }
     body {
       touch-action: manipulation;
@@ -777,6 +824,13 @@
       text-transform: uppercase;
       color: var(--plum-soft);
     }
+    /* The Get ready card's eyebrow, though: sentence case at the body
+       size, so the briefing opens in the same voice as its body lines. */
+    #round-intro .bedtime-eyebrow {
+      font-size: 1.05rem;
+      letter-spacing: normal;
+      text-transform: none;
+    }
     .bedtime-message {
       margin: 0;
       font-size: 1.05rem;
@@ -826,7 +880,7 @@
 
     <!-- Round and running tap count, on screen at all times. -->
     <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex flex-col items-center gap-2">
-      <div id="round-badge" class="round-pill">Round 1</div>
+      <div id="round-badge" class="round-pill">Round 1 of 9</div>
       <div id="speed-timer" class="round-pill speed-timer" hidden aria-live="off">30</div>
       <div id="duel-turn-clock" class="round-pill duel-timer" hidden aria-live="off">45</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
@@ -984,8 +1038,12 @@
         </label>
 
         <label class="setting-row">
-          <span>Night Meadow</span>
-          <input id="night-toggle" type="checkbox">
+          <span>Background</span>
+          <select id="scenery-select">
+            <option value="meadow">Pastel Meadow</option>
+            <option value="night">Night Meadow</option>
+            <option value="moon">Moon</option>
+          </select>
         </label>
 
         <label class="setting-row">
@@ -1161,7 +1219,7 @@
       .panel-card { gap: 0.7rem; }
       .panel-card.p-7 { padding: 1.35rem; }
       .panel-card.p-6 { padding: 1.35rem; }
-      .difficulty-pill { min-height: 2.4rem; padding: 0 1rem; font-size: 1rem; }
+      .difficulty-pill { min-height: 2.75rem; padding: 0 1rem; font-size: 1rem; }
       .celebration-title { font-size: 1.6rem; }
     }
 

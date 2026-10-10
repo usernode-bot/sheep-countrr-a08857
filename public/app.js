@@ -16,6 +16,7 @@ import {
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
+  normalizeScenery,
   normalizeSpeedRound,
   paceLine,
   roundCompleteTitle,
@@ -88,6 +89,11 @@ const soundParam = params.get('sound');
 // The grown-ups fixture can force the Night Meadow toggle the same way
 // (?night=1 shows the night scene without touching localStorage).
 const nightParam = params.get('night');
+// Deep-link knob for the Background picker (?scenery=moon): it names the
+// scenery for the run it opens and, like night, is never persisted from a
+// deep link. ?night=1 keeps working as shorthand for scenery=night.
+const sceneryParam = params.get('scenery');
+const fixtureScenery = normalizeScenery(sceneryParam, nightParam === '1');
 // ?calm=1 boots straight into Calm mode for the fixture/deep-link run;
 // like night and sound it is never persisted from a deep link.
 const calmParam = params.get('calm');
@@ -141,12 +147,13 @@ const COUNTDOWN_STEP_MS = 1000;
 
 // Recolors the sky and ground only. The DOM class carries the CSS side
 // (page sky gradient and the DOM fallback's field), and the renderer gets
-// the same flag so the WebGL ground, hills and fog follow. Nothing else on
-// the page changes color.
+// the same pick so the WebGL ground, hills, fog and scenery props follow.
+// Nothing else on the page changes color.
 function applyTheme(state) {
-  document.body.classList.toggle('theme-night', !!state.nightOn);
+  document.body.classList.toggle('theme-night', state.scenery === 'night');
+  document.body.classList.toggle('theme-moon', state.scenery === 'moon');
   document.body.classList.toggle('theme-calm', !!state.calmOn);
-  renderer?.setNight?.(!!state.nightOn);
+  renderer?.setScenery?.(state.scenery);
   renderer?.setCalm?.(!!state.calmOn);
 }
 
@@ -205,7 +212,7 @@ const els = {
   grownupsPanel: document.getElementById('grownups-panel'),
   grownupsClose: document.getElementById('grownups-close'),
   soundToggle: document.getElementById('sound-toggle'),
-  nightToggle: document.getElementById('night-toggle'),
+  scenerySelect: document.getElementById('scenery-select'),
   calmToggle: document.getElementById('calm-toggle'),
   namesToggle: document.getElementById('names-toggle'),
   startOverBtn: document.getElementById('start-over-btn'),
@@ -343,6 +350,10 @@ function buildStaticState() {
     sheepCount: sheepForRound(round, difficultyParam),
     seed: roundSeed(round),
     bestRounds: { ...base.bestRounds, [difficultyParam]: Math.max(round, base.bestRounds[difficultyParam]) },
+    // Frozen fixtures never touch storage, so the scenery comes from the
+    // deep link (?scenery=moon, or the legacy ?night=1) and nowhere else.
+    scenery: fixtureScenery,
+    nightOn: fixtureScenery === 'night',
     ...extra,
   });
   if (sceneParam === 'flock') return at(9);
@@ -420,6 +431,12 @@ function buildStaticState() {
     // with the mode still named on the round badge behind the card.
     return at(4, { count: 3, counted: [0, 1, 2], phase: RUN_OVER, speedOn: true, secondsLeft: 0, endedBy: ENDED_TIME_UP });
   }
+  if (sceneParam === 'moon') {
+    // The Moon scenery, frozen mid-count: grey ground, lavender-blue sky,
+    // and the flock unchanged underneath it. Hardcoded only, like every
+    // other fixture here.
+    return at(5, { count: 3, counted: [0, 1, 2], scenery: 'moon', nightOn: false });
+  }
   if (sceneParam === 'grownups') {
     return at(5, {
       bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2 },
@@ -428,7 +445,6 @@ function buildStaticState() {
       bestSafeStreak: 4,
       bonusCounted: 3 * WOLF_BONUS,
       soundOn: soundParam === null || soundParam === '1',
-      nightOn: nightParam === '1',
       calmOn: calmParam === '1',
     });
   }
@@ -528,6 +544,11 @@ async function boot() {
     if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
     if (hasSpeedParam) store.state = { ...store.state, speedOn: speedParam };
     if (calmParam !== null) store.state = { ...store.state, calmOn: normalizeCalm(calmParam === '1') };
+    // The Background pick rides the deep link for this run only; the
+    // ephemeral store never writes it back to storage.
+    if (sceneryParam !== null || nightParam !== null) {
+      store.state = { ...store.state, scenery: fixtureScenery, nightOn: fixtureScenery === 'night' };
+    }
     if (hasDuelParam && duelParam) {
       store.state = { ...store.state, duel: true };
     }
@@ -1376,7 +1397,7 @@ function updateChrome(state) {
   els.communityValue.textContent = String(state.communityTotal);
   setExportStatus('');
   els.soundToggle.checked = !!state.soundOn;
-  els.nightToggle.checked = !!state.nightOn;
+  els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
   els.namesToggle.checked = !!state.namesOn;
   applyTheme(state);
@@ -1562,7 +1583,7 @@ function openGrownups(state) {
   els.bonusValue.textContent = String(state.bonusCounted || 0);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
-  els.nightToggle.checked = !!state.nightOn;
+  els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
   els.grownupsPanel.hidden = false;
 }
@@ -1576,9 +1597,9 @@ els.soundToggle.addEventListener('change', (e) => {
   store.setSoundOn(e.target.checked);
 });
 
-els.nightToggle.addEventListener('change', (e) => {
+els.scenerySelect.addEventListener('change', (e) => {
   if (staticMode) return;
-  store.setNightOn(e.target.checked);
+  store.setScenery(e.target.value);
 });
 
 els.calmToggle.addEventListener('change', (e) => {

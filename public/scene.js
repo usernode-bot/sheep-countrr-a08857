@@ -59,6 +59,17 @@ const NIGHT_COLORS = {
   fog: '#2c3d52',
 };
 
+// Moon: soft grey ground under a lavender-blue sky. The hills become low
+// grey ridges; trees, flowers, clouds and the sun are hidden (the craters
+// and CSS stars take over). Sheep and UI colors stay as they are.
+const MOON_COLORS = {
+  ground: '#a7a5b8',
+  hillA: '#8c8aa0',
+  hillB: '#7f7d95',
+  hillC: '#737189',
+  fog: '#6e7199',
+};
+
 // One plush fleece color per sheep, repeating across bigger flocks. The
 // face stays the same warm tan on every sheep so they all still read as
 // the same little animal, just in different pajamas.
@@ -668,7 +679,9 @@ function detectTier() {
 
 export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, getOverlayRect, getBottomOverlayRect }) {
   let tier = detectTier();
-  let night = false;
+  // Which scenery is live ('meadow' | 'night' | 'moon'), plus Calm's tempo
+  // flag, which stays independent of it.
+  let scenery = 'meadow';
   let calm = false;
 
   const canvas = document.createElement('canvas');
@@ -754,20 +767,34 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     hillMeshes.push([m, ['hillA', 'hillB', 'hillC'][i % 3]]);
   });
 
-  // Applies the day/night palette to the ground, hills and fog only. The
-  // sky behind the transparent canvas is CSS on the container; the sheep,
-  // trees and flowers keep their colors so they still read as daytime
-  // objects under a dimmer meadow.
+  // Applies the scenery's palette to the ground, hills and fog only. The
+  // sky behind the transparent canvas is CSS on the container; the sheep
+  // and the UI keep their colors so the counting chrome stays familiar.
+  // A non-meadow scenery wins over Calm's wash (Calm keeps the tempo only),
+  // matching the CSS source order in index.html.
   function applyPalette() {
-    const c = night ? NIGHT_COLORS : (calm ? CALM_COLORS : COLORS);
+    const c = scenery === 'night' ? NIGHT_COLORS
+      : scenery === 'moon' ? MOON_COLORS
+      : calm ? CALM_COLORS
+      : COLORS;
     ground.material.color.set(c.ground);
     hillMeshes.forEach(([m, key]) => m.material.color.set(c[key]));
     scene.fog.color.set(c.fog);
   }
 
-  function applyNight(on) {
-    night = !!on;
+  // Recolors and toggles the scenery props' visibility. Never rebuilds the
+  // flock: the round, the seed and the counted sheep are untouched, so a
+  // background change mid-round is safe.
+  function applyScenery(key) {
+    scenery = key === 'night' || key === 'moon' ? key : 'meadow';
     applyPalette();
+    const moon = scenery === 'moon';
+    treeMeshes.forEach((m) => { m.visible = !moon; });
+    petals.visible = !moon;
+    centers.visible = !moon;
+    clouds.forEach((c) => { c.sprite.visible = !moon; });
+    sunSprite.visible = !moon;
+    if (craters) craters.visible = moon;
   }
 
   function applyCalm(on) {
@@ -775,15 +802,18 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     applyPalette();
   }
 
-  // A few round toy trees along the back.
+  // A few round toy trees along the back. Collected so the Moon can hide
+  // the whole row without touching anything else.
   const treeGeo = buildTreeGeometry();
   const treeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const treeMeshes = [];
   [[-6.5, -7.5, 1.1], [6.8, -8.2, 1.3], [-9.5, -5.5, 0.9], [10, -5, 1.0], [1.5, -10.5, 1.2]].forEach(([x, z, s]) => {
     const t = new THREE.Mesh(treeGeo, treeMat);
     t.position.set(x, 0, z);
     t.scale.setScalar(s);
     t.rotation.y = x * 0.7;
     scene.add(t);
+    treeMeshes.push(t);
   });
 
   // Flowers: one instanced mesh for petals, one for centers.
@@ -814,6 +844,34 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   }
   scene.add(petals);
   scene.add(centers);
+
+  // Moon craters: one instanced mesh of shallow darker discs lying flat on
+  // the field floor, built once and shown only on the Moon. One draw call,
+  // and it sits outside the flock area, so the camera fit never has to move.
+  const craterGeo = new THREE.CircleGeometry(1, 20);
+  const craters = new THREE.InstancedMesh(
+    craterGeo,
+    new THREE.MeshLambertMaterial({ color: '#9593a8' }),
+    6
+  );
+  {
+    const m = new THREE.Matrix4();
+    const spots = [
+      [-5, -3], [6, -5], [-9, 4], [3, 6], [9, 2], [-2, -8],
+    ];
+    spots.forEach(([x, z], i) => {
+      const s = 0.7 + seededRand(4242, i) * 0.8;
+      m.compose(
+        new THREE.Vector3(x, 0.02, z),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)),
+        new THREE.Vector3(s, s * 0.55, s)
+      );
+      craters.setMatrixAt(i, m);
+    });
+    craters.instanceMatrix.needsUpdate = true;
+  }
+  craters.visible = false;
+  scene.add(craters);
 
   // Sun and clouds as soft sprites, unaffected by fog.
   const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: buildSunTexture(), transparent: true, depthWrite: false, fog: false }));
@@ -1455,7 +1513,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     setRoundClock,
     setState(state) {
       buildFlock(state);
-      applyNight(!!state.nightOn);
+      applyScenery(state.scenery);
       applyCalm(!!state.calmOn);
     },
     countSheep(index, number) {
@@ -1487,8 +1545,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     resetRound(state) {
       buildFlock(state);
     },
-    setNight(on) {
-      applyNight(on);
+    setScenery(key) {
+      applyScenery(key);
     },
     setCalm(on) {
       applyCalm(on);

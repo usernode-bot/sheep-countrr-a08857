@@ -288,11 +288,12 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
 
   function celebrate() {}
 
-  // Night Meadow: the field's ground gradients are CSS variables on the
-  // body class (see index.html), so the DOM renderer only has to mirror
-  // the state flag into its own styling scope. Nothing else changes.
-  function setNight(on) {
-    field.classList.toggle('theme-night', !!on);
+  // Scenery: the field's ground gradients are CSS variables on the theme
+  // classes (see index.html), so the DOM renderer only has to mirror the
+  // pick into its own styling scope. Nothing else changes.
+  function setScenery(key) {
+    field.classList.toggle('theme-night', key === 'night');
+    field.classList.toggle('theme-moon', key === 'moon');
   }
 
   // Calm mode: the field already reads its soft palette from the same
@@ -312,7 +313,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     },
     setState(state) {
       render(state);
-      setNight(!!state.nightOn);
+      setScenery(state.scenery);
       setCalm(!!state.calmOn);
     },
     countSheep(index, number) {
@@ -336,8 +337,8 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     resetRound(state) {
       render(state);
     },
-    setNight(on) {
-      setNight(on);
+    setScenery(key) {
+      setScenery(key);
     },
     setCalm(on) {
       setCalm(on);
