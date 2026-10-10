@@ -93,7 +93,7 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   auth exemption with `?scene=`; keep it side-effect-free.
 - **Frozen screenshot fixtures live behind `?scene=`** (`portrait`,
   `empty`, `midcount`, `allcounted`, `roundcomplete`, `gameover`,
-  `grownups`, `flock` — see `dapp.json`'s `tests`). `public/app.js`'s
+  `grownups`, `flock`, `moon` — see `dapp.json`'s `tests`). `public/app.js`'s
   `staticMode` branch
   renders these from hardcoded data only (`buildStaticState()`) and never
   touches localStorage or the server — keep it that way, since these
@@ -138,6 +138,16 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   routes remain fully gated. If you ever add a new screenshot-state
   fixture parameter, extend this exemption deliberately and keep the
   fixture side-effect-free, the same way `?scene=` is.
+- **The scenery pick (`scenery`) is client-side only, never a server
+  column.** The grown-ups Background menu stores
+  `'meadow' | 'night' | 'moon'` in the same per-user localStorage payload
+  as the other settings; `nightOn` is derived from it (`scenery ===
+  'night'`), so the server's `night_on` contract and its cross-device sync
+  for Night Meadow are unchanged, and Moon stays per device. Pure helpers
+  (`SCENERY_KEYS`, `normalizeScenery`, `sceneryFromServer`) live in
+  `public/rounds.js` beside `normalizeCalm` and are asserted in
+  `tests/game.test.mjs`. `?scenery=` on a deep link or fixture is applied
+  to the ephemeral store only and never writes a real player's pick.
 - **`sheep_progress`** is a public table (per-user counters: which round
   to start on, best round reached, lifetime total) — nothing in it is
   sensitive. Only run-spanning values are stored: a half-counted round is

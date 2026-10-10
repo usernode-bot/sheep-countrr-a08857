@@ -130,6 +130,32 @@ export function normalizeCalm(on) {
   return on === true;
 }
 
+// ---- Scenery ----
+// Which scenery the flock stands on. Meadow is the default; night is the
+// old Night Meadow; moon is the new grey one. Like the level and the mode,
+// this is a closed set: anything unrecognised reads as the default rather
+// than crashing an old or mangled save.
+export const SCENERY_KEYS = ['meadow', 'night', 'moon'];
+
+// One run-spanning value, `scenery`, is the source of truth for the look;
+// `nightOn` is derived from it (scenery === 'night'), so the server's
+// night_on contract stays unchanged. A save written before the picker
+// existed has only nightOn, so the legacy flag migrates into it: a Night
+// Meadow player restores to 'night', everyone else to 'meadow'.
+export function normalizeScenery(value, legacyNightOn) {
+  if (SCENERY_KEYS.includes(value)) return value;
+  return legacyNightOn ? 'night' : 'meadow';
+}
+
+// Server sync: the server only knows night_on. Moon (and any future
+// device-local pick) survives both server values, because the server could
+// never have written it; meadow and night follow the server exactly as
+// nightOn does today.
+export function sceneryFromServer(local, serverNightOn) {
+  if (local === 'moon') return 'moon';
+  return serverNightOn ? 'night' : 'meadow';
+}
+
 // The on-screen clock text. Whole seconds only, so "30" and "9" rather
 // than "30s" and "9s": children read bare numerals more easily.
 export function speedRoundClock(secondsLeft) {

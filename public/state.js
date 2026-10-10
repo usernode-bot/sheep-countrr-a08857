@@ -18,8 +18,10 @@ import {
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
+  normalizeScenery,
   normalizeSpeedRound,
   roundSeed,
+  sceneryFromServer,
   sheepForRound,
   WOLF_BONUS,
   wolfIndexForRound,
@@ -120,6 +122,11 @@ export function createDefaultState() {
     totalCounted: 0,
     communityTotal: 0,
     soundOn: true,
+    // Which scenery the flock stands on ('meadow' | 'night' | 'moon').
+    // The one source of truth for the look; nightOn below is derived from
+    // it so the server's night_on contract stays unchanged. Moon is saved
+    // on this device only, never sent to the server.
+    scenery: 'meadow',
     nightOn: false,
     calmOn: false,
     namesOn: false,
@@ -240,6 +247,9 @@ export class StateStore {
       // marker and later boots restore instead of re-applying.
       this._soundChosen = true;
       this._preBaaSave = sound.preBaaSave;
+      // The scenery pick migrates from the old Night Meadow checkbox: a
+      // save without a scenery key reads the legacy nightOn flag.
+      const scenery = normalizeScenery(saved.scenery, saved.nightOn);
       // Only the run-spanning values are restored. A half-counted round
       // is never resumed: coming back mid-round and finding taps you do
       // not remember making is a run-ending trap.
@@ -251,7 +261,8 @@ export class StateStore {
         bonusCounted: Math.max(0, Number(saved.bonusCounted) || 0),
         totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
         soundOn: sound.soundOn,
-        nightOn: !!saved.nightOn,
+        scenery,
+        nightOn: scenery === 'night',
         calmOn: normalizeCalm(saved.calmOn),
         namesOn: !!saved.namesOn,
         difficulty: normalizeDifficulty(saved.difficulty),
@@ -295,6 +306,7 @@ export class StateStore {
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
         soundSet: this._soundChosen === true,
+        scenery: this.state.scenery,
         nightOn: this.state.nightOn,
         calmOn: this.state.calmOn,
         namesOn: this.state.namesOn,
@@ -341,7 +353,11 @@ export class StateStore {
         // next sync writes it up. A post-change mute rides the normal
         // restore.
         soundOn: this._preBaaSave ? true : !!data.soundOn,
-        nightOn: !!data.nightOn,
+        // The server only knows night_on. A device-local moon pick survives
+        // both server values; meadow and night follow the server exactly as
+        // nightOn does today.
+        scenery: sceneryFromServer(this.state.scenery, data.nightOn),
+        nightOn: sceneryFromServer(this.state.scenery, data.nightOn) === 'night',
         calmOn: normalizeCalm(data.calmOn),
         // A null difficulty means the server has no saved pick (its row
         // was created by this very read), so the local one stands: Calm
@@ -474,13 +490,16 @@ export class StateStore {
     const sound = restoredSound(saved);
     this._soundChosen = true;
     this._preBaaSave = sound.preBaaSave;
+    // Same scenery migration loadLocal applies, kept pure for the tests.
+    const scenery = normalizeScenery(saved.scenery, saved.nightOn);
     this.state = {
       ...this.state,
       round: normalizeRound(saved.round),
       bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
           totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
           soundOn: sound.soundOn,
-          nightOn: !!saved.nightOn,
+          scenery,
+          nightOn: scenery === 'night',
           calmOn: normalizeCalm(saved.calmOn),
           namesOn: !!saved.namesOn,
           difficulty: normalizeDifficulty(saved.difficulty),
@@ -880,8 +899,19 @@ export class StateStore {
     this.onChange(this.state);
   }
 
-  setNightOn(on) {
-    this.state = { ...this.state, nightOn: !!on };
+  // The grown-ups Background picker. Normalizes the pick, then keeps
+  // nightOn derived from it: a Night Meadow choice still syncs to the
+  // server exactly as the old toggle did; Moon is device-local and posts
+  // nightOn: false.
+  setScenery(key) {
+    // A pick from the menu is always a known value; anything else (a
+    // hostile call) reads as the meadow default, never as the legacy flag.
+    const scenery = normalizeScenery(key);
+    this.state = {
+      ...this.state,
+      scenery,
+      nightOn: scenery === 'night',
+    };
     this.saveLocal();
     this.scheduleSync();
     this.onChange(this.state);

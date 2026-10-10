@@ -55,6 +55,13 @@ keeping track of who you already counted does not.
   ~1.5 second press-and-hold on the small gear icon in the corner, or
   Enter/Space with a keyboard. A quick tap does nothing, so a child
   mashing the screen cannot wander into settings.
+- **Background picker.** The grown-ups panel's Background menu picks the
+  scenery the flock stands on: Pastel Meadow, Night Meadow or Moon (grey
+  ground, lavender-blue sky with small stars). Scenery only: the sheep,
+  the counting and the difficulty never change. The pick is remembered on
+  the device like the other settings; Night Meadow still syncs to the
+  server as before (`scenery` is client-side only, with `nightOn`
+  derived from it), and Moon stays per device.
 - **Progress syncs to the server** per signed-in user (which round to
   start on, best round reached, lifetime sheep counted) plus a community
   total shown in the grown-ups panel. A half-counted round is never
