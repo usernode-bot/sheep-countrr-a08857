@@ -4,7 +4,7 @@
 // same pastel per number.
 import { NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { calmMotion, isCalmLevel, motionForRound, wolfDisguiseTier } from './rounds.js';
+import { calmMotion, isCalmLevel, motionForRound, wolfDisguiseTier, wolfTellOn, wolfTellWindow } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -102,6 +102,12 @@ const WOLF_CUES_SVG = `
       <circle cx="53.5" cy="57.5" r="1.6" fill="#ffb347"/>
       <circle cx="71.5" cy="57.5" r="1.6" fill="#ffb347"/>
     </g>
+    <g class="wolf-flash">
+      <circle cx="53.5" cy="57.5" r="6" fill="#e0453f" opacity="0.35"/>
+      <circle cx="71.5" cy="57.5" r="6" fill="#e0453f" opacity="0.35"/>
+      <circle cx="53.5" cy="57.5" r="3" fill="#e0453f"/>
+      <circle cx="71.5" cy="57.5" r="3" fill="#e0453f"/>
+    </g>
   </g>`;
 
 export function createFallbackRenderer({ container, onTap, reducedMotion }) {
@@ -189,18 +195,46 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   // the individual CSS `translate` property: it moves the card on the
   // compositor without a layout pass every frame, and composes with (so
   // leaves alone) the tap and wiggle animations on `transform`.
+  // Turn the wolf card's red flash on and off with the schedule in
+  // rounds.js. A pinned fixture state (staticMode) overrides the clock so
+  // screenshots are deterministic; a revealed wolf never flashes again.
+  function syncTells(t) {
+    const pin = current && current.wolfTell;
+    for (let i = 0; i < cards.length; i++) {
+      const btn = cards[i];
+      if (!btn || btn.dataset.wolf !== 'true') continue;
+      if (btn.dataset.revealed) {
+        delete btn.dataset.tell;
+        continue;
+      }
+      const tier = Number(btn.dataset.wolfTier) || 1;
+      const on = pin === 'off' ? 0
+        : pin === 'on' ? 1
+        : (reducedMotion ? wolfTellWindow(t, tier) : wolfTellOn(t, tier));
+      if (on) btn.dataset.tell = 'true';
+      else delete btn.dataset.tell;
+    }
+  }
+
   function startDrift() {
     cancelAnimationFrame(rafId);
-    if (reducedMotion || !current || !(motion.radius > 0)) {
+    if (!current) return;
+    const drifts = !reducedMotion && motion.radius > 0;
+    if (!drifts) {
       cards.forEach((btn) => { btn.style.translate = 'none'; btn.style.willChange = ''; });
-      return;
+    } else {
+      cards.forEach((btn) => {
+        btn.style.willChange = btn.classList.contains('is-counted') ? '' : 'translate';
+      });
     }
-    cards.forEach((btn) => {
-      btn.style.willChange = btn.classList.contains('is-counted') ? '' : 'translate';
-    });
     const step = () => {
       rafId = requestAnimationFrame(step);
       const t = elapsedSeconds();
+      // The tell rides the same loop as the drift: even a still flock
+      // (reduced motion, or a motion profile with no radius) still needs
+      // its tell windows toggled on and off.
+      syncTells(t);
+      if (!drifts) return;
       for (let i = 0; i < cards.length; i++) {
         const btn = cards[i];
         if (btn.classList.contains('is-counted')) continue;

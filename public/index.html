@@ -648,7 +648,7 @@
     /* ---- The wolf in the flock ---- */
     /* Cues scale with the disguise tier and swing fully visible on reveal. */
     .wolf-cues { transform-box: fill-box; }
-    .wolf-ears, .wolf-tail, .wolf-glint { transition: transform 0.3s ease, opacity 0.3s ease; }
+    .wolf-ears, .wolf-tail, .wolf-glint, .wolf-flash { transition: transform 0.3s ease, opacity 0.3s ease; }
     .sheep-card[data-wolf-tier="1"] .wolf-ears { opacity: 1; }
     .sheep-card[data-wolf-tier="1"] .wolf-tail { opacity: 1; }
     .sheep-card[data-wolf-tier="2"] .wolf-ears { transform: scale(0.6); transform-origin: 60px 30px; }
@@ -660,6 +660,13 @@
     .sheep-card[data-revealed] .wolf-ears,
     .sheep-card[data-revealed] .wolf-tail { transform: none; opacity: 1; }
     .sheep-card[data-revealed] { --fleece: #cfc9bd; --fleece-light: #e2ddd2; --fleece-shade: #b3ada2; }
+
+    /* The tell: a few times a round the disguise slips and the wolf's eyes
+       flash red for a moment (the schedule lives in rounds.js, the on/off
+       toggling in the renderers' frame loops). */
+    .wolf-flash { opacity: 0; }
+    .sheep-card[data-tell] .wolf-flash { opacity: 1; }
+    .sheep-card[data-revealed] .wolf-flash { opacity: 0; }
 
     /* ---- Leaderboard card ---- */
     #leaderboard-tabs {
@@ -943,7 +950,7 @@
         <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
         <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
-        <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Counting it ends the run.</p>
+        <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Its eyes flash red now and then. Counting it ends the run.</p>
         <div class="intro-chip-row">
         <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
         <p id="streak-chip" class="best-round-chip" aria-live="off"><svg class="streak-flame" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 C 13 6, 17 8, 17 13 A 5 5.5 0 0 1 7 13 C 7 8, 11 6, 12 2 Z" fill="#ffb347"></path><path d="M12 8.6 C 12.8 10.8, 15 11.8, 15 14.6 A 3 3.4 0 0 1 9 14.6 C 9 11.8, 11.2 10.8, 12 8.6 Z" fill="#ff8fab"></path></svg><span class="chip-label">Day streak</span> <span id="streak-value" class="chip-value">1</span> <span id="streak-best" class="chip-label streak-best-label">Best 1</span></p>

@@ -403,7 +403,14 @@ function buildStaticState() {
     return at(6, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
   }
   if (sceneParam === 'wolfround') {
-    return at(5, { count: 3, counted: [0, 1, 2], wolfIndex: 4 });
+    // wolfTell pins the flash off so the screenshot always shows the
+    // disguise, never a mid-flash moment.
+    return at(5, { count: 3, counted: [0, 1, 2], wolfIndex: 4, wolfTell: 'off' });
+  }
+  if (sceneParam === 'wolftell') {
+    // The same frozen flock caught mid-flash: the tell pinned on so the
+    // screenshot always shows the wolf's red eyes.
+    return at(5, { count: 3, counted: [0, 1, 2], wolfIndex: 4, wolfTell: 'on' });
   }
   if (sceneParam === 'wolfgameover') {
     return at(6, {
@@ -413,6 +420,7 @@ function buildStaticState() {
       phase: RUN_OVER,
       endedBy: ENDED_WOLF,
       safeStreak: 2,
+      wolfTell: 'off',
     });
   }
   if (sceneParam === 'speedgameover') {

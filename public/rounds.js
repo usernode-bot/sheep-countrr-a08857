@@ -272,6 +272,48 @@ export function wolfCueText(round) {
   return WOLF_CUES[wolfDisguiseTier(round)] || WOLF_CUES[3];
 }
 
+// --- The wolf's tell ---
+// A disguise good enough to be invisible is a trap, not a puzzle, so from
+// time to time the disguise slips: the wolf's eyes flash red for a moment
+// and the sheep look returns. Everything here is a pure function of the
+// round's clock, so /?round=N, a resumed board and both renderers play the
+// same rhythm without storing anything.
+
+// The first slip lands early in every wolf round, so each round teaches
+// what the flash looks like even to a child who missed the last one.
+export const WOLF_TELL_FIRST = 2.5;
+// How long one slip stays visible.
+export const WOLF_TELL_WINDOW = 0.9;
+// Seconds between slips, per disguise tier: the better the disguise, the
+// more often it gives itself away, so the ramp stays real while every
+// tier stays findable.
+const WOLF_TELL_PERIODS = { 1: 9, 2: 7, 3: 5 };
+
+export function wolfTellPeriod(tier = 1) {
+  return WOLF_TELL_PERIODS[Math.min(3, Math.max(1, tier))];
+}
+
+// Is the clock inside a slip's window right now (0 or 1), ignoring the
+// blink cadence. Renderers use this under prefers-reduced-motion, where
+// the flash is a steady glow rather than a double blink.
+export function wolfTellWindow(t, tier = 1) {
+  const u = t - WOLF_TELL_FIRST;
+  if (u < 0) return 0;
+  return (u % wolfTellPeriod(tier)) < WOLF_TELL_WINDOW ? 1 : 0;
+}
+
+// 1 while the wolf's eyes are actually flashing: inside a window, blinking
+// on a third of the window, off a sixth, on a third, then dark until the
+// next one. A quick double blink reads as "wolf!" rather than as a
+// rendering glitch that never quite goes away.
+export function wolfTellOn(t, tier = 1) {
+  if (!wolfTellWindow(t, tier)) return 0;
+  const k = (t - WOLF_TELL_FIRST) % wolfTellPeriod(tier);
+  const blink = WOLF_TELL_WINDOW / 3;
+  const gap = WOLF_TELL_WINDOW / 6;
+  return k < blink || (k >= blink + gap && k < 2 * blink + gap) ? 1 : 0;
+}
+
 // The on-screen round text: "Round 5 of 9" while the ladder has more
 // rungs above it, and plain "Round 9" once the flock has reached its cap
 // and the ladder has no further rung to name. The Speed Round keeps its
