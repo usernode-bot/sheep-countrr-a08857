@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
+import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius, wolfDisguiseTier, wolfTellOn, wolfTellWindow } from './rounds.js';
 
 const COLORS = {
   wool: '#f4eadb',
@@ -35,6 +35,7 @@ const COLORS = {
   wolfWool: '#cfc9bd',
   wolfWoolShade: '#b3ada2',
   glint: '#ffb347',
+  wolfFlash: '#e0453f',
 };
 
 // Calm mode: the scenery takes the same soft pastel wash the CSS sky
@@ -385,6 +386,22 @@ export function buildWolfEyeGeometry() {
     { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(-0.013, 0.021, 0.031, 0.016) },
     { geo: sphere, color: COLORS.eyeWhite, matrix: placeMatrix(0.015, -0.016, 0.033, 0.007) },
     { geo: sphere, color: COLORS.glint, matrix: placeMatrix(0.005, 0.008, 0.04, 0.014) },
+  ]);
+  sphere.dispose();
+  return geometry;
+}
+
+// The tell: when the disguise slips, the glint swells red for a moment.
+// One mesh carries both eyes' flashes at the eye positions (each eye mesh
+// sits at side * 0.123 / y 0.867 / z 0.709, and the glint is offset
+// 0.005 / 0.008 / 0.04 inside it), so a wolf round costs exactly one extra
+// draw call however good the disguise is. The frame loop keeps the mesh's
+// y tracking the eyes' breathing scale, like the eyes themselves.
+export function buildWolfTellGeometry() {
+  const sphere = new THREE.SphereGeometry(1, 10, 8);
+  const geometry = mergeColored([
+    { geo: sphere, color: COLORS.wolfFlash, matrix: placeMatrix(-0.118, 0.008, 0.749, 0.042) },
+    { geo: sphere, color: COLORS.wolfFlash, matrix: placeMatrix(0.128, 0.008, 0.749, 0.042) },
   ]);
   sphere.dispose();
   return geometry;
@@ -840,6 +857,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const bodyGeos = FLEECES.map((fleece, i) => buildSheepBodyGeometry(i % 3, fleece));
   const eyeGeo = buildEyeGeometry();
   const wolfEyeGeo = buildWolfEyeGeometry();
+  const wolfTellGeo = buildWolfTellGeometry();
   const wolfBodyGeos = [1, 2, 3].map((tier) =>
     [0, 1, 2].map((variant) => buildWolfBodyGeometry(variant, tier, FLEECES[variant % FLEECES.length])));
   const ribbonGeo = buildRibbonGeometry();
@@ -947,6 +965,14 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         return eye;
       });
 
+      // The tell flash, hidden until a tell window opens (frame loop).
+      let tellMesh = null;
+      if (isWolf) {
+        tellMesh = new THREE.Mesh(wolfTellGeo, sheepMat);
+        tellMesh.visible = false;
+        g.add(tellMesh);
+      }
+
       const shadow = new THREE.Mesh(shadowGeo, shadowMat);
       shadow.rotation.x = -Math.PI / 2;
       shadow.position.set(0, 0.012, 0.05);
@@ -1001,6 +1027,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         group: g,
         body,
         eyes,
+        tellMesh,
         pick,
         ribbon,
         ribbonMat,
@@ -1021,6 +1048,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         ribbonPop: -1,
         isWolf,
         tier,
+        revealed: false,
       });
     }
 
@@ -1150,6 +1178,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   function revealWolf(index) {
     const s = sheep[index];
     if (!s) return;
+    // The trick is over: the flash stops now that the disguise is gone.
+    s.revealed = true;
     // The frame measures reactions on the round's clock, not the raw one.
     s.bounceStart = elapsedSeconds();
     s.bounceDur = 0.9;
@@ -1361,6 +1391,19 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       s.eyes.forEach((e) => {
         e.position.y = 0.867 * sy;
       });
+      // The tell: a few times a round the disguise slips and the wolf's
+      // eyes flash red (the schedule lives in rounds.js). Reduced motion
+      // gets a steady glow instead of the double blink, and a pinned
+      // fixture state (staticMode) overrides the clock so screenshots are
+      // deterministic.
+      if (s.tellMesh) {
+        s.tellMesh.position.y = 0.867 * sy;
+        const pin = lastState && lastState.wolfTell;
+        const on = pin === 'off' ? 0
+          : pin === 'on' ? 1
+          : (reducedMotion ? wolfTellWindow(rt, s.tier) : wolfTellOn(rt, s.tier));
+        s.tellMesh.visible = !s.revealed && on > 0;
+      }
       s.group.position.y = y * base;
       s.group.rotation.z = rz;
 

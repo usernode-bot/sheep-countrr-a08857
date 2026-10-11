@@ -563,6 +563,21 @@
       "expectText": "Round 5"
     },
     {
+      "name": "The wolf's tell flashes red on the fallback card",
+      "id": "wolf.tell",
+      "path": "/?scene=wolftell&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid .sheep-card[data-tell=\"true\"]",
+      "visual": true,
+      "impact": [
+        "public/rounds.js",
+        "public/scene.js",
+        "public/fallback.js",
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Grown-ups panel shows the wolf record",
       "id": "wolf.stats",
       "path": "/?scene=grownups",

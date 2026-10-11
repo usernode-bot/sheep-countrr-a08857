@@ -37,16 +37,20 @@ import {
   normalizeRound,
   successMessage,
   WOLF_BONUS,
+  WOLF_TELL_WINDOW,
   wolfChance,
   wolfCueText,
   wolfDisguiseTier,
   wolfIndexForRound,
+  wolfTellOn,
+  wolfTellPeriod,
+  wolfTellWindow,
 } from '../public/rounds.js';
 import { readFileSync } from 'node:fs';
 import { wanderOffset } from '../public/movement.js';
 import { weekStartUtc, sortScoreRows } from '../public/leaderboard.js';
 import { sheepName } from '../public/layout.js';
-import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
+import { buildSheepBodyGeometry, buildEyeGeometry, buildWolfTellGeometry } from '../public/scene.js';
 import { isSoundEnabled, setSoundEnabled } from '../public/sound.js';
 import { bestRoundsCsv, weeklyHistoryCsv } from '../public/export.js';
 
@@ -266,7 +270,7 @@ test('taps counted in any order keep their tap-order numbering', () => {
 });
 
 test('all plush sheep and wolf variants have finite geometry and stay inside the picking envelope', () => {
-  for (const geo of [0, 1, 2].map(buildSheepBodyGeometry).concat(buildEyeGeometry())) {
+  for (const geo of [0, 1, 2].map(buildSheepBodyGeometry).concat(buildEyeGeometry(), buildWolfTellGeometry())) {
     geo.computeBoundingBox();
     const box = geo.boundingBox;
     assert.ok(box.min.x >= -.9 && box.max.x <= .9);
@@ -321,6 +325,40 @@ test('wolfDisguiseTier never regresses and follows the ramp', () => {
     const t = wolfDisguiseTier(round);
     assert.ok(t >= prev, `round ${round} tier regressed`);
     prev = t;
+  }
+});
+
+test('the wolf tell window opens first at 2.5s and repeats per tier', () => {
+  for (const tier of [1, 2, 3]) {
+    assert.equal(wolfTellWindow(0, tier), 0, `tier ${tier} flashed at t=0`);
+    assert.equal(wolfTellWindow(2.4, tier), 0, `tier ${tier} flashed before the first tell`);
+    assert.equal(wolfTellWindow(2.5, tier), 1, `tier ${tier} missed the first tell`);
+    assert.equal(wolfTellWindow(2.5 + 0.89, tier), 1, `tier ${tier} still lit late in the window`);
+    assert.equal(wolfTellWindow(2.5 + 0.95, tier), 0, `tier ${tier} stayed lit past the window`);
+  }
+  assert.equal(wolfTellWindow(2.5 + 9 - 0.01, 1), 0, 'tier 1 gap before its second tell');
+  assert.equal(wolfTellWindow(2.5 + 9, 1), 1, 'tier 1 second tell');
+  assert.equal(wolfTellWindow(2.5 + 7, 2), 1, 'tier 2 second tell');
+  assert.equal(wolfTellWindow(2.5 + 5, 3), 1, 'tier 3 second tell');
+});
+
+test('the wolf tell double-blinks inside the window and stays dark outside it', () => {
+  assert.equal(wolfTellOn(2.5 + 0.2, 3), 1, 'first blink');
+  assert.equal(wolfTellOn(2.5 + 0.35, 3), 0, 'blink gap');
+  assert.equal(wolfTellOn(2.5 + 0.5, 3), 1, 'second blink');
+  assert.equal(wolfTellOn(2.5 + 0.85, 3), 0, 'dark tail inside the window');
+  assert.equal(wolfTellOn(2.5 + 0.95, 3), 0, 'dark after the window');
+  assert.equal(wolfTellOn(2.5 + 9 + 0.2, 1), 1, 'the rhythm repeats');
+});
+
+test('the wolf tell comes more often the better the disguise is', () => {
+  assert.equal(wolfTellPeriod(1), 9);
+  assert.equal(wolfTellPeriod(2), 7);
+  assert.equal(wolfTellPeriod(3), 5);
+  assert.ok(wolfTellPeriod(1) > wolfTellPeriod(2));
+  assert.ok(wolfTellPeriod(2) > wolfTellPeriod(3));
+  for (const tier of [1, 2, 3]) {
+    assert.ok(WOLF_TELL_WINDOW < wolfTellPeriod(tier), `tier ${tier} window swallows its period`);
   }
 });
 
