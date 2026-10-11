@@ -87,12 +87,13 @@ export function isCalmLevel(difficulty) {
   return difficulty === CALM_LEVEL;
 }
 
-// The Get ready card's rule line. Calm promises the forgiving tap; the
-// challenge levels keep the warning that a double count ends the run.
+// The Get ready card's rule line. A counted sheep pops into confetti and
+// candy, so it cannot be tapped again; the challenge levels keep the
+// warning that saying done too early ends the run.
 export function introRuleText(difficulty = DEFAULT_DIFFICULTY) {
   return isCalmLevel(difficulty)
-    ? 'Count each sheep once, then tap Done counting. Tap one twice and it just gives a sleepy wiggle.'
-    : 'Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.';
+    ? 'Tap each sheep once to pop it, then tap Done counting.'
+    : 'Tap each sheep once to pop it, then tap Done counting. Saying done too early ends the run.';
 }
 
 // Anything unrecognised (a hostile /api/state body, a mangled deep link,

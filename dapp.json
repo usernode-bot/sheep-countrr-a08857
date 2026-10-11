@@ -464,10 +464,10 @@
       ]
     },
     {
-      "name": "Calm rule line replaces the run-ending warning",
+      "name": "Calm rule line names the pop instead of the run-ending warning",
       "path": "/?round=1&difficulty=calm",
       "expectSelector": "#round-intro-rule",
-      "expectText": "sleepy wiggle"
+      "expectText": "pop it"
     },
     {
       "name": "Calm keeps the round 9 flock small",

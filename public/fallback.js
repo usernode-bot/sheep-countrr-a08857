@@ -104,6 +104,42 @@ const WOLF_CUES_SVG = `
     </g>
   </g>`;
 
+// A counted sheep pops like a piñata: its card empties out and holds a
+// little pile of confetti and candy instead. Each card carries a hidden
+// span of seeded pieces (confetti rectangles and round candies), built
+// once per flock; the resting spots come from mulberry32 seeded with the
+// round's seed and the card's index, so the frozen ?scene= fixtures
+// render the same piles every time. Colors are picked when the sheep is
+// counted, cycling NUMBER_COLORS from its count number, exactly like the
+// 3D scene's burst.
+const POP_PIECES = 14;
+
+function mulberry32(a) {
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function buildPopPieces(seed, index) {
+  const wrap = document.createElement('span');
+  wrap.className = 'sheep-confetti';
+  wrap.hidden = true;
+  const rand = mulberry32((seed ^ (index * 2654435761)) >>> 0);
+  for (let k = 0; k < POP_PIECES; k++) {
+    const piece = document.createElement('span');
+    piece.className = k % 4 === 3 ? 'cd' : 'cf';
+    piece.dataset.rx = ((rand() - 0.5) * 76).toFixed(1);
+    piece.dataset.ry = (rand() * 34 - 4).toFixed(1);
+    piece.dataset.rot = ((rand() - 0.5) * 160).toFixed(0);
+    wrap.appendChild(piece);
+  }
+  return wrap;
+}
+
 export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   const field = document.createElement('div');
   field.className = 'sheep-fallback-field';
@@ -158,6 +194,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
           + '<span class="sheep-card-badge" hidden></span>'
           + '<span class="sheep-tap-ripple" hidden></span>';
       }
+      btn.appendChild(buildPopPieces(state.seed, i));
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
       cards.push(btn);
@@ -217,28 +254,51 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   function markCounted(index, number, animate = true) {
     const btn = cards[index];
     if (!btn) return;
-    const color = NUMBER_COLORS[(number - 1) % NUMBER_COLORS.length];
-    btn.classList.add('is-counted');
+    btn.classList.add('is-counted', 'is-popped');
     btn.style.translate = 'none';
     btn.style.willChange = '';
-    btn.style.setProperty('--ribbon', color);
-    const badge = btn.querySelector('.sheep-card-badge');
-    badge.hidden = false;
-    badge.textContent = String(number);
+    // No ribbon and no badge: a popped sheep leaves only confetti and
+    // candy on the card.
+    const wrap = btn.querySelector('.sheep-confetti');
+    if (!wrap) return;
+    wrap.hidden = false;
+    const calm = isCalmLevel(current && current.difficulty);
+    const pieces = wrap.children;
+    for (let k = 0; k < pieces.length; k++) {
+      const piece = pieces[k];
+      piece.style.background = NUMBER_COLORS[(number - 1 + k) % NUMBER_COLORS.length];
+      const rest = `translate(${piece.dataset.rx}px, ${piece.dataset.ry}px) rotate(${piece.dataset.rot}deg)`;
+      if (animate && !reducedMotion && btn.animate) {
+        // Compositor-only: transform and opacity, from the card center
+        // out to the seeded resting spot in the card's lower half.
+        piece.animate(
+          [
+            { transform: 'translate(0px, -16px) rotate(0deg) scale(1.1)', opacity: 1 },
+            { transform: rest, opacity: 1 },
+          ],
+          {
+            duration: calm ? 1700 : 850,
+            delay: (k % 5) * 40,
+            easing: 'cubic-bezier(.2,.7,.3,1)',
+            fill: 'both',
+          }
+        );
+      } else {
+        // Resume, fixtures or reduced motion: the pieces already lie
+        // settled where the pop left them.
+        piece.style.transform = rest;
+      }
+    }
     if (animate && !reducedMotion && btn.animate) {
-      // Calm skips the card's hop; the number badge still pops in.
-      if (!isCalmLevel(current && current.difficulty)) btn.animate(
+      // The card's sheep puffs up and fades; Calm doubles the pop so the
+      // reward reads slowly, as quiet as the bedtime original.
+      const svg = btn.querySelector('.sheep-svg');
+      svg?.animate(
         [
-          { transform: 'scale(1)' },
-          { transform: 'scale(0.98)' },
-          { transform: 'scale(1.02)' },
-          { transform: 'scale(1)' },
+          { transform: 'scale(1)', opacity: 1 },
+          { transform: 'scale(1.2)', opacity: 0 },
         ],
-        { duration: 900, easing: 'cubic-bezier(.34,1.56,.64,1)' }
-      );
-      badge.animate(
-        [{ transform: 'scale(0)' }, { transform: 'scale(1.25)' }, { transform: 'scale(1)' }],
-        { duration: 380, easing: 'ease-out' }
+        { duration: calm ? 700 : 350, easing: 'ease-out', fill: 'forwards' }
       );
     }
   }
