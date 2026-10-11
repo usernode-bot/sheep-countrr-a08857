@@ -4,9 +4,10 @@
 //
 // Art direction: a quiet dusk meadow with plush, sleepy sheep. Every sheep is ONE vertex-colored
 // mesh (body, wool puffs, face, ears, cheeks, smile, legs, hooves merged at
-// boot) plus two eye meshes that blink and close, a soft contact shadow, a muted
-// ribbon and a number plate. Ten sheep is under a hundred draw calls, which
-// is what keeps the low tier smooth.
+// boot) plus two eye meshes that blink and close and a soft contact shadow.
+// A counted sheep pops into confetti and candy (two instanced meshes for the
+// whole round), which keeps a full flock under a hundred draw calls and the
+// low tier smooth.
 import * as THREE from 'three';
 import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
@@ -71,8 +72,6 @@ const FLEECES = [
   { wool: '#f8ecc9', woolLight: '#fdf6e0', woolShade: '#e3d2a4' },
 ];
 
-const FONT = '800 150px "Nunito", ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Segoe UI", system-ui, sans-serif';
-
 function seededRand(seed, salt) {
   let a = (seed ^ (salt * 2654435761)) >>> 0;
   a |= 0;
@@ -134,34 +133,6 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
-}
-
-function buildNumberTextures() {
-  const textures = [];
-  for (let n = 1; n <= MAX_SHEEP; n++) {
-    const size = 256;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    // Soft drop shadow, then a cream plate with a pastel rim.
-    ctx.fillStyle = 'rgba(80, 50, 90, 0.18)';
-    roundRect(ctx, 26, 34, size - 52, size - 60, 64);
-    ctx.fill();
-    ctx.fillStyle = NUMBER_COLORS[(n - 1) % NUMBER_COLORS.length];
-    roundRect(ctx, 20, 20, size - 40, size - 52, 64);
-    ctx.fill();
-    ctx.fillStyle = '#fffaf2';
-    roundRect(ctx, 34, 34, size - 68, size - 80, 52);
-    ctx.fill();
-    ctx.fillStyle = '#4a3b5c';
-    ctx.font = FONT;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(n), size / 2, size / 2 - 8);
-    textures.push(makeTexture(canvas));
-  }
-  return textures;
 }
 
 // A small cream pill with the sheep's name, floating above its head.
@@ -445,22 +416,6 @@ export function buildWolfBodyGeometry(variant, tier, fleece = FLEECES[0]) {
   return out;
 }
 
-function buildRibbonGeometry() {
-  const torus = new THREE.TorusGeometry(0.2, 0.045, 8, 26);
-  const sphere = new THREE.SphereGeometry(1, 10, 8);
-  const geo = mergeColored([
-    // Collar around the neck, tilted with the head.
-    { geo: torus, color: '#fff8ed', matrix: placeMatrix(0, 0.74, 0.34, 1, 1, 1, Math.PI / 2 - 0.35, 0, 0) },
-    // Bow: two loops and a knot, sitting to one side.
-    { geo: sphere, color: '#fff8ed', matrix: placeMatrix(0.3, 0.86, 0.36, 0.085, 0.06, 0.05, 0, 0, 0.5) },
-    { geo: sphere, color: '#fff8ed', matrix: placeMatrix(0.36, 0.74, 0.36, 0.085, 0.06, 0.05, 0, 0, -0.5) },
-    { geo: sphere, color: '#fff8ed', matrix: placeMatrix(0.31, 0.8, 0.39, 0.045) },
-  ]);
-  torus.dispose();
-  sphere.dispose();
-  return geo;
-}
-
 function buildTreeGeometry() {
   const sphere = new THREE.SphereGeometry(1, 12, 8);
   const cyl = new THREE.CylinderGeometry(1, 1, 1, 8);
@@ -655,6 +610,172 @@ function createRipplePool(scene, size, texture) {
   return { burst, update, dispose };
 }
 
+// Confetti and candy: what is left where a sheep popped. Two instanced
+// meshes carry every burst of the round (2 draw calls total), each sheep
+// owning a fixed slice of the instances so back-to-back pops never steal
+// pieces from each other. Piece paths, spins and landing spots come from
+// mulberry32 seeded with the round's seed and the sheep's index, so the
+// frozen ?scene= fixtures render the same piles every time. A piece flies
+// on a simple ballistic arc, lands lying flat at ground level and stays
+// there until the round ends.
+function mulberry32(a) {
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const CONFETTI_PER_BURST = 18;
+const CANDY_PER_BURST = 6;
+const PIECES_PER_BURST = CONFETTI_PER_BURST + CANDY_PER_BURST;
+
+function createPopBurstPool(scene, bursts) {
+  const confettiGeo = new THREE.PlaneGeometry(0.17, 0.09);
+  const candyGeo = new THREE.IcosahedronGeometry(0.055, 0);
+  const confettiMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+  const candyMat = new THREE.MeshLambertMaterial();
+  const confettiMesh = new THREE.InstancedMesh(confettiGeo, confettiMat, bursts * CONFETTI_PER_BURST);
+  const candyMesh = new THREE.InstancedMesh(candyGeo, candyMat, bursts * CANDY_PER_BURST);
+  confettiMesh.frustumCulled = false;
+  candyMesh.frustumCulled = false;
+  scene.add(confettiMesh);
+  scene.add(candyMesh);
+
+  const hiddenMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
+  const tmpColor = new THREE.Color();
+  const tmpQuat = new THREE.Quaternion();
+  const tmpEuler = new THREE.Euler();
+  const tmpVec = new THREE.Vector3();
+  const tmpScale = new THREE.Vector3();
+  const pieces = Array.from({ length: bursts * PIECES_PER_BURST }, () => ({
+    start: -1, slot: 0, candy: false, scale: 1,
+    x0: 0, y0: 0.7, z0: 0, vx: 0, vy: 0, vz: 0, g: 2.3, T: 1, delay: 0,
+    lx: 0, lz: 0, spin: 4, rest: 0, tilt: 0, live: false, settled: false,
+  }));
+  let dirty = false;
+
+  function writeHidden(p) {
+    (p.candy ? candyMesh : confettiMesh).setMatrixAt(p.slot, hiddenMatrix);
+    dirty = true;
+  }
+
+  function writeSettled(p) {
+    // Confetti lies flat on the grass; candy rests as it falls.
+    const rx = p.candy ? p.tilt : -Math.PI / 2;
+    tmpEuler.set(rx, 0, p.rest);
+    tmpQuat.setFromEuler(tmpEuler);
+    tmpVec.set(p.lx, p.candy ? 0.035 : 0.02, p.lz);
+    tmpScale.setScalar(p.scale);
+    (p.candy ? candyMesh : confettiMesh).setMatrixAt(p.slot,
+      new THREE.Matrix4().compose(tmpVec, tmpQuat, tmpScale));
+    dirty = true;
+  }
+
+  const tmpMatrix = new THREE.Matrix4();
+  function writeFlying(p, e) {
+    tmpEuler.set(p.spin * e, p.spin * 0.6 * e, p.rest);
+    tmpQuat.setFromEuler(tmpEuler);
+    tmpVec.set(p.x0 + p.vx * e, p.y0 + p.vy * e - 0.5 * p.g * e * e, p.z0 + p.vz * e);
+    tmpScale.setScalar(p.scale);
+    tmpMatrix.compose(tmpVec, tmpQuat, tmpScale);
+    (p.candy ? candyMesh : confettiMesh).setMatrixAt(p.slot, tmpMatrix);
+    dirty = true;
+  }
+
+  function burst(index, x, z, number, startTime, { settled = false, slow = false, seed = 1 } = {}) {
+    const rand = mulberry32((seed ^ (index * 2654435761)) >>> 0);
+    const g = slow ? 1.1 : 2.3;
+    const spread = slow ? 0.6 : 1;
+    const y0 = 0.7;
+    for (let i = 0; i < PIECES_PER_BURST; i++) {
+      const candy = i >= CONFETTI_PER_BURST;
+      const p = pieces[index * PIECES_PER_BURST + i];
+      p.candy = candy;
+      p.slot = candy ? index * CANDY_PER_BURST + (i - CONFETTI_PER_BURST) : index * CONFETTI_PER_BURST + i;
+      p.start = startTime;
+      p.live = true;
+      p.settled = !!settled;
+      p.g = g;
+      p.x0 = x;
+      p.y0 = y0;
+      p.z0 = z;
+      p.scale = 0.7 + rand() * 0.6;
+      const color = NUMBER_COLORS[(number - 1 + i) % NUMBER_COLORS.length];
+      tmpColor.set(color);
+      (candy ? candyMesh : confettiMesh).setColorAt(p.slot, tmpColor);
+      const ang = rand() * Math.PI * 2;
+      const speed = (0.3 + rand() * 0.65) * spread;
+      p.vx = Math.cos(ang) * speed;
+      p.vz = Math.sin(ang) * speed;
+      p.vy = (1.4 + rand() * 1.1) * (slow ? 0.7 : 1);
+      p.delay = rand() * 0.12;
+      // Flight time until the arc comes back down to grass level.
+      p.T = (p.vy + Math.sqrt(p.vy * p.vy + 2 * g * (y0 - 0.02))) / g;
+      p.lx = x + p.vx * p.T;
+      p.lz = z + p.vz * p.T;
+      p.spin = (3 + rand() * 6) * (rand() < 0.5 ? -1 : 1);
+      p.rest = rand() * Math.PI * 2;
+      p.tilt = rand() * 0.6 - 0.3;
+      if (settled) {
+        writeSettled(p);
+      } else {
+        writeHidden(p);
+      }
+    }
+    if (confettiMesh.instanceColor) confettiMesh.instanceColor.needsUpdate = true;
+    if (candyMesh.instanceColor) candyMesh.instanceColor.needsUpdate = true;
+    dirty = true;
+  }
+
+  function update(t) {
+    dirty = false;
+    for (const p of pieces) {
+      if (!p.live) continue;
+      if (p.settled) continue;
+      const e = t - p.start - p.delay;
+      if (e <= 0) {
+        writeHidden(p);
+      } else if (e >= p.T) {
+        p.settled = true;
+        writeSettled(p);
+      } else {
+        writeFlying(p, e);
+      }
+    }
+    if (dirty) {
+      confettiMesh.instanceMatrix.needsUpdate = true;
+      candyMesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  function reset() {
+    for (const p of pieces) {
+      p.live = false;
+      p.settled = false;
+      p.start = -1;
+      writeHidden(p);
+    }
+    confettiMesh.instanceMatrix.needsUpdate = true;
+    candyMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  function dispose() {
+    scene.remove(confettiMesh);
+    scene.remove(candyMesh);
+    confettiGeo.dispose();
+    candyGeo.dispose();
+    confettiMat.dispose();
+    candyMat.dispose();
+    if (confettiMesh.instanceColor) confettiMesh.instanceColor.dispose?.();
+    if (candyMesh.instanceColor) candyMesh.instanceColor.dispose?.();
+  }
+
+  return { burst, update, reset, dispose };
+}
+
 // ---------------------------------------------------------------------------
 
 function detectTier() {
@@ -842,7 +963,6 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const wolfEyeGeo = buildWolfEyeGeometry();
   const wolfBodyGeos = [1, 2, 3].map((tier) =>
     [0, 1, 2].map((variant) => buildWolfBodyGeometry(variant, tier, FLEECES[variant % FLEECES.length])));
-  const ribbonGeo = buildRibbonGeometry();
   // One material for every sheep body and eye, so the low tier can swap
   // the whole flock to cheaper Lambert shading in one place.
   let sheepMat = tier === 'low'
@@ -861,7 +981,6 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const shadowMat = new THREE.MeshBasicMaterial({ map: buildShadowTexture(), transparent: true, depthWrite: false });
   const pickGeo = new THREE.SphereGeometry(0.9, 8, 6);
   const pickMat = new THREE.MeshBasicMaterial({ visible: false });
-  const numberTextures = buildNumberTextures();
   // Name-label textures, built on demand and shared across rounds: a
   // name's pill is identical wherever that name appears.
   const nameTextureCache = new Map();
@@ -887,6 +1006,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   const sparklePool = createSparklePool(scene, tier === 'low' ? 14 : 26, starTexture);
   const confettiPool = createConfettiPool(scene, tier === 'low' ? 40 : 90, dotTexture);
   const ripplePool = createRipplePool(scene, tier === 'low' ? 4 : 6, buildRippleTexture());
+  // The pop burst: confetti and candy where a counted sheep stood. One
+  // fixed slice of instances per sheep, so overlapping pops never collide.
+  const popPool = createPopBurstPool(scene, MAX_SHEEP);
 
   let lastState = null;
   // How this round's flock moves. Round 1 is perfectly still; later
@@ -910,10 +1032,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     lastState = state;
     namesOn = !!state.namesOn;
     motion = state.calmOn ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty);
-    sheep.forEach((s) => {
-      if (s.ribbonMat) s.ribbonMat.dispose();
-      if (s.numberSprite) s.numberSprite.material.dispose();
-    });
+    // A fresh board leaves only grass: no confetti piles from the last round.
+    popPool.reset();
     scene.remove(sheepGroup);
     sheepGroup = new THREE.Group();
     scene.add(sheepGroup);
@@ -952,27 +1072,8 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       shadow.position.set(0, 0.012, 0.05);
       g.add(shadow);
 
-      let ribbonMat = null;
-      let ribbon = null;
-      let numberSprite = null;
-      if (!isWolf) {
-        ribbonMat = new THREE.MeshLambertMaterial({ color: '#fff8ed' });
-        ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
-        ribbon.visible = false;
-        g.add(ribbon);
-
-        numberSprite = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: numberTextures[0], transparent: true, depthTest: false, fog: false })
-        );
-        numberSprite.scale.set(0.62, 0.62, 1);
-        numberSprite.position.set(0, 1.55, 0.1);
-        numberSprite.visible = false;
-        g.add(numberSprite);
-      }
-
-      // Optional playful name label above the head. Uncounted sheep float
-      // it where the number plate would sit; counted sheep lift it above
-      // the number plate so the two never overlap.
+      // Optional playful name label above the head, floating gently while the
+      // sheep grazes. A counted sheep pops away, label and all.
       const nameSprite = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: nameTexture(sheepName(state.seed, i)), transparent: true, depthTest: false, fog: false })
       );
@@ -1002,11 +1103,11 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         body,
         eyes,
         pick,
-        ribbon,
-        ribbonMat,
-        numberSprite,
         nameSprite,
         counted: false,
+        baseScale: scale,
+        popStart: -1,
+        popNumber: 0,
         origin: { x: pos.x, z: pos.z },
         heading: g.rotation.y,
         index: i,
@@ -1018,7 +1119,6 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         blinkStart: -1,
         nextHop: 5 + Math.random() * 8,
         hopStart: -1,
-        ribbonPop: -1,
         isWolf,
         tier,
       });
@@ -1110,29 +1210,26 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
   function markCounted(index, number, animate = true) {
     const s = sheep[index];
-    // The wolf has no ribbon or number to show: it is never counted.
+    // The wolf is never counted, so it never pops.
     if (!s || s.counted || s.isWolf) return;
     s.counted = true;
     if (lastState && !lastState.counted.includes(index)) {
       lastState = { ...lastState, counted: [...lastState.counted, index] };
     }
-    const color = NUMBER_COLORS[(number - 1) % NUMBER_COLORS.length];
-    s.ribbonMat.color.set(color);
-    s.ribbon.visible = true;
-    s.numberSprite.material.map = numberTextures[Math.min(number, MAX_SHEEP) - 1];
-    s.numberSprite.material.needsUpdate = true;
-    s.numberSprite.visible = true;
     if (animate && !reducedMotion) {
-      // Calm skips the squash-and-hop: the sheep just settles and its
-      // ribbon appears, as quiet as the bedtime original.
-      if (!isCalmLevel(lastState && lastState.difficulty)) {
-        s.bounceStart = elapsedSeconds();
-        s.bounceDur = 0.9;
-        s.wiggle = false;
-      }
-      s.ribbonPop = elapsedSeconds();
-      const p = s.group.position;
-      // A sleepy nod is enough feedback; no burst of sparkles.
+      // The pop: the sheep puffs up for a beat, then frame() hides the
+      // group and bursts the confetti where it stood.
+      s.popStart = elapsedSeconds();
+      s.popNumber = number;
+    } else {
+      // Resume, fixtures, an orientation rebuild or reduced motion: no
+      // pop to watch, so the sheep is simply gone and its confetti and
+      // candy already lie settled on the grass at its home spot.
+      s.group.visible = false;
+      const calm = isCalmLevel(lastState && lastState.difficulty);
+      popPool.burst(index, s.origin.x, s.origin.z, number, elapsedSeconds(), {
+        settled: true, slow: calm, seed: lastState ? lastState.seed : 1,
+      });
     }
   }
 
@@ -1179,11 +1276,14 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
     const rect = canvas.getBoundingClientRect();
     pointerVec.set(((evt.clientX - rect.left) / rect.width) * 2 - 1, -((evt.clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointerVec, camera);
-    const targets = sheep.map((s) => s.pick);
+    // A popped sheep is gone: its empty spot cannot be tapped, so a tap
+    // there passes through to a sheep standing behind it.
+    const tappable = sheep.filter((s) => !s.counted);
+    const targets = tappable.map((s) => s.pick);
     const hits = raycaster.intersectObjects(targets, false);
     if (hits.length) {
-      const idx = targets.findIndex((t) => t === hits[0].object);
-      if (idx >= 0) onTap(idx);
+      const hit = tappable.find((s) => s.pick === hits[0].object);
+      if (hit) onTap(hit.index);
     }
   }
   canvas.addEventListener('pointerdown', onPointerDown, { passive: true });
@@ -1381,26 +1481,29 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         s.eyes.forEach((e) => e.scale.set(1, eyeY, 1));
       }
 
-      // Ribbon pops in with overshoot when counted.
-      if (s.ribbonPop >= 0) {
-        const p = Math.min(1, (t - s.ribbonPop) / 0.45);
-        const k = p * p * (3 - 2 * p);
-        s.ribbon.scale.setScalar(Math.max(0.01, k));
-        s.numberSprite.scale.set(0.62 * k, 0.62 * k, 1);
-        if (p >= 1) s.ribbonPop = -1;
-      }
-      if (s.numberSprite && s.numberSprite.visible && s.ribbonPop < 0) {
-        s.numberSprite.position.y = 1.55 + (reducedMotion ? 0 : Math.sin(t * 2.2 + s.phase) * 0.035);
+      // The pop: puff up for a beat, then vanish into confetti and candy
+      // where the sheep stood.
+      if (s.popStart >= 0) {
+        const p = (t - s.popStart) / 0.14;
+        if (p >= 1) {
+          s.popStart = -1;
+          s.group.visible = false;
+          const calm = isCalmLevel(lastState && lastState.difficulty);
+          const pos = s.group.position;
+          popPool.burst(s.index, pos.x, pos.z, s.popNumber, t, {
+            slow: calm, seed: lastState ? lastState.seed : 1,
+          });
+        } else if (p > 0) {
+          s.group.scale.setScalar(s.baseScale * (1 + 0.25 * p));
+        }
       }
 
-      // Name label: a gentle float while grazing; parked above the number
-      // plate once counted, so the two never overlap.
+      // Name label: a gentle float while grazing. A popped sheep is gone,
+      // label and all, with its group.
       if (s.nameSprite) {
         s.nameSprite.visible = namesOn;
         if (namesOn) {
-          s.nameSprite.position.y = s.counted
-            ? 2.05
-            : 1.5 + (reducedMotion ? 0 : Math.sin(t * 1.8 + s.phase) * 0.03);
+          s.nameSprite.position.y = 1.5 + (reducedMotion ? 0 : Math.sin(t * 1.8 + s.phase) * 0.03);
         }
       }
     });
@@ -1425,6 +1528,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
 
     sparklePool.update(stepDt);
     confettiPool.update(stepDt, t);
+    popPool.update(t);
     ripplePool.update();
     renderer.render(scene, camera);
   }
@@ -1522,6 +1626,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
       ripplePool.dispose();
+      popPool.dispose();
       nameTextureCache.forEach((tex) => tex.dispose());
       renderer.dispose();
       canvas.remove();

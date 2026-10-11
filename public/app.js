@@ -808,6 +808,10 @@ function handleTap(index) {
   if (introOpen) return;
   // Same for the countdown overlay: nothing counts until the round starts.
   if (countdownOpen) return;
+  // A popped sheep is gone: its spot cannot be tapped, so a child can
+  // never end a run by tapping empty grass. This covers the 3D scene,
+  // the card view and the screen-reader list in one place.
+  if (store.state.counted.includes(index)) return;
   // Purely visual: a soft ripple where the sheep was tapped, before any
   // counting state changes. Skipped under prefers-reduced-motion, and on
   // Calm, whose feedback stays as quiet as the bedtime original.
@@ -1460,8 +1464,9 @@ function renderA11yList(state) {
   buttons.forEach((btn, i) => {
     // The briefing card or the countdown is open: no tap can land, so the
     // mirror says so instead of offering a button that would silently do
-    // nothing.
-    btn.disabled = introOpen || countdownOpen;
+    // nothing. The same for a sheep that already popped: it is gone from
+    // the screen, so its button is disabled, not tappable.
+    btn.disabled = introOpen || countdownOpen || state.counted.includes(i);
     // With Name labels on, the mirror uses the same playful name the two
     // renderers draw, so a screen reader calls the sheep what the player
     // sees: "Woolly is grazing" / "Woolly, counted as number 3".
