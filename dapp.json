@@ -330,10 +330,10 @@
       ]
     },
     {
-      "name": "Night Meadow toggle appears in the grown-ups panel",
+      "name": "Background picker appears in the grown-ups panel",
       "path": "/?scene=grownups",
-      "expectSelector": "#night-toggle",
-      "expectText": "Night Meadow",
+      "expectSelector": "#scenery-select",
+      "expectText": "Background",
       "allowConsoleErrors": true
     },
     {
@@ -390,6 +390,27 @@
         "dapp.json"
       ],
       "allowConsoleErrors": true
+    },
+    {
+      "id": "theme.moon",
+      "name": "Moon background recolors sky and ground",
+      "path": "/?scene=moon",
+      "expectSelector": "body.theme-moon #round-badge",
+      "expectText": "Round 5",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/scene.js",
+        "public/state.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Moon background shows on the DOM fallback too",
+      "path": "/?round=5&renderer=dom&scenery=moon",
+      "expectSelector": "body.theme-moon .sheep-fallback-grid .sheep-card:nth-child(7)",
+      "expectText": "of 7 sheep"
     },
     {
       "name": "Grown-ups panel shows the Name labels toggle",
