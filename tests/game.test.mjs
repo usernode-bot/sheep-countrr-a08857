@@ -23,6 +23,8 @@ import {
   localDayKey,
   motionForRound,
   normalizeCalm,
+  normalizeScenery,
+  sceneryFromServer,
   paceLine,
   roamRadius,
   roundCompleteTitle,
@@ -871,6 +873,73 @@ test('calm mode slows the flock without changing what the round asks for', () =>
   assert.equal(normalizeCalm(1), false);
   assert.match(roundIntroText(4, 'normal', false, true), /Calm mode keeps them slow/);
   assert.ok(!roundIntroText(4, 'normal', false, false).includes('Calm mode'));
+});
+
+test('normalizeScenery passes known keys through and migrates the legacy night flag', () => {
+  // Known keys pass through untouched.
+  assert.equal(normalizeScenery('meadow'), 'meadow');
+  assert.equal(normalizeScenery('night'), 'night');
+  assert.equal(normalizeScenery('moon'), 'moon');
+  // Anything unrecognised or missing reads as the default, or as Night
+  // Meadow when the legacy checkbox said so (the pre-picker migration).
+  assert.equal(normalizeScenery('mars'), 'meadow');
+  assert.equal(normalizeScenery('mars', true), 'night');
+  assert.equal(normalizeScenery(undefined), 'meadow');
+  assert.equal(normalizeScenery(undefined, true), 'night');
+  assert.equal(normalizeScenery(null, false), 'meadow');
+});
+
+test('sceneryFromServer keeps device-local picks and follows the server otherwise', () => {
+  // Moon is device-local: the server only knows night_on, so either value
+  // leaves the pick alone.
+  assert.equal(sceneryFromServer('moon', true), 'moon');
+  assert.equal(sceneryFromServer('moon', false), 'moon');
+  // Meadow and Night Meadow follow the server exactly as nightOn does.
+  assert.equal(sceneryFromServer('meadow', true), 'night');
+  assert.equal(sceneryFromServer('meadow', false), 'meadow');
+  assert.equal(sceneryFromServer('night', false), 'meadow');
+  assert.equal(sceneryFromServer('night', true), 'night');
+});
+
+test('a pre-picker save migrates nightOn into the scenery pick', () => {
+  // A save written before the picker: only nightOn exists.
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({ round: 2, difficulty: 'normal', totalCounted: 9, nightOn: true });
+  assert.equal(restored.state.scenery, 'night');
+  assert.equal(restored.state.nightOn, true);
+  // A moon pick (a device-local key) wins over the stale flag, and nightOn
+  // follows the scenery, not the flag.
+  const { store: moonUser } = newStore();
+  moonUser.loadLocalFrom({ round: 2, difficulty: 'normal', totalCounted: 9, scenery: 'moon', nightOn: true });
+  assert.equal(moonUser.state.scenery, 'moon');
+  assert.equal(moonUser.state.nightOn, false);
+  // No flag and no key: the default meadow.
+  const { store: plain } = newStore();
+  plain.loadLocalFrom({ round: 2, difficulty: 'normal', totalCounted: 4 });
+  assert.equal(plain.state.scenery, 'meadow');
+  assert.equal(plain.state.nightOn, false);
+});
+
+test('setScenery swaps the background without touching the running board', () => {
+  const { store } = newStore();
+  store.startRound(5, { silent: true });
+  store.tapSheep(1);
+  const before = store.state;
+  store.setScenery('moon');
+  assert.equal(store.state.scenery, 'moon');
+  assert.equal(store.state.nightOn, false, 'Moon is device-local and posts nightOn false');
+  assert.equal(store.state.round, before.round);
+  assert.equal(store.state.seed, before.seed);
+  assert.equal(store.state.count, before.count);
+  assert.deepEqual(store.state.counted, before.counted);
+  // Picking Night Meadow keeps the derived flag true, like the old toggle.
+  store.setScenery('night');
+  assert.equal(store.state.scenery, 'night');
+  assert.equal(store.state.nightOn, true);
+  // Back to the meadow clears it, and an unknown value reads as meadow.
+  store.setScenery('nonsense');
+  assert.equal(store.state.scenery, 'meadow');
+  assert.equal(store.state.nightOn, false);
 });
 
 test('a fresh run resets the Speed Round mode and reads a stale clock as off', () => {
