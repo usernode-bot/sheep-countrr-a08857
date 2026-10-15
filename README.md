@@ -52,7 +52,9 @@ keeping track of who you already counted does not.
   share the same counting logic.
 - **Sound is on by default.** Every sheep tap gives a soft baa (counted
   sheep add a gentle chime, Web Audio only, no asset files). A grown-up
-  can mute it with the Sound effects toggle in the grown-ups panel.
+  can mute it with one tap on the speaker button in the top-left corner
+  of the game screen, or with the Sound effects toggle in the grown-ups
+  panel; both are the same saved setting.
 - **The grown-ups panel** (sound, progress, start over) is reached by a
   ~1.5 second press-and-hold on the small gear icon in the corner, or
   Enter/Space with a keyboard. A quick tap does nothing, so a child

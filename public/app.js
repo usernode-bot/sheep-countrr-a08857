@@ -209,6 +209,7 @@ const els = {
   gameOverRound: document.getElementById('game-over-round'),
   restartBtn: document.getElementById('restart-btn'),
   grownupsBtn: document.getElementById('grownups-btn'),
+  soundBtn: document.getElementById('sound-btn'),
   grownupsPanel: document.getElementById('grownups-panel'),
   grownupsClose: document.getElementById('grownups-close'),
   soundToggle: document.getElementById('sound-toggle'),
@@ -677,6 +678,7 @@ function bootInviteFixture() {
   els.countBadge.hidden = true;
   els.actionBar.hidden = true;
   els.grownupsBtn.hidden = true;
+  els.soundBtn.hidden = true;
   els.inviteTagline.hidden = false;
   els.inviteButton.href = inviteHref;
   els.inviteInvitee.textContent = 'Invited by Staging demo: Mabel.';
@@ -758,6 +760,7 @@ async function bootInviteView() {
   els.countBadge.hidden = true;
   els.actionBar.hidden = true;
   els.grownupsBtn.hidden = true;
+  els.soundBtn.hidden = true;
   els.inviteTagline.hidden = false;
   els.inviteButton.href = inviteHref;
   els.inviteButton.hidden = false;
@@ -1405,6 +1408,9 @@ function updateChrome(state) {
   els.communityValue.textContent = String(state.communityTotal);
   setExportStatus('');
   els.soundToggle.checked = !!state.soundOn;
+  // The corner speaker button mirrors the same flag; the drawn icon swaps
+  // through aria-pressed (waves when on, cross when off).
+  els.soundBtn.setAttribute('aria-pressed', state.soundOn ? 'true' : 'false');
   els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
   els.namesToggle.checked = !!state.namesOn;
@@ -1600,6 +1606,13 @@ function closeGrownups() {
   els.grownupsPanel.hidden = true;
 }
 els.grownupsClose.addEventListener('click', closeGrownups);
+
+// The quick mute on the game screen. Same store flag as the grown-ups
+// switch, so one tap here moves both and persists the same way.
+els.soundBtn.addEventListener('click', () => {
+  if (staticMode) return;
+  store.setSoundOn(!store.state.soundOn);
+});
 
 els.soundToggle.addEventListener('change', (e) => {
   if (staticMode) return;

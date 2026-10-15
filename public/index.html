@@ -412,6 +412,28 @@
       touch-action: none;
     }
 
+    /* ---- Sound corner button: the quick one-tap mute, mirroring the gear.
+         Same circle, size and corner distance; unlike the gear it acts on a
+         single tap, so the icon tells the state (waves when on, cross off). ---- */
+    #sound-btn {
+      top: calc(var(--safe-top) + 10px);
+      left: calc(var(--safe-left) + 10px);
+      width: 3.5rem;
+      height: 3.5rem;
+      border-radius: 9999px;
+      background: var(--plum);
+      color: var(--cream);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(90, 60, 120, 0.12);
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+    }
+    #sound-btn svg { width: 1.65rem; height: 1.65rem; }
+    #sound-btn[aria-pressed="true"] .sound-cross { display: none; }
+    #sound-btn[aria-pressed="false"] .sound-waves { display: none; }
+
     /* ---- Panels ---- */
     .panel-backdrop {
       background: radial-gradient(120% 90% at 50% 100%, rgba(255, 214, 227, 0.55), rgba(120, 90, 160, 0.45));
@@ -831,6 +853,9 @@
       #action-bar { padding-bottom: calc(var(--safe-bottom) + 6px); gap: 0.25rem; }
       #play-hint { font-size: 0.85rem; }
       .submit-btn { min-height: 3rem; min-width: 11rem; font-size: 1.1rem; padding: 0.55rem 1.6rem; }
+      /* The plate owns the top-left corner on its side, so the speaker
+         moves up beside the gear in the top right instead. */
+      #sound-btn { left: auto; right: calc(var(--safe-right) + 10px + 3.5rem + 8px); }
     }
 
     body { margin: 0; -webkit-font-smoothing: antialiased; }
@@ -926,6 +951,26 @@
     <button id="grownups-btn" type="button" class="absolute"
       aria-label="Grown-ups: press and hold to open settings">
       &#9881;
+    </button>
+
+    <!-- One-tap mute for the game sounds, mirroring the gear in the opposite
+         corner. Same saved setting as the grown-ups Sound effects switch:
+         either one moves both. A child can tap it by accident and mute the
+         game; a second tap unmutes. -->
+    <button id="sound-btn" type="button" class="absolute"
+      aria-label="Sound effects" aria-pressed="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/>
+        <g class="sound-waves">
+          <path d="M16 9a4 4 0 0 1 0 6"/>
+          <path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/>
+        </g>
+        <g class="sound-cross">
+          <path d="M16.5 9.5l5 5"/>
+          <path d="M21.5 9.5l-5 5"/>
+        </g>
+      </svg>
     </button>
 
     <!-- Hidden accessible mirror of every sheep, for keyboard/screen-reader use. -->

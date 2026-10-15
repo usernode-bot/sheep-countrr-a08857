@@ -132,6 +132,18 @@
       "expectText": "Round 5"
     },
     {
+      "name": "Speaker mute button shows sound on by default",
+      "id": "sound.speaker",
+      "visual": true,
+      "path": "/?scene=midcount",
+      "expectSelector": "#sound-btn[aria-pressed=\"true\"]",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Speed Round intro offers the Speed Round toggle",
       "id": "speed.intro",
       "visual": true,
