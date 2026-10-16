@@ -290,15 +290,17 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       }
     }
     if (animate && !reducedMotion && btn.animate) {
-      // The card's sheep puffs up and fades; Calm doubles the pop so the
-      // reward reads slowly, as quiet as the bedtime original.
+      // The card's sheep squashes, puffs up bigger, then fades; Calm
+      // doubles the pop so the reward reads slowly, as quiet as the
+      // bedtime original.
       const svg = btn.querySelector('.sheep-svg');
       svg?.animate(
         [
           { transform: 'scale(1)', opacity: 1 },
-          { transform: 'scale(1.2)', opacity: 0 },
+          { transform: 'scale(1.15, 0.85)', opacity: 1, offset: 0.3 },
+          { transform: 'scale(1.4)', opacity: 0 },
         ],
-        { duration: calm ? 700 : 350, easing: 'ease-out', fill: 'forwards' }
+        { duration: calm ? 840 : 420, easing: 'ease-out', fill: 'forwards' }
       );
     }
   }

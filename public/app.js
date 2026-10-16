@@ -19,6 +19,7 @@ import {
   normalizeScenery,
   normalizeSpeedRound,
   paceLine,
+  playHintText,
   roundCompleteTitle,
   roundIntroText,
   roundSeed,
@@ -35,7 +36,7 @@ import {
 } from './rounds.js';
 import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
-import { sheepName } from './layout.js';
+import { NUMBER_COLORS, sheepName } from './layout.js';
 import { bestRoundsCsv, weeklyHistoryCsv } from './export.js';
 
 // Pass-and-play Duel: shared controller state, exported for the unit suite.
@@ -166,6 +167,7 @@ function applyNames(state) {
 const els = {
   countDisplay: document.getElementById('count-display'),
   countWord: document.getElementById('count-word'),
+  countDots: document.getElementById('count-dots'),
   roundBadge: document.getElementById('round-badge'),
   sceneRoot: document.getElementById('scene-root'),
   actionBar: document.getElementById('action-bar'),
@@ -782,12 +784,10 @@ async function mountScene() {
       container: els.sceneRoot,
       reducedMotion,
       onTap: handleTap,
-      // The number plate covers the top of the screen and the Done button
-      // the bottom; the camera frames the flock in the space between.
-      getOverlayRect: () => {
-        const plate = document.querySelector('.count-plate');
-        return plate ? plate.getBoundingClientRect() : null;
-      },
+      // The whole corner column (round tag, timers, plate, dots) covers the
+      // top-left of the screen and the Done button the bottom; the camera
+      // frames the flock in the space between.
+      getOverlayRect: () => (els.countBadge ? els.countBadge.getBoundingClientRect() : null),
       getBottomOverlayRect: () => (els.actionBar ? els.actionBar.getBoundingClientRect() : null),
       onFatal: async () => {
         renderer?.destroy?.();
@@ -1361,10 +1361,38 @@ function restartRun() {
 function hintFor(state) {
   if (state.phase === ROUND_PASSED) return 'Nicely counted.';
   if (state.phase === RUN_OVER) return 'Tap Start again for round 1.';
-  if (state.count === 0) return state.sheepCount === 1 ? 'Tap the sheep.' : 'Tap every sheep.';
-  const wolves = state.wolfIndex != null ? 1 : 0;
-  if (state.count >= state.sheepCount - wolves) return 'That is all of them. Tap Done counting.';
-  return 'Tap every sheep, then tap Done counting.';
+  return playHintText(state.count, realSheepCount(state), state.sheepCount);
+}
+
+// One small dot per real sheep, under the counter. Dot i fills in the
+// pastel colour of tap number i+1's confetti (NUMBER_COLORS), so the dot
+// that just popped matches the burst the player just caused. The wolf
+// never gets a dot, matching the "of N sheep" total.
+function renderCountDots(state, animate) {
+  const total = Math.max(0, realSheepCount(state));
+  const dots = els.countDots;
+  if (dots.childElementCount !== total) {
+    dots.replaceChildren();
+    for (let i = 0; i < total; i++) {
+      const dot = document.createElement('span');
+      dot.className = 'count-dot';
+      dots.appendChild(dot);
+    }
+  }
+  const filled = Math.min(total, Math.max(0, state.count));
+  for (let i = 0; i < total; i++) {
+    const dot = dots.children[i];
+    const on = i < filled;
+    dot.classList.toggle('is-filled', on);
+    if (on) dot.style.setProperty('--dot', NUMBER_COLORS[i % NUMBER_COLORS.length]);
+  }
+  if (animate && filled > 0) {
+    const newest = dots.children[filled - 1];
+    newest.classList.remove('dot-pop');
+    // Restart the animation even when two taps land back to back.
+    void newest.offsetWidth;
+    newest.classList.add('dot-pop');
+  }
 }
 
 let lastShownCount = null;
@@ -1374,7 +1402,8 @@ function updateChrome(state) {
   // every sound path (chime, baa, celebration) reads one source of truth.
   setSoundEnabled(!!state.soundOn);
 
-  if (lastShownCount !== null && state.count > lastShownCount) {
+  const countedUp = lastShownCount !== null && state.count > lastShownCount;
+  if (countedUp) {
     const plate = els.countDisplay.parentElement;
     plate.classList.remove('count-pop');
     // Restart the animation even when two taps land back to back.
@@ -1394,8 +1423,12 @@ function updateChrome(state) {
   // The total is the real sheep only. A round's wolf is not one to count:
   // counting "of N" with the wolf in N led a child straight to tapping it.
   els.countWord.textContent = `of ${sheepPhrase(realSheepCount(state))}`;
+  renderCountDots(state, countedUp);
   els.playHint.textContent = hintFor(state);
   els.submitBtn.disabled = state.phase !== COUNTING;
+  // The quiet Done counting: a soft light button until counting starts,
+  // then the usual dark one. It is never disabled during counting.
+  els.submitBtn.classList.toggle('is-quiet', state.phase === COUNTING && state.count === 0);
 
   els.roundValue.textContent = String(state.round);
   els.bestValue.textContent = String(store.bestRound);
