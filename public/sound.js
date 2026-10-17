@@ -1,5 +1,5 @@
-// Sound is off by default. Everything here is generated with the Web
-// Audio API, so there are no audio asset files to ship. The AudioContext
+// Everything here is generated with the Web Audio API, so there are no
+// audio asset files to ship. The AudioContext
 // is only ever created/resumed from inside a real tap handler, per
 // autoplay policy.
 
@@ -97,4 +97,47 @@ export function playBaa() {
   wobble.start(t);
   osc.stop(t + 0.35);
   wobble.stop(t + 0.35);
+}
+
+// Full length of the counted sheep's two-note call. layout.js's
+// POP_PUFF_SECONDS keeps the pop from bursting before it finishes.
+export const BAA_BAAA_SECONDS = 0.58;
+
+// One triangle-and-wobble voice shared by both notes, in the same style
+// as playBaa above: a glide from fromHz down to toHz, quiet enough to sit
+// under a nap, with a short peak and a soft tail.
+function baaNote(c, start, fromHz, toHz, glide, tail, stopAt) {
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  const wobble = c.createOscillator();
+  const wobbleGain = c.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(fromHz, start);
+  osc.frequency.linearRampToValueAtTime(toHz, start + glide);
+  wobble.frequency.value = 18;
+  wobbleGain.gain.value = 14;
+  wobble.connect(wobbleGain).connect(osc.frequency);
+  osc.connect(gain).connect(c.destination);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(0.05, start + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + tail);
+  osc.start(start);
+  wobble.start(start);
+  osc.stop(stopAt);
+  wobble.stop(stopAt);
+}
+
+// The two-note call a newly counted sheep makes while it puffs up: a
+// short "baa", then a lower, longer "baaa", so the animal calls out
+// before it bursts into confetti.
+export function playBaaBaaa() {
+  if (!enabled) return;
+  const c = getCtx();
+  if (!c) return;
+  const t = c.currentTime;
+  // Note 1: the short "baa", ending before note 2 begins.
+  baaNote(c, t, 400, 340, 0.2, 0.22, t + 0.24);
+  // Note 2: the lower, longer "baaa", with its longer tail. Its stop is
+  // BAA_BAAA_SECONDS after the call began, and never later.
+  baaNote(c, t + 0.24, 330, 250, 0.32, 0.32, t + BAA_BAAA_SECONDS);
 }
