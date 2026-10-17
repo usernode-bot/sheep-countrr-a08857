@@ -212,6 +212,7 @@ const els = {
   grownupsPanel: document.getElementById('grownups-panel'),
   grownupsClose: document.getElementById('grownups-close'),
   soundToggle: document.getElementById('sound-toggle'),
+  soundBtn: document.getElementById('sound-btn'),
   scenerySelect: document.getElementById('scenery-select'),
   calmToggle: document.getElementById('calm-toggle'),
   namesToggle: document.getElementById('names-toggle'),
@@ -544,6 +545,9 @@ async function boot() {
     if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
     if (hasSpeedParam) store.state = { ...store.state, speedOn: speedParam };
     if (calmParam !== null) store.state = { ...store.state, calmOn: normalizeCalm(calmParam === '1') };
+    // &sound=0/1 pins the sound button's icon for the capture run; like the
+    // other knobs it is applied to the ephemeral store and never persisted.
+    if (soundParam !== null) store.state = { ...store.state, soundOn: soundParam === '1' };
     // The Background pick rides the deep link for this run only; the
     // ephemeral store never writes it back to storage.
     if (sceneryParam !== null || nightParam !== null) {
@@ -1369,6 +1373,21 @@ function hintFor(state) {
 
 let lastShownCount = null;
 let lastPhase = null;
+
+// The corner mute button mirrors the sound setting: speaker when on,
+// crossed-out speaker when off, with an aria-pressed and a spoken name
+// that match. Kept beside the Grown-ups panel's Sound effects switch,
+// which reads the same bit, so the two can never disagree.
+function syncSoundButton(state) {
+  if (!els.soundBtn) return;
+  const on = !!state.soundOn;
+  els.soundBtn.textContent = on ? '\u{1F50A}' : '\u{1F507}';
+  els.soundBtn.setAttribute('aria-pressed', String(on));
+  els.soundBtn.setAttribute('aria-label', on
+    ? 'Sound effects: on. Tap to turn off'
+    : 'Sound effects: off. Tap to turn on');
+}
+
 function updateChrome(state) {
   // Keep the audio module's enabled flag in lockstep with the toggle, so
   // every sound path (chime, baa, celebration) reads one source of truth.
@@ -1405,6 +1424,7 @@ function updateChrome(state) {
   els.communityValue.textContent = String(state.communityTotal);
   setExportStatus('');
   els.soundToggle.checked = !!state.soundOn;
+  syncSoundButton(state);
   els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
   els.namesToggle.checked = !!state.namesOn;
@@ -1592,6 +1612,7 @@ function openGrownups(state) {
   els.bonusValue.textContent = String(state.bonusCounted || 0);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
+  syncSoundButton(state);
   els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
   els.grownupsPanel.hidden = false;
@@ -1604,6 +1625,14 @@ els.grownupsClose.addEventListener('click', closeGrownups);
 els.soundToggle.addEventListener('change', (e) => {
   if (staticMode) return;
   store.setSoundOn(e.target.checked);
+});
+
+// The corner button is the one-tap version of the same setting. It plays
+// nothing itself: the next counted sheep (or flock landing) is the first
+// sound, so the AudioContext still opens inside a real tap handler.
+els.soundBtn.addEventListener('click', () => {
+  if (staticMode) return;
+  store.setSoundOn(!store.state.soundOn);
 });
 
 els.scenerySelect.addEventListener('change', (e) => {
