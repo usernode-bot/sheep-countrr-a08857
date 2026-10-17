@@ -254,34 +254,30 @@
     #scene-root canvas.sheep-canvas { display: block; width: 100%; height: 100%; }
 
     /* ---- Number plate ---- */
-    #count-badge { padding-top: calc(var(--safe-top) + 14px); }
+    /* The counter is a corner column (round tag, plate, progress dots)
+       hugging the top-left edge, so the flock owns the centre of the
+       screen. The plate grows away from the edge when it bumps. */
+    #count-badge {
+      padding-top: calc(var(--safe-top) + 14px);
+      padding-left: calc(var(--safe-left) + 12px);
+      gap: 6px;
+    }
     .count-plate {
       position: relative;
-      min-width: 8.5rem;
-      padding: 0.55rem 1.6rem 0.7rem;
-      border-radius: 2rem;
+      min-width: 6rem;
+      padding: 0.35rem 1rem 0.45rem;
+      border-radius: 1.4rem;
       background: var(--cream);
       border: 3px solid #8f6ba8;
+      transform-origin: left center;
       box-shadow:
         0 10px 24px rgba(90, 60, 120, 0.18),
         0 4px 0 #f4c6d6,
         inset 0 -6px 0 #fff0f4;
     }
-    .count-plate::before,
-    .count-plate::after {
-      content: "";
-      position: absolute;
-      top: -14px;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: var(--pink-soft);
-    }
-    .count-plate::before { left: 22px; }
-    .count-plate::after { right: 22px; }
     #count-display {
       display: block;
-      font-size: 4.6rem;
+      font-size: 2.9rem;
       line-height: 1;
       font-weight: 900;
       letter-spacing: -0.03em;
@@ -292,7 +288,7 @@
     #count-word {
       display: block;
       margin-top: 0.15rem;
-      font-size: 1.05rem;
+      font-size: 0.75rem;
       font-weight: 800;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -301,7 +297,36 @@
     .count-pop { animation: count-pop 0.42s cubic-bezier(.34,1.56,.64,1); }
     @keyframes count-pop {
       0% { transform: scale(1); }
-      35% { transform: scale(1.22) rotate(-3deg); }
+      35% { transform: scale(1.3) rotate(-3deg); }
+      100% { transform: scale(1); }
+    }
+
+    /* Progress dots: one small dot per real sheep, filling in the same
+       pastel colour the sheep's confetti carries (the inline --dot value
+       comes from app.js, via NUMBER_COLORS). The newest dot pops in. */
+    .count-dots {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      max-width: 8.5rem;
+      padding-left: 4px;
+    }
+    .count-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(255, 250, 242, 0.75);
+      border: 2px solid #dccbe9;
+      box-sizing: border-box;
+    }
+    .count-dot.is-filled {
+      background: var(--dot, var(--pink));
+      border-color: var(--dot, var(--pink));
+    }
+    .count-dot.dot-pop { animation: dot-pop 0.35s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes dot-pop {
+      0% { transform: scale(0.4); }
+      60% { transform: scale(1.35); }
       100% { transform: scale(1); }
     }
 
@@ -318,6 +343,15 @@
       text-transform: uppercase;
       color: var(--plum);
       box-shadow: 0 6px 16px rgba(90, 60, 120, 0.16);
+    }
+    /* The corner round tag: the same pill shape, quieted down so the
+       counter plate carries the column. The Speed Round and Duel clocks
+       keep the full pill size on purpose: a child needs to see the time. */
+    .round-pill.round-tag {
+      padding: 0.15rem 0.7rem;
+      border-width: 2px;
+      font-size: 0.72rem;
+      box-shadow: 0 3px 8px rgba(90, 60, 120, 0.12);
     }
 
     /* ---- Speed Round countdown pill: the round pill's shape, in the
@@ -390,6 +424,17 @@
       letter-spacing: 0.01em;
       border: 2px solid #8f6ba8;
       touch-action: manipulation;
+      transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+    /* The quiet start: before the first sheep is counted, Done counting
+       wears the grown-ups panel's soft light-button look, so the screen's
+       one job (tapping sheep) stays the loudest thing on it. It still
+       works, and saying done early still ends the run. */
+    .submit-btn.is-quiet {
+      background: #f4ecfa;
+      color: var(--plum);
+      border-color: #dccbe9;
+      box-shadow: 0 5px 0 #dccbe9;
     }
     .submit-btn:active { transform: translateY(5px); box-shadow: none; }
     .submit-btn[disabled] { opacity: 0.5; box-shadow: none; transform: none; color: #565f6a; }
@@ -581,6 +626,25 @@
     }
 
     .stats-card .stat-value {
+      font-weight: 900;
+      color: var(--plum);
+      font-size: 1.15rem;
+    }
+
+    /* Round-complete facts box: the stats-card look holding the round line
+       and the Next up line together under the praise. Its first line is
+       the stronger one, so the round just counted leads the numbers. */
+    .round-complete-facts {
+      width: 100%;
+      border-radius: 1.5rem;
+      background: #fff;
+      box-shadow: 0 3px 0 #f0e2f7;
+      padding: 0.9rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .round-complete-facts .bedtime-message:first-child {
       font-weight: 900;
       color: var(--plum);
       font-size: 1.15rem;
@@ -839,12 +903,12 @@
       white-space: nowrap;
     }
 
-    /* Short landscape screens (a phone on its side): tuck the plate into
-       the top-left corner and shrink it so the flock keeps the height. */
+    /* Short landscape screens (a phone on its side): the corner column is
+       already top-left, so only the plate shrinks a little more so the
+       flock keeps the height. */
     @media (orientation: landscape) and (max-height: 520px) {
-      #count-badge { justify-content: flex-start; padding-left: calc(var(--safe-left) + 12px); padding-top: calc(var(--safe-top) + 10px); }
+      #count-badge { padding-top: calc(var(--safe-top) + 10px); }
       .count-plate { min-width: 6.5rem; padding: 0.4rem 1.1rem 0.5rem; border-radius: 1.5rem; }
-      .count-plate::before, .count-plate::after { display: none; }
       #count-display { font-size: 3.2rem; }
       #count-word { font-size: 0.85rem; }
       .sheep-fallback-grid { padding-top: calc(var(--safe-top) + 24px); padding-left: calc(var(--safe-left) + 140px); }
@@ -917,15 +981,17 @@
     <!-- The 3D pasture (or the card fallback) fills the screen. -->
     <div id="scene-root" class="absolute inset-0"></div>
 
-    <!-- Round and running tap count, on screen at all times. -->
-    <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex flex-col items-center gap-2">
-      <div id="round-badge" class="round-pill">Round 1 of 9</div>
+    <!-- Round and running tap count, on screen at all times. The column hugs
+         the top-left corner so the flock owns the middle of the screen. -->
+    <div id="count-badge" class="pointer-events-none absolute top-0 left-0 flex flex-col items-start gap-2">
+      <div id="round-badge" class="round-pill round-tag">Round 1 of 9</div>
       <div id="speed-timer" class="round-pill speed-timer" hidden aria-live="off">30</div>
       <div id="duel-turn-clock" class="round-pill duel-timer" hidden aria-live="off">45</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
         <span id="count-display">0</span>
         <span id="count-word">of 1 sheep</span>
       </div>
+      <div id="count-dots" class="count-dots" aria-hidden="true"></div>
     </div>
 
     <!-- On the public invite page only: a read-only card naming the game
@@ -991,10 +1057,13 @@
          counted and a preview of the next, bigger flock. -->
     <div id="round-complete" hidden role="status" class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+        <div class="confetti-strip w-full" aria-hidden="true"></div>
         <p class="celebration-sheep" aria-hidden="true"><span>&#128017;</span><span>&#128017;</span><span>&#128017;</span></p>
         <p id="success-title" class="celebration-title">Great job! You found all the sheep.</p>
-        <p id="round-complete-title" class="bedtime-message">Round 1 counted.</p>
-        <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
+        <div class="round-complete-facts">
+          <p id="round-complete-title" class="bedtime-message">Round 1 counted.</p>
+          <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
+        </div>
         <button id="next-round-btn" type="button" class="big-btn">
           Next round
         </button>
