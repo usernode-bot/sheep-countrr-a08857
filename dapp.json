@@ -316,6 +316,18 @@
       "expectText": "Sound effects"
     },
     {
+      "id": "sound.mute.corner",
+      "name": "The corner mute button mirrors the sound setting",
+      "path": "/?round=1&sound=0",
+      "expectSelector": "#sound-btn[aria-pressed='false']",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
       "id": "grownups.export",
       "name": "Grown-ups panel offers the CSV export",
       "path": "/?scene=grownups",

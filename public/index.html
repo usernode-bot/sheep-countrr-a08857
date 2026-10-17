@@ -412,6 +412,27 @@
       touch-action: none;
     }
 
+    /* ---- One-tap sound button: the same quiet circle as the grown-ups
+         gear, stacked directly beneath it (gear spans safe-top+10 to +66,
+         so +74 leaves an 8px gap). Stays clear of the count plate, which
+         parks top-left on short landscape screens. ---- */
+    #sound-btn {
+      top: calc(var(--safe-top) + 74px);
+      right: calc(var(--safe-right) + 10px);
+      width: 3.5rem;
+      height: 3.5rem;
+      border-radius: 9999px;
+      background: var(--plum);
+      color: var(--cream);
+      font-size: 1.35rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(90, 60, 120, 0.12);
+      -webkit-touch-callout: none;
+      touch-action: none;
+    }
+
     /* ---- Panels ---- */
     .panel-backdrop {
       background: radial-gradient(120% 90% at 50% 100%, rgba(255, 214, 227, 0.55), rgba(120, 90, 160, 0.45));
@@ -926,6 +947,15 @@
     <button id="grownups-btn" type="button" class="absolute"
       aria-label="Grown-ups: press and hold to open settings">
       &#9881;
+    </button>
+
+    <!-- One-tap mute beside the grown-ups gear: deliberately NOT behind the
+         press-and-hold, since muting is child-safe and reversible. The
+         glyph mirrors the sound setting; app.js keeps it in lockstep with
+         the Grown-ups panel's Sound effects switch. -->
+    <button id="sound-btn" type="button" class="absolute"
+      aria-pressed="true" aria-label="Sound effects: on. Tap to turn off">
+      &#128266;
     </button>
 
     <!-- Hidden accessible mirror of every sheep, for keyboard/screen-reader use. -->
