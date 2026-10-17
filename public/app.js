@@ -33,7 +33,7 @@ import {
   roundBadgeText,
   weeklyScoreLabel,
 } from './rounds.js';
-import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
+import { playTapChime, playBaa, playBaaBaaa, playCelebration, setSoundEnabled } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
 import { sheepName } from './layout.js';
 import { bestRoundsCsv, weeklyHistoryCsv } from './export.js';
@@ -852,10 +852,15 @@ function handleTap(index) {
   const result = store.tapSheep(index);
   if (store.state.duel && store.state.phase !== COUNTING) stopDuelClock();
   // Every tap on a sheep's body baas, counted or not. The wolf is not a
-  // sheep, and an ignored tap touched nothing, so neither baas.
+  // sheep, and an ignored tap touched nothing, so neither baas. A counted
+  // tap gets the two-note baa-baaa, so the sheep calls out while it puffs
+  // up before it bursts; wiggles and double taps keep the short baa.
   const sheepTapped = result.outcome === 'counted'
     || result.outcome === 'doubleTap' || result.outcome === 'wiggle';
-  if (sheepTapped && store.state.soundOn) playBaa();
+  if (sheepTapped && store.state.soundOn) {
+    if (result.outcome === 'counted') playBaaBaaa();
+    else playBaa();
+  }
   if (result.outcome === 'counted') {
     renderer.countSheep(index, result.number);
     if (store.state.soundOn) {

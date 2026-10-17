@@ -9,7 +9,7 @@
 // whole round), which keeps a full flock under a hundred draw calls and the
 // low tier smooth.
 import * as THREE from 'three';
-import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
+import { layoutPositions, NUMBER_COLORS, POP_PUFF_SECONDS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
 import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
 
@@ -1539,10 +1539,11 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         s.eyes.forEach((e) => e.scale.set(1, eyeY, 1));
       }
 
-      // The pop: puff up for a beat, then vanish into confetti and candy
+      // The pop: puff up quickly, hold the puff while the counted sheep
+      // finishes its baa-baaa call, then vanish into confetti and candy
       // where the sheep stood.
       if (s.popStart >= 0) {
-        const p = (t - s.popStart) / 0.14;
+        const p = (t - s.popStart) / POP_PUFF_SECONDS;
         if (p >= 1) {
           s.popStart = -1;
           s.group.visible = false;
@@ -1552,7 +1553,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
             slow: calm, seed: lastState ? lastState.seed : 1,
           });
         } else if (p > 0) {
-          s.group.scale.setScalar(s.baseScale * (1 + 0.25 * p));
+          // Reach the full puff early and hold it, so the puffed sheep
+          // stays big while it calls instead of creeping larger.
+          s.group.scale.setScalar(s.baseScale * (1 + 0.25 * Math.min(1, p * 4)));
         }
       }
 
