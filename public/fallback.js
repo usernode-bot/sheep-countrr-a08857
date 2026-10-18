@@ -296,18 +296,20 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       }
     }
     if (animate && !reducedMotion && btn.animate) {
-      // The card's sheep puffs up, holds while the counted sheep finishes
-      // its baa-baaa call, then fades; the puff beat is the same length
-      // in Calm and normal play, so the burst lands at the same moment
-      // as the 3D scene's.
+      // The card's sheep squashes, puffs up bigger, holds while the counted
+      // sheep finishes its baa-baaa call, then fades; the puff beat is the
+      // same length in Calm and normal play, so the burst lands at the same
+      // moment as the 3D scene's.
       const svg = btn.querySelector('.sheep-svg');
       const puffMs = POP_PUFF_SECONDS * 1000;
       const fadeMs = 350;
       svg?.animate(
         [
           { transform: 'scale(1)', opacity: 1 },
-          { transform: 'scale(1.2)', opacity: 1, offset: puffMs / (puffMs + fadeMs) },
-          { transform: 'scale(1.2)', opacity: 0 },
+          { transform: 'scale(1.15, 0.85)', opacity: 1, offset: (puffMs * 0.075) / (puffMs + fadeMs) },
+          { transform: 'scale(1.4)', opacity: 1, offset: (puffMs * 0.25) / (puffMs + fadeMs) },
+          { transform: 'scale(1.4)', opacity: 1, offset: puffMs / (puffMs + fadeMs) },
+          { transform: 'scale(1.4)', opacity: 0 },
         ],
         { duration: puffMs + fadeMs, easing: 'ease-out', fill: 'forwards' }
       );

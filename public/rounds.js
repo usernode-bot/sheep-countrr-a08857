@@ -318,6 +318,15 @@ export function sheepPhrase(n) {
   return n === 1 ? '1 sheep' : `${n} sheep`;
 }
 
+// The counting screen's hint, by where the round is: how to start, then
+// how many sheep are left, then the hand-in. Pure so tests can pin the
+// words, like the other copy helpers here.
+export function playHintText(count, realSheep, sheepCount) {
+  if (count === 0) return sheepCount === 1 ? 'Tap the sheep.' : 'Tap every sheep.';
+  if (count >= realSheep) return 'That is all of them. Tap Done counting.';
+  return `${realSheep - count} left!`;
+}
+
 // A short, honest warning about what the flock will do.
 export function paceLine(round, difficulty = DEFAULT_DIFFICULTY) {
   const m = calmMotion(round, difficulty);

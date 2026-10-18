@@ -17,8 +17,12 @@ keeping track of who you already counted does not.
   piñata and is gone, leaving a little pile of pastel confetti and candy
   on the grass where it stood for the rest of the round. A popped sheep's
   spot cannot be tapped, so a counted sheep is impossible to mistake for
-  an uncounted one and empty grass never ends a run. The current round
-  and the running tap count sit at the top of the screen the whole time.
+  an uncounted one and empty grass never ends a run. The running tap count
+  sits in a small counter in the top-left corner (with a row of progress
+  dots underneath, one dot per sheep, filled in the counted sheep's
+  pastel colour), leaving the middle of the screen to the flock, and the
+  hint at the bottom counts down as sheep are counted: "Tap every sheep.",
+  then "4 left!" and so on, then "That is all of them. Tap Done counting.".
 - **Before you start.** The first round of a run opens on a short "Get
   ready" card that names the round and its flock, explains that tapping a
   sheep pops it, and warns that saying done too early ends the run. Its

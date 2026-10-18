@@ -132,6 +132,20 @@
       "expectText": "Round 5"
     },
     {
+      "name": "Mid-count fills the first three progress dots and counts down",
+      "id": "count.dots",
+      "path": "/?scene=midcount",
+      "expectSelector": "#count-dots .count-dot.is-filled:nth-child(3)",
+      "expectText": "4 left!",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Speed Round intro offers the Speed Round toggle",
       "id": "speed.intro",
       "visual": true,
@@ -212,10 +226,35 @@
       "expectText": "Done counting"
     },
     {
+      "name": "Done counting starts quiet before the first sheep",
+      "id": "done.quiet",
+      "path": "/?round=1",
+      "expectSelector": "#submit-count.is-quiet",
+      "expectText": "Done counting",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Round complete message names the next flock",
       "path": "/?scene=roundcomplete",
       "expectSelector": "#round-complete-title",
       "expectText": "Round 4 counted."
+    },
+    {
+      "name": "Round complete holds the round lines in one facts box",
+      "id": "roundcomplete.facts",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete .round-complete-facts #round-complete-title",
+      "expectText": "Round 4 counted.",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
     },
     {
       "name": "Round complete shows the success message",

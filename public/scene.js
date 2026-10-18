@@ -1539,9 +1539,9 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         s.eyes.forEach((e) => e.scale.set(1, eyeY, 1));
       }
 
-      // The pop: puff up quickly, hold the puff while the counted sheep
-      // finishes its baa-baaa call, then vanish into confetti and candy
-      // where the sheep stood.
+      // The pop: a quick squash, then a bigger puff up, held while the
+      // counted sheep finishes its baa-baaa call, then the sheep vanishes
+      // into confetti and candy where it stood.
       if (s.popStart >= 0) {
         const p = (t - s.popStart) / POP_PUFF_SECONDS;
         if (p >= 1) {
@@ -1553,9 +1553,23 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
             slow: calm, seed: lastState ? lastState.seed : 1,
           });
         } else if (p > 0) {
-          // Reach the full puff early and hold it, so the puffed sheep
-          // stays big while it calls instead of creeping larger.
-          s.group.scale.setScalar(s.baseScale * (1 + 0.25 * Math.min(1, p * 4)));
+          // Squash and puff happen early, then the puffed sheep holds
+          // while it calls instead of creeping larger.
+          const base = s.baseScale;
+          const e = Math.min(1, p * 4);
+          if (e < 0.3) {
+            // Squash down for a beat, like a pressed spring.
+            const q = e / 0.3;
+            s.group.scale.set(base * (1 + 0.18 * q), base * (1 - 0.15 * q), base * (1 + 0.18 * q));
+          } else {
+            // Puff out from the squash to 1.4x.
+            const q = (e - 0.3) / 0.7;
+            s.group.scale.set(
+              base * (1.18 + (1.4 - 1.18) * q),
+              base * (0.85 + (1.4 - 0.85) * q),
+              base * (1.18 + (1.4 - 1.18) * q)
+            );
+          }
         }
       }
 
