@@ -26,6 +26,7 @@ import {
   normalizeScenery,
   sceneryFromServer,
   paceLine,
+  playHintText,
   roamRadius,
   roundCompleteTitle,
   roundIntroText,
@@ -101,6 +102,26 @@ test('the round badge names the round and the ladder length', () => {
   assert.equal(roundBadgeText(9, true), 'Speed round 9');
   // Deep-link normalization: a bogus round reads as round 1.
   assert.equal(roundBadgeText('bogus'), 'Round 1 of 9');
+});
+
+test('the counting hint starts, counts down, then hands off to Done counting', () => {
+  assert.equal(playHintText(0, 1, 1), 'Tap the sheep.');
+  assert.equal(playHintText(0, 7, 7), 'Tap every sheep.');
+  assert.equal(playHintText(3, 7, 7), '4 left!');
+  assert.equal(playHintText(6, 7, 7), '1 left!');
+  assert.ok(playHintText(7, 7, 7).includes('Tap Done counting'));
+  // A wolf round: four real sheep counted out of four, five animals total.
+  assert.ok(playHintText(4, 4, 5).includes('Tap Done counting'));
+  for (const text of [
+    playHintText(0, 1, 1),
+    playHintText(0, 7, 7),
+    playHintText(3, 7, 7),
+    playHintText(6, 7, 7),
+    playHintText(7, 7, 7),
+    playHintText(4, 4, 5),
+  ]) {
+    assert.ok(!text.includes('—'), text);
+  }
 });
 
 test('rounds get faster and more erratic, and never tame down', () => {
