@@ -48,9 +48,9 @@ import {
 import { readFileSync } from 'node:fs';
 import { wanderOffset } from '../public/movement.js';
 import { weekStartUtc, sortScoreRows } from '../public/leaderboard.js';
-import { sheepName } from '../public/layout.js';
+import { sheepName, POP_PUFF_SECONDS } from '../public/layout.js';
 import { buildSheepBodyGeometry, buildEyeGeometry } from '../public/scene.js';
-import { isSoundEnabled, setSoundEnabled } from '../public/sound.js';
+import { isSoundEnabled, setSoundEnabled, playBaaBaaa, BAA_BAAA_SECONDS } from '../public/sound.js';
 import { bestRoundsCsv, weeklyHistoryCsv } from '../public/export.js';
 
 // A store that behaves exactly like a /?round=N deep link: fixed seeds, and
@@ -627,6 +627,21 @@ test('the sound enabled flag gates before any AudioContext work', () => {
 test('sound is on for a fresh run, before any grown-up touches settings', () => {
   const { store } = newStore();
   assert.equal(store.state.soundOn, true);
+});
+
+test('the counted call finishes before the pop bursts', () => {
+  // The puff-up must outlast the two-note call, so the sheep finishes
+  // its baa-baaa before the confetti comes; both renderers share the
+  // pop timing.
+  assert.ok(BAA_BAAA_SECONDS <= POP_PUFF_SECONDS,
+    `call (${BAA_BAAA_SECONDS}s) must fit inside the pop (${POP_PUFF_SECONDS}s)`);
+});
+
+test('playBaaBaaa is silent when sound is off', () => {
+  // Muted: the call returns before even creating an AudioContext, so it
+  // runs in Node with no window and no audio stack at all.
+  setSoundEnabled(false);
+  assert.doesNotThrow(() => playBaaBaaa());
 });
 
 test('the sound toggle persists through save and load', () => {

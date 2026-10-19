@@ -9,7 +9,7 @@
 // whole round), which keeps a full flock under a hundred draw calls and the
 // low tier smooth.
 import * as THREE from 'three';
-import { layoutPositions, NUMBER_COLORS, sheepName } from './layout.js';
+import { layoutPositions, NUMBER_COLORS, POP_PUFF_SECONDS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
 import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
 
@@ -1539,10 +1539,11 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
         s.eyes.forEach((e) => e.scale.set(1, eyeY, 1));
       }
 
-      // The pop: a quick squash, then a bigger puff up, then the sheep
-      // vanishes into confetti and candy where it stood.
+      // The pop: a quick squash, then a bigger puff up, held while the
+      // counted sheep finishes its baa-baaa call, then the sheep vanishes
+      // into confetti and candy where it stood.
       if (s.popStart >= 0) {
-        const p = (t - s.popStart) / 0.2;
+        const p = (t - s.popStart) / POP_PUFF_SECONDS;
         if (p >= 1) {
           s.popStart = -1;
           s.group.visible = false;
@@ -1552,14 +1553,17 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
             slow: calm, seed: lastState ? lastState.seed : 1,
           });
         } else if (p > 0) {
+          // Squash and puff happen early, then the puffed sheep holds
+          // while it calls instead of creeping larger.
           const base = s.baseScale;
-          if (p < 0.3) {
+          const e = Math.min(1, p * 4);
+          if (e < 0.3) {
             // Squash down for a beat, like a pressed spring.
-            const q = p / 0.3;
+            const q = e / 0.3;
             s.group.scale.set(base * (1 + 0.18 * q), base * (1 - 0.15 * q), base * (1 + 0.18 * q));
           } else {
-            // Puff out from the squash to 1.4x before bursting.
-            const q = (p - 0.3) / 0.7;
+            // Puff out from the squash to 1.4x.
+            const q = (e - 0.3) / 0.7;
             s.group.scale.set(
               base * (1.18 + (1.4 - 1.18) * q),
               base * (0.85 + (1.4 - 0.85) * q),

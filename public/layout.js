@@ -8,6 +8,12 @@ export const NUMBER_COLORS = [
   '#b28dff', '#ff7eb6', '#6ee7c8', '#ffa07a', '#9ad0ff',
 ];
 
+// How long a counted sheep's puff-up lasts before it bursts, shared by
+// both renderers so the pop lands at the same moment in either view. It
+// must stay longer than sound.js's BAA_BAAA_SECONDS so the sheep finishes
+// its baa-baaa call before the confetti comes.
+export const POP_PUFF_SECONDS = 0.6;
+
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {

@@ -2,7 +2,7 @@
 // is set for testing. Shares the exact same counting semantics as the
 // 3D scene: same tap contract (onTap(index)), same counted-badge numbers,
 // same pastel per number.
-import { NUMBER_COLORS, sheepName } from './layout.js';
+import { NUMBER_COLORS, POP_PUFF_SECONDS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
 import { calmMotion, isCalmLevel, motionForRound, wolfDisguiseTier } from './rounds.js';
 
@@ -270,15 +270,21 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       const rest = `translate(${piece.dataset.rx}px, ${piece.dataset.ry}px) rotate(${piece.dataset.rot}deg)`;
       if (animate && !reducedMotion && btn.animate) {
         // Compositor-only: transform and opacity, from the card center
-        // out to the seeded resting spot in the card's lower half.
+        // out to the seeded resting spot in the card's lower half. The
+        // burst waits for the baa-baaa call to finish; the leading
+        // opacity 0 keyframe keeps each piece invisible through its
+        // delay, which fill 'both' would otherwise light up at the card
+        // center.
+        const start = 'translate(0px, -16px) rotate(0deg) scale(1.1)';
         piece.animate(
           [
-            { transform: 'translate(0px, -16px) rotate(0deg) scale(1.1)', opacity: 1 },
+            { transform: start, opacity: 0 },
+            { transform: start, opacity: 1, offset: 0.08 },
             { transform: rest, opacity: 1 },
           ],
           {
             duration: calm ? 1700 : 850,
-            delay: (k % 5) * 40,
+            delay: POP_PUFF_SECONDS * 1000 + (k % 5) * 40,
             easing: 'cubic-bezier(.2,.7,.3,1)',
             fill: 'both',
           }
@@ -290,17 +296,22 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
       }
     }
     if (animate && !reducedMotion && btn.animate) {
-      // The card's sheep squashes, puffs up bigger, then fades; Calm
-      // doubles the pop so the reward reads slowly, as quiet as the
-      // bedtime original.
+      // The card's sheep squashes, puffs up bigger, holds while the counted
+      // sheep finishes its baa-baaa call, then fades; the puff beat is the
+      // same length in Calm and normal play, so the burst lands at the same
+      // moment as the 3D scene's.
       const svg = btn.querySelector('.sheep-svg');
+      const puffMs = POP_PUFF_SECONDS * 1000;
+      const fadeMs = 350;
       svg?.animate(
         [
           { transform: 'scale(1)', opacity: 1 },
-          { transform: 'scale(1.15, 0.85)', opacity: 1, offset: 0.3 },
+          { transform: 'scale(1.15, 0.85)', opacity: 1, offset: (puffMs * 0.075) / (puffMs + fadeMs) },
+          { transform: 'scale(1.4)', opacity: 1, offset: (puffMs * 0.25) / (puffMs + fadeMs) },
+          { transform: 'scale(1.4)', opacity: 1, offset: puffMs / (puffMs + fadeMs) },
           { transform: 'scale(1.4)', opacity: 0 },
         ],
-        { duration: calm ? 840 : 420, easing: 'ease-out', fill: 'forwards' }
+        { duration: puffMs + fadeMs, easing: 'ease-out', fill: 'forwards' }
       );
     }
   }
