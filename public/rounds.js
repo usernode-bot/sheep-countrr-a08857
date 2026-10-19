@@ -359,6 +359,32 @@ export function roundCompleteTitle(round, speedOn = false) {
   return speedOn ? `Speed Round ${normalizeRound(round)} counted.` : `Round ${normalizeRound(round)} counted.`;
 }
 
+// Whole seconds said plainly: "41 seconds", "1 second". The recap card's
+// time lines share it, so the count and the best never disagree on how a
+// duration reads.
+export function formatRoundSeconds(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  return s === 1 ? '1 second' : `${s} seconds`;
+}
+
+// The recap card's three fact lines, added under the round line in the
+// facts box: what was counted, how long it took, and the best time the
+// round now carries. Pure so tests/game.test.mjs can pin the words, like
+// the other copy helpers here.
+export function recapSheepLine(count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  return `You counted ${sheepPhrase(n)}.`;
+}
+
+export function recapTimeLine(seconds) {
+  return `That took ${formatRoundSeconds(seconds)}.`;
+}
+
+export function recapBestLine(round, seconds, newBest = false) {
+  const base = `Best time for round ${normalizeRound(round)}: ${formatRoundSeconds(seconds)}.`;
+  return newBest ? `${base} A new best!` : base;
+}
+
 // The weekly leaderboard's score text: a Speed Round keeps its own tag so
 // it is distinguishable from a normal round at the same number.
 export function weeklyScoreLabel(roundReached, speedOn = false) {
