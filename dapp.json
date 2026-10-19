@@ -1,6 +1,9 @@
 {
   "name": "Sheep countrr",
-  "icon": { "image": "brand/icon.png", "emoji": "🐑" },
+  "icon": {
+    "image": "brand/icon.png",
+    "emoji": "🐑"
+  },
   "secrets": [],
   "tests": [
     {
@@ -273,6 +276,66 @@
       "path": "/?scene=allcounted",
       "expectSelector": "#round-complete[hidden]",
       "expectText": "Tap Done counting"
+    },
+    {
+      "name": "The recap card appears after a completed round",
+      "id": "recap.appears",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete:not([hidden]) #recap-sheep",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "The recap card shows the sheep counted in the round",
+      "path": "/?scene=roundcomplete",
+      "expectText": "You counted 5 sheep."
+    },
+    {
+      "name": "The recap card shows the time the round took",
+      "path": "/?scene=roundcomplete",
+      "expectText": "That took 41 seconds."
+    },
+    {
+      "name": "The recap card names the round it recaps",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete-title",
+      "expectText": "Round 4 counted."
+    },
+    {
+      "name": "The recap card shows the best time for that round",
+      "path": "/?scene=roundcomplete",
+      "expectText": "Best time for round 4: 34 seconds."
+    },
+    {
+      "name": "Next round starts the next round from the recap card",
+      "path": "/?round=1&autoplay=button&renderer=dom",
+      "expectText": "Round 2 of 9"
+    },
+    {
+      "name": "Tapping anywhere dismisses the recap card",
+      "path": "/?round=1&autoplay=tap&renderer=dom",
+      "expectText": "Round 2 of 9"
+    },
+    {
+      "name": "No recap card after the final round, just the completion",
+      "path": "/?round=9&autoplay=1&renderer=dom",
+      "expectText": "You finished all 9 rounds."
+    },
+    {
+      "name": "The recap lines render large and readable",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete .recap-line"
+    },
+    {
+      "name": "The recap card is announced politely to screen readers",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete[aria-live='polite']"
     },
     {
       "name": "Game over shows the round reached and a restart",

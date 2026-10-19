@@ -650,6 +650,17 @@
       font-size: 1.15rem;
     }
 
+    /* Recap lines: the round's own facts, large and readable, so a young
+       player can read them before tapping anywhere to move on. Same plum
+       as the round line, with tabular numerals so the seconds sit still. */
+    .recap-line {
+      margin: 0;
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: var(--plum);
+      font-variant-numeric: tabular-nums;
+    }
+
     /* ---- DOM fallback (no WebGL) ---- */
     .sheep-fallback-field {
       position: absolute;
@@ -1053,15 +1064,20 @@
       </div>
     </div>
 
-    <!-- Round passed: the success state. Praise first, then the round just
-         counted and a preview of the next, bigger flock. -->
-    <div id="round-complete" hidden role="status" class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+    <!-- Round passed: the success state. Praise first, then the recap card's
+         facts (what was counted, how long it took, the best time for the
+         round), then a preview of the next, bigger flock. The polite live
+         region announces the whole card when it opens. -->
+    <div id="round-complete" hidden role="status" aria-live="polite" class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
         <div class="confetti-strip w-full" aria-hidden="true"></div>
         <p class="celebration-sheep" aria-hidden="true"><span>&#128017;</span><span>&#128017;</span><span>&#128017;</span></p>
         <p id="success-title" class="celebration-title">Great job! You found all the sheep.</p>
         <div class="round-complete-facts">
           <p id="round-complete-title" class="bedtime-message">Round 1 counted.</p>
+          <p id="recap-sheep" class="recap-line" hidden>You counted 1 sheep.</p>
+          <p id="recap-time" class="recap-line" hidden>That took 10 seconds.</p>
+          <p id="recap-best" class="recap-line" hidden>Best time for round 1: 10 seconds.</p>
           <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
         </div>
         <button id="next-round-btn" type="button" class="big-btn">
@@ -1073,7 +1089,7 @@
     <!-- Run over: how far the player got, and a way back to round 1. -->
     <div id="game-over" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
-        <p class="bedtime-eyebrow">The flock scattered</p>
+        <p id="game-over-eyebrow" class="bedtime-eyebrow">The flock scattered</p>
         <p id="game-over-reason" class="bedtime-message">Some sheep were left uncounted.</p>
         <p id="game-over-streak" class="bedtime-message" hidden>You dodged some wolf rounds in a row.</p>
         <p class="celebration-title">You reached round <span id="game-over-round" class="celebration-total">1</span>.</p>

@@ -5,6 +5,7 @@ import {
   COUNTING,
   ROUND_PASSED,
   RUN_OVER,
+  ENDED_COMPLETE,
   ENDED_DOUBLE_TAP,
   ENDED_MISSED,
   ENDED_WOLF,
@@ -15,6 +16,7 @@ import {
   CALM_SPEED,
   MAX_SHEEP,
   NEW_PLAYER_DIFFICULTY,
+  TOTAL_ROUNDS,
   introRuleText,
   isCalmLevel,
   advanceStreak,
@@ -27,6 +29,9 @@ import {
   sceneryFromServer,
   paceLine,
   playHintText,
+  recapBestLine,
+  recapSheepLine,
+  recapTimeLine,
   roamRadius,
   roundCompleteTitle,
   roundIntroText,
@@ -1561,5 +1566,140 @@ test('the server serves the app stylesheet and records wolf endings', () => {
   const empty = code.split('\n').filter((l) => /status\(204\)/.test(l)).map((l) => l.trim());
   assert.deepEqual(empty, ["app.get('/favicon.ico', (_req, res) => res.status(204).end());", 'return res.status(204).end();'],
     'the favicon probe and the missing-stylesheet case are the only empty answers: no stubs for /usernode-bridge/');
-  assert.match(code, /\['doubleTap', 'missed', 'timeUp', 'wolf'\]\.includes/);
+  assert.match(code, /\['doubleTap', 'missed', 'timeUp', 'wolf', 'complete'\]\.includes/);
+});
+
+// The recap card's lines are pure copy from rounds.js, like the other
+// player-facing strings. They name the round's facts in words a grown-up
+// can read aloud, and carry no em dashes.
+test('the recap lines read plainly and name their numbers', () => {
+  assert.equal(recapSheepLine(5), 'You counted 5 sheep.');
+  assert.equal(recapSheepLine(1), 'You counted 1 sheep.');
+  assert.equal(recapTimeLine(41), 'That took 41 seconds.');
+  assert.equal(recapTimeLine(1), 'That took 1 second.');
+  assert.equal(recapTimeLine(0), 'That took 0 seconds.');
+  assert.equal(recapBestLine(4, 34, false), 'Best time for round 4: 34 seconds.');
+  assert.equal(recapBestLine(4, 34, true), 'Best time for round 4: 34 seconds. A new best!');
+  assert.equal(recapBestLine('3', '12'), 'Best time for round 3: 12 seconds.');
+  for (const line of [recapSheepLine(7), recapTimeLine(41), recapBestLine(4, 34, true)]) {
+    assert.doesNotMatch(line, /—/, 'user-facing copy carries no em dashes');
+  }
+});
+
+// Passing a round stamps the recap facts at the moment of the pass and
+// folds the elapsed time into the per-round best. A first time is always a
+// new best; a slower replay keeps the old one.
+test('a passed round stamps its recap facts and its best time', () => {
+  const { store } = newStore();
+  store.roundClock = () => 41;
+  store.startRound(3, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  const n = store.state.sheepCount;
+  for (let i = 0; i < n; i += 1) store.tapSheep(i);
+  assert.deepEqual(store.submitCount(), { outcome: 'passed', round: 3 });
+  assert.equal(store.state.phase, ROUND_PASSED);
+  assert.deepEqual(store.state.recap, {
+    round: 3, counted: n, seconds: 41, bestSeconds: 41, newBest: true,
+  });
+  assert.equal(store.state.bestTimes.normal[3], 41);
+  // A fresh round carries no recap, so an old card can never bleed in.
+  store.nextRound();
+  assert.equal(store.state.phase, COUNTING);
+  assert.equal(store.state.recap, null);
+  // A faster replay of the same round replaces its best; a slower one
+  // keeps it and only reports the standing record.
+  store.startRound(4, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  store.roundClock = () => 55;
+  const m = store.state.sheepCount;
+  for (let i = 0; i < m; i += 1) store.tapSheep(i);
+  store.submitCount();
+  assert.deepEqual(store.state.recap, {
+    round: 4, counted: m, seconds: 55, bestSeconds: 55, newBest: true,
+  });
+  store.startRound(4, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  store.roundClock = () => 30;
+  const p = store.state.sheepCount;
+  for (let i = 0; i < p; i += 1) store.tapSheep(i);
+  store.submitCount();
+  assert.deepEqual(store.state.recap, {
+    round: 4, counted: p, seconds: 30, bestSeconds: 30, newBest: true,
+  });
+  store.startRound(4, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  store.roundClock = () => 70;
+  const q = store.state.sheepCount;
+  for (let i = 0; i < q; i += 1) store.tapSheep(i);
+  store.submitCount();
+  assert.deepEqual(store.state.recap, {
+    round: 4, counted: q, seconds: 70, bestSeconds: 30, newBest: false,
+  });
+  assert.equal(store.state.bestTimes.normal[4], 30);
+});
+
+// Best times are device-local, like the streak and the scenery pick: they
+// live in the same per-user payload and never reach the server. Old saves
+// without them read as an empty map, and mangled entries are dropped
+// rather than trusted.
+test('the best times survive a local restore and distrust bad entries', () => {
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({
+    round: 2,
+    difficulty: 'normal',
+    totalCounted: 4,
+    bestTimes: { normal: { 3: 41 }, hard: { 2: 17 }, bogus: { 1: 5 } },
+  });
+  assert.equal(restored.state.bestTimes.normal[3], 41);
+  assert.equal(restored.state.bestTimes.hard[2], 17);
+  assert.equal(restored.state.bestTimes.bogus, undefined, 'unknown levels are dropped');
+  const { store: fresh } = newStore();
+  fresh.loadLocalFrom({ round: 2, totalCounted: 1 });
+  assert.deepEqual(fresh.state.bestTimes, {}, 'a save from before best times reads as empty');
+  const { store: mangled } = newStore();
+  mangled.loadLocalFrom({ round: 2, bestTimes: { normal: { 3: 'lots', 4: -2, 5: 12.9 } } });
+  assert.deepEqual(mangled.state.bestTimes, { normal: { 5: 12 } });
+  // An ephemeral restore never writes, so nothing landed in storage.
+  assert.equal(globalThis.localStorage, undefined);
+});
+
+// Request #81: the recap card waits for the player before the next flock,
+// and there is no next flock after the ladder's final round, so that pass
+// completes the run instead of showing a card.
+test('passing the final round completes the run instead of showing a recap', () => {
+  const { store, recordedRuns } = newStore(true);
+  store.startRound(TOTAL_ROUNDS, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  const n = store.state.sheepCount;
+  for (let i = 0; i < n; i += 1) store.tapSheep(i);
+  assert.deepEqual(store.submitCount(), { outcome: 'passed', round: TOTAL_ROUNDS });
+  assert.equal(store.state.phase, RUN_OVER);
+  assert.equal(store.state.endedBy, ENDED_COMPLETE);
+  assert.equal(store.state.recap, null, 'the final round shows no recap card');
+  assert.equal(store.state.bestTimes.normal[TOTAL_ROUNDS], 0, 'the final round still sets its best time');
+  assert.deepEqual(recordedRuns, [TOTAL_ROUNDS], 'the completed run is recorded like any other');
+  // A completed run accepts nothing more, like any other ending.
+  assert.deepEqual(store.tapSheep(0), { outcome: 'ignored' });
+  assert.deepEqual(store.submitCount(), { outcome: 'ignored' });
+});
+
+// Levels keep separate records, and switching levels never mixes them.
+test('best times are kept per level, like bestRounds', () => {
+  const { store } = newStore();
+  store.roundClock = () => 41;
+  store.startRound(3, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  const n = store.state.sheepCount;
+  for (let i = 0; i < n; i += 1) store.tapSheep(i);
+  store.submitCount();
+  assert.equal(store.state.bestTimes.normal[3], 41);
+  store.setDifficulty('hard');
+  store.roundClock = () => 20;
+  store.startRound(3, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  const m = store.state.sheepCount;
+  for (let i = 0; i < m; i += 1) store.tapSheep(i);
+  store.submitCount();
+  assert.equal(store.state.bestTimes.hard[3], 20);
+  assert.equal(store.state.bestTimes.normal[3], 41, 'normal keeps its best across the switch');
 });
