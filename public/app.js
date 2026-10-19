@@ -113,6 +113,13 @@ const autoplayParam = params.get('autoplay');
 // (?names=1 floats playful name labels without touching localStorage).
 const hasNamesParam = params.get('names') !== null;
 const namesParam = params.get('names') === '1';
+// The Big Tap fixture/deep-link knob (?bigtap=1): bigger hit targets, a
+// slower flock and lighter pop bursts for the run it opens. Like the
+// other knobs it is applied to the store and never persisted from a
+// deep link; the frozen ?scene=grownups fixture uses it to show the
+// toggle in each state.
+const hasBigTapParam = params.get('bigtap') !== null;
+const bigtapParam = params.get('bigtap') === '1';
 // Optional landing tab for the leaderboard fixture (?scene=leaderboard&tab=weekly).
 const tabParam = params.get('tab');
 // The two public share surfaces. Their URLs are plain paths, so detection is
@@ -230,6 +237,8 @@ const els = {
   scenerySelect: document.getElementById('scenery-select'),
   calmToggle: document.getElementById('calm-toggle'),
   namesToggle: document.getElementById('names-toggle'),
+  bigtapToggle: document.getElementById('bigtap-toggle'),
+  bigtapLabel: document.getElementById('bigtap-label'),
   startOverBtn: document.getElementById('start-over-btn'),
   roundValue: document.getElementById('round-value'),
   bestValue: document.getElementById('best-value'),
@@ -365,6 +374,9 @@ function buildStaticState() {
     secondsLeft: hasSpeedParam && speedParam ? SPEED_ROUND_SECONDS : null,
     sheepCount: sheepForRound(round, difficultyParam),
     seed: roundSeed(round),
+    // The Big Tap knob rides the fixture/deep link the same way (?bigtap=1),
+    // applied to the ephemeral fixture state and never persisted.
+    bigTap: bigtapParam,
     bestRounds: { ...base.bestRounds, [difficultyParam]: Math.max(round, base.bestRounds[difficultyParam]) },
     // Frozen fixtures never touch storage, so the scenery comes from the
     // deep link (?scenery=moon, or the legacy ?night=1) and nowhere else.
@@ -568,6 +580,7 @@ async function boot() {
     if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
     if (hasSpeedParam) store.state = { ...store.state, speedOn: speedParam };
     if (calmParam !== null) store.state = { ...store.state, calmOn: normalizeCalm(calmParam === '1') };
+    if (hasBigTapParam) store.state = { ...store.state, bigTap: bigtapParam };
     // &sound=0/1 pins the sound button's icon for the capture run; like the
     // other knobs it is applied to the ephemeral store and never persisted.
     if (soundParam !== null) store.state = { ...store.state, soundOn: soundParam === '1' };
@@ -1482,6 +1495,12 @@ function syncSoundButton(state) {
     : 'Sound effects: off. Tap to turn on');
 }
 
+// Big Tap's toggle label names its state, so a grown-up skimming the
+// panel reads the mode without interpreting the checkbox.
+function syncBigTapLabel(on) {
+  if (els.bigtapLabel) els.bigtapLabel.textContent = on ? 'Big Tap: on' : 'Big Tap: off';
+}
+
 function updateChrome(state) {
   // Keep the audio module's enabled flag in lockstep with the toggle, so
   // every sound path (chime, baa, celebration) reads one source of truth.
@@ -1527,6 +1546,8 @@ function updateChrome(state) {
   els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
   els.namesToggle.checked = !!state.namesOn;
+  els.bigtapToggle.checked = !!state.bigTap;
+  syncBigTapLabel(!!state.bigTap);
   applyTheme(state);
   applyNames(state);
 
@@ -1751,6 +1772,9 @@ function openGrownups(state) {
   syncSoundButton(state);
   els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
+  els.namesToggle.checked = !!state.namesOn;
+  els.bigtapToggle.checked = !!state.bigTap;
+  syncBigTapLabel(!!state.bigTap);
   els.grownupsPanel.hidden = false;
 }
 function closeGrownups() {
@@ -1787,6 +1811,13 @@ els.namesToggle.addEventListener('change', (e) => {
   // The mirror lives outside updateChrome's renderer path, so it needs
   // its own render to switch between "Sheep 3" and "Woolly is grazing".
   renderA11yList(store.state);
+});
+
+els.bigtapToggle.addEventListener('change', (e) => {
+  if (staticMode) return;
+  // Big Tap applies from the next flock build (the next round): the store
+  // holds it, the renderers read it when the round is built.
+  store.setBigTapOn(e.target.checked);
 });
 
 // ---- Grown-ups CSV export ----

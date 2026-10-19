@@ -131,6 +131,49 @@ export function normalizeCalm(on) {
   return on === true;
 }
 
+// ---- Big Tap (accessibility) ----
+// A grown-ups toggle that opens the game up for small or less accurate
+// fingers: the sheep's tap targets grow, the flock slows down, and the
+// pop bursts drop less confetti. Like Calm, it is a pure multiplier set
+// over the same motion profile, so flock sizes, seeds and round numbering
+// stay exactly as they are on every difficulty.
+
+// The hit target grows by 40%: the invisible pick sphere in the 3D scene
+// and the whole card in the DOM fallback both scale by this.
+export const BIG_TAP_HIT_SCALE = 1.4;
+
+// The movement slows by 30%: a pure multiplier on the motion clock, the
+// same shape as CALM_SPEED.
+export const BIG_TAP_SPEED = 0.7;
+
+// How much confetti a pop keeps when Big Tap is on: half of the pieces,
+// so the burst is quieter without going empty. Candy is untouched.
+export const BIG_TAP_CONFETTI_KEEP = 0.5;
+
+// A Big Tap flag survives a save and a deep link only when it is exactly
+// true; anything else reads as normal play.
+export function normalizeBigTap(on) {
+  return on === true;
+}
+
+// Big Tap's motion profile: the round's own wander shape with the speed
+// and the nervous wobble slid down, leaving the roam radius untouched so
+// the camera framing stays valid.
+export function bigTapMotion(round, difficulty = DEFAULT_DIFFICULTY) {
+  const m = motionForRound(round, difficulty);
+  return { ...m, speed: m.speed * BIG_TAP_SPEED, jitterAmp: m.jitterAmp * BIG_TAP_SPEED };
+}
+
+// The one selector both renderers call, so they can never drift apart on
+// how a round moves. Calm always wins the tempo: Big Tap never slows a
+// Calm round (Calm is already the slow path), while the hit-target growth
+// and the confetti reduction stay the toggles' own concerns and are read
+// from state.bigTap directly.
+export function flockMotion(round, difficulty, { calmOn = false, bigTapOn = false } = {}) {
+  if (calmOn) return calmMotion(round, difficulty);
+  return bigTapOn ? bigTapMotion(round, difficulty) : motionForRound(round, difficulty);
+}
+
 // ---- Scenery ----
 // Which scenery the flock stands on. Meadow is the default; night is the
 // old Night Meadow; moon is the new grey one. Like the level and the mode,

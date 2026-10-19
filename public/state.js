@@ -14,6 +14,7 @@ import {
   SPEED_ROUND_SECONDS,
   advanceStreak,
   isCalmLevel,
+  normalizeBigTap,
   localDayKey,
   normalizeCalm,
   normalizeDifficulty,
@@ -169,6 +170,9 @@ export function createDefaultState() {
     nightOn: false,
     calmOn: false,
     namesOn: false,
+    // Big Tap (accessibility): bigger hit targets, slower flock, less
+    // confetti. Device-local like namesOn, never sent to the server.
+    bigTap: false,
     difficulty: DEFAULT_DIFFICULTY,
     speedOn: false,
     secondsLeft: null,
@@ -305,6 +309,7 @@ export class StateStore {
         nightOn: scenery === 'night',
         calmOn: normalizeCalm(saved.calmOn),
         namesOn: !!saved.namesOn,
+        bigTap: normalizeBigTap(saved.bigTap),
         difficulty: normalizeDifficulty(saved.difficulty),
         speedOn: normalizeSpeedRound(saved.speedOn),
         streakDays: normalizeStreakCount(saved.streakDays),
@@ -351,6 +356,7 @@ export class StateStore {
         nightOn: this.state.nightOn,
         calmOn: this.state.calmOn,
         namesOn: this.state.namesOn,
+        bigTap: this.state.bigTap,
         speedOn: this.state.speedOn,
         streakDays: this.state.streakDays,
         bestStreakDays: this.state.bestStreakDays,
@@ -547,6 +553,7 @@ export class StateStore {
           nightOn: scenery === 'night',
           calmOn: normalizeCalm(saved.calmOn),
           namesOn: !!saved.namesOn,
+          bigTap: normalizeBigTap(saved.bigTap),
           difficulty: normalizeDifficulty(saved.difficulty),
           speedOn: normalizeSpeedRound(saved.speedOn),
           streakDays: normalizeStreakCount(saved.streakDays),
@@ -1008,6 +1015,16 @@ export class StateStore {
   // real player, and it stays whatever the device last chose.
   setNamesOn(on) {
     this.state = { ...this.state, namesOn: !!on };
+    this.saveLocal();
+    this.onChange(this.state);
+  }
+
+  // Big Tap is a device-local accessibility choice like the name labels:
+  // bigger hit targets, a slower flock and lighter pop bursts for whoever
+  // is holding this device, never synced to the server. It applies from
+  // the next flock build (the next round), not retroactively mid-round.
+  setBigTapOn(on) {
+    this.state = { ...this.state, bigTap: normalizeBigTap(on) };
     this.saveLocal();
     this.onChange(this.state);
   }

@@ -4,7 +4,7 @@
 // same pastel per number.
 import { NUMBER_COLORS, POP_PUFF_SECONDS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { calmMotion, isCalmLevel, motionForRound, wolfDisguiseTier } from './rounds.js';
+import { BIG_TAP_CONFETTI_KEEP, flockMotion, isCalmLevel, wolfDisguiseTier } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -151,7 +151,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   let cards = [];
   let current = null;
   let calm = false;
-  let motion = motionForRound(1);
+  let motion = flockMotion(1);
   let rafId = null;
   // The round's animation clock. setRoundClock resumes a saved board at
   // the exact time it was left, so the flock is standing where it was.
@@ -166,7 +166,12 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     cards = [];
     current = state;
     calm = !!state.calmOn;
-    motion = calm ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty);
+    motion = flockMotion(state.round, state.difficulty, { calmOn: !!state.calmOn, bigTapOn: !!state.bigTap });
+    // Big Tap markers: the card is the tap target here, so the grid's
+    // data-bigtap grows it by 40% (index.html CSS); the field's
+    // data-bigtap-slow records that this round's drift is the slowed one.
+    grid.toggleAttribute('data-bigtap', !!state.bigTap);
+    field.dataset.bigtapSlow = !!(state.bigTap && !calm) ? '1' : '0';
     grid.dataset.size = String(state.sheepCount);
     for (let i = 0; i < state.sheepCount; i++) {
       const btn = document.createElement('button');
@@ -263,9 +268,23 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     if (!wrap) return;
     wrap.hidden = false;
     const calm = isCalmLevel(current && current.difficulty);
+    const reducedConfetti = !!(current && current.bigTap) && !calm;
+    wrap.dataset.reduced = reducedConfetti ? '1' : '0';
     const pieces = wrap.children;
+    // Big Tap: half the confetti pieces stay hidden, so the pile reads
+    // quieter; the candies are untouched. Calm never reduces.
+    let cfTotal = 0;
+    for (const piece of pieces) {
+      if (piece.classList.contains('cf')) cfTotal++;
+    }
+    const keepCf = reducedConfetti ? Math.ceil(cfTotal * BIG_TAP_CONFETTI_KEEP) : cfTotal;
+    let cfSeen = 0;
     for (let k = 0; k < pieces.length; k++) {
       const piece = pieces[k];
+      if (reducedConfetti && piece.classList.contains('cf') && cfSeen++ >= keepCf) {
+        piece.hidden = true;
+        continue;
+      }
       piece.style.background = NUMBER_COLORS[(number - 1 + k) % NUMBER_COLORS.length];
       const rest = `translate(${piece.dataset.rx}px, ${piece.dataset.ry}px) rotate(${piece.dataset.rot}deg)`;
       if (animate && !reducedMotion && btn.animate) {

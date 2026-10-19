@@ -571,6 +571,79 @@
       "expectText": "Round 8"
     },
     {
+      "id": "bigtap.toggle",
+      "name": "Big Tap toggle appears in the grown-ups panel, off by default",
+      "path": "/?scene=grownups",
+      "expectSelector": "#bigtap-toggle:not(:checked)",
+      "expectText": "Big Tap: off",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Big Tap label names its on state",
+      "path": "/?scene=grownups&bigtap=1",
+      "expectSelector": "#bigtap-toggle:checked",
+      "expectText": "Big Tap: on"
+    },
+    {
+      "id": "bigtap.board",
+      "name": "Big Tap grows the fallback card tap targets by 40%",
+      "path": "/?round=5&bigtap=1&renderer=dom&wolf=0",
+      "expectSelector": ".sheep-fallback-grid[data-bigtap] .sheep-card:nth-child(7)",
+      "expectText": "of 7 sheep",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/fallback.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Big Tap slows the flock's drift",
+      "path": "/?round=5&bigtap=1&renderer=dom",
+      "expectSelector": ".sheep-fallback-field[data-bigtap-slow='1']"
+    },
+    {
+      "name": "A plain flock drifts at its normal pace",
+      "path": "/?round=5&renderer=dom",
+      "expectSelector": ".sheep-fallback-field[data-bigtap-slow='0']"
+    },
+    {
+      "name": "Big Tap halves the pop burst's confetti",
+      "path": "/?scene=midcount&bigtap=1&renderer=dom",
+      "expectSelector": ".sheep-confetti[data-reduced='1']"
+    },
+    {
+      "name": "A plain pop burst keeps its full confetti",
+      "path": "/?scene=midcount&renderer=dom",
+      "expectSelector": ".sheep-confetti[data-reduced='0']"
+    },
+    {
+      "name": "Big Tap applies from the next round after the toggle",
+      "path": "/?round=1&bigtap=1&autoplay=button&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid[data-bigtap]",
+      "expectText": "Round 2 of 9"
+    },
+    {
+      "name": "Big Tap works on Expert too",
+      "path": "/?round=5&bigtap=1&renderer=dom&difficulty=expert",
+      "expectSelector": ".sheep-fallback-field[data-bigtap-slow='1']"
+    },
+    {
+      "name": "Calm keeps its own pace even with Big Tap on",
+      "path": "/?round=5&bigtap=1&calm=1&renderer=dom",
+      "expectSelector": ".sheep-fallback-field[data-bigtap-slow='0']",
+      "expectText": "of 7 sheep"
+    },
+    {
       "id": "difficulty.expert",
       "name": "Expert difficulty marks Expert on the briefing card",
       "path": "/?round=1&difficulty=expert",
