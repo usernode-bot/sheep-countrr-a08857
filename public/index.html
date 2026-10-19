@@ -1189,6 +1189,14 @@
           <input id="names-toggle" type="checkbox">
         </label>
 
+        <!-- Big Tap: bigger tap targets, a slower flock and lighter pop
+             bursts, for small or less accurate fingers. The label names
+             its state (app.js writes "Big Tap: on" / "Big Tap: off"). -->
+        <label class="setting-row">
+          <span id="bigtap-label">Big Tap</span>
+          <input id="bigtap-toggle" type="checkbox">
+        </label>
+
         <div class="stats-card">
           <div class="flex justify-between"><span>This round</span><span id="round-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Difficulty</span><span id="difficulty-value" class="stat-value">Normal</span></div>
@@ -1367,6 +1375,24 @@
       .sheep-fallback-grid[data-size="4"] { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
       .sheep-fallback-grid { padding-top: calc(var(--safe-top) + 178px); }
     }
+
+    /* Big Tap: the card is the tap target in this renderer, so the whole
+       card grows by 40% (the 3D scene grows its invisible pick sphere
+       instead). Same columns, only scaled; placed after the compact
+       small-screen overrides above so Big Tap always wins. */
+    .sheep-fallback-grid[data-bigtap] {
+      grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
+      gap: 22px 17px;
+    }
+    .sheep-fallback-grid[data-bigtap][data-size="1"],
+    .sheep-fallback-grid[data-bigtap][data-size="2"] {
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    }
+    .sheep-fallback-grid[data-bigtap][data-size="3"],
+    .sheep-fallback-grid[data-bigtap][data-size="4"] {
+      grid-template-columns: repeat(2, minmax(168px, 240px));
+    }
+    .sheep-fallback-grid[data-bigtap] .sheep-card { max-width: 252px; }
   </style>
   <!-- Boot watchdog (#44). Classic script, no dependencies: it must work
        when the bridge, the stylesheet or app.js itself never arrives.

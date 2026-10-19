@@ -13,7 +13,11 @@ import {
   LOAD_REMOTE_TIMEOUT_MS,
 } from '../public/state.js';
 import {
+  BIG_TAP_CONFETTI_KEEP,
+  BIG_TAP_HIT_SCALE,
+  BIG_TAP_SPEED,
   CALM_SPEED,
+  DIFFICULTIES,
   MAX_SHEEP,
   NEW_PLAYER_DIFFICULTY,
   TOTAL_ROUNDS,
@@ -23,7 +27,10 @@ import {
   calmMotion,
   dayDistance,
   localDayKey,
+  bigTapMotion,
+  flockMotion,
   motionForRound,
+  normalizeBigTap,
   normalizeCalm,
   normalizeScenery,
   sceneryFromServer,
@@ -1702,4 +1709,127 @@ test('best times are kept per level, like bestRounds', () => {
   store.submitCount();
   assert.equal(store.state.bestTimes.hard[3], 20);
   assert.equal(store.state.bestTimes.normal[3], 41, 'normal keeps its best across the switch');
+});
+
+// ---- Big Tap (accessibility) ----
+
+test('normalizeBigTap accepts only a real on', () => {
+  assert.equal(normalizeBigTap(true), true);
+  assert.equal(normalizeBigTap(false), false);
+  assert.equal(normalizeBigTap(null), false);
+  assert.equal(normalizeBigTap(undefined), false);
+  assert.equal(normalizeBigTap(1), false, 'a query string arrives as text, not a boolean');
+  assert.equal(normalizeBigTap('1'), false);
+});
+
+test('Big Tap slows the flock by 30% on every difficulty, jitter too', () => {
+  for (const key of Object.keys(DIFFICULTIES)) {
+    for (const round of [2, 5, 9]) {
+      const base = motionForRound(round, key);
+      const slowed = bigTapMotion(round, key);
+      assert.ok(
+        Math.abs(slowed.speed - base.speed * BIG_TAP_SPEED) < 1e-9,
+        `${key} round ${round}: speed is not base x ${BIG_TAP_SPEED}`
+      );
+      assert.ok(
+        Math.abs(slowed.jitterAmp - base.jitterAmp * BIG_TAP_SPEED) < 1e-9,
+        `${key} round ${round}: jitterAmp is not base x ${BIG_TAP_SPEED}`
+      );
+      // Only the tempo is touched: the wander shape stays the round's own.
+      assert.equal(slowed.radius, base.radius, `${key} round ${round}: radius changed`);
+      assert.equal(slowed.turn, base.turn, `${key} round ${round}: turn changed`);
+      assert.equal(slowed.chaos, base.chaos, `${key} round ${round}: chaos changed`);
+    }
+  }
+});
+
+test('Big Tap leaves Calm exactly as it was', () => {
+  for (const round of [2, 5, 9]) {
+    assert.deepEqual(flockMotion(round, 'calm', { calmOn: true, bigTapOn: true }), calmMotion(round, 'calm'));
+    assert.deepEqual(flockMotion(round, 'calm', { calmOn: true, bigTapOn: false }), calmMotion(round, 'calm'));
+  }
+  // Calm speed stays CALM_SPEED x base even with Big Tap on: the calm
+  // exemption must never compose a double slowdown.
+  const calm = flockMotion(5, 'calm', { calmOn: true, bigTapOn: true });
+  const base = motionForRound(5, 'calm');
+  assert.ok(Math.abs(calm.speed - base.speed * CALM_SPEED) < 1e-9);
+});
+
+test('flockMotion picks the Big Tap profile off Calm and the plain one without', () => {
+  const base = motionForRound(7, 'normal');
+  assert.deepEqual(flockMotion(7, 'normal', {}), base);
+  assert.deepEqual(flockMotion(7, 'normal', { calmOn: false, bigTapOn: false }), base);
+  assert.ok(
+    Math.abs(flockMotion(7, 'normal', { bigTapOn: true }).speed - base.speed * BIG_TAP_SPEED) < 1e-9
+  );
+});
+
+test('Big Tap slows the actual wander offset, not just the motion number', () => {
+  // Round 2 carries no jitter, so its whole walk is a function of
+  // time x speed: the slowed flock at time t stands exactly where the
+  // plain flock stands at 70% of the clock.
+  const plain = motionForRound(2, 'normal');
+  const slowed = bigTapMotion(2, 'normal');
+  for (const t of [1.5, 3.25, 7]) {
+    for (let i = 0; i < 5; i += 1) {
+      const a = wanderOffset(4242, i, 5, t, plain);
+      const b = wanderOffset(4242, i, 5, t, slowed);
+      const c = wanderOffset(4242, i, 5, t * BIG_TAP_SPEED, plain);
+      assert.ok(Math.abs(b.x - c.x) < 1e-9 && Math.abs(b.z - c.z) < 1e-9, 'slowed offset is not the plain offset at 70% of the clock');
+      assert.notDeepEqual([b.x, b.z], [a.x, a.z], 'Big Tap left the drift unchanged');
+    }
+  }
+  // A jittery round moves measurably less with Big Tap: sample the same
+  // sheep's displacement over a tiny step across a run (small enough that
+  // every term stays in its linear regime) and the slowed flock covers
+  // well under three quarters of the plain flock's ground. The jitter's
+  // rate scales twice, in amp and in w, the drift's once.
+  const p6 = motionForRound(6, 'expert');
+  const s6 = bigTapMotion(6, 'expert');
+  const step = (motion) => {
+    let moved = 0;
+    for (let t = 1; t <= 20; t += 0.25) {
+      const a = wanderOffset(4242, 2, 5, t, motion);
+      const b = wanderOffset(4242, 2, 5, t + 0.02, motion);
+      moved += Math.hypot(b.x - a.x, b.z - a.z);
+    }
+    return moved;
+  };
+  const plainMoved = step(p6);
+  const slowedMoved = step(s6);
+  assert.ok(slowedMoved > 0, 'the slowed flock still moves');
+  assert.ok(
+    slowedMoved < plainMoved * 0.75,
+    `expected the slowed flock to cover < 75% of the ground, got ${slowedMoved} of ${plainMoved}`
+  );
+});
+
+test('Big Tap constants are the ones the issue asks for', () => {
+  assert.equal(BIG_TAP_HIT_SCALE, 1.4, 'hit targets grow by 40%');
+  assert.equal(BIG_TAP_SPEED, 0.7, 'movement slows by 30%');
+  assert.ok(BIG_TAP_CONFETTI_KEEP > 0 && BIG_TAP_CONFETTI_KEEP < 1, 'confetti is reduced, not removed');
+});
+
+test('the Big Tap toggle persists through save and load', () => {
+  const { store } = newStore();
+  store.setBigTapOn(true);
+  assert.equal(store.state.bigTap, true);
+  // A fresh store reading the same storage shape restores the toggle.
+  const saved = { round: 2, difficulty: 'normal', totalCounted: 4, soundOn: true, bigTap: true };
+  const { store: restored } = newStore();
+  restored.loadLocalFrom(saved);
+  assert.equal(restored.state.bigTap, true);
+  // A save from before the setting existed reads as off, not as a choice.
+  const { store: upgraded } = newStore();
+  upgraded.loadLocalFrom({ round: 2, difficulty: 'normal', totalCounted: 4, soundOn: true });
+  assert.equal(upgraded.state.bigTap, false);
+  // Turning it back off stays off.
+  restored.setBigTapOn(false);
+  assert.equal(restored.state.bigTap, false);
+});
+
+test('a fresh store starts with Big Tap off, like namesOn', () => {
+  const { store } = newStore();
+  assert.equal(store.state.bigTap, false);
+  assert.equal(store.state.namesOn, false);
 });
