@@ -13,10 +13,16 @@ import {
   LOAD_REMOTE_TIMEOUT_MS,
 } from '../public/state.js';
 import {
+  BIG_TAP_HIT_SCALE,
+  BIG_TAP_PIECES,
+  BIG_TAP_SPEED,
   CALM_SPEED,
   MAX_SHEEP,
   NEW_PLAYER_DIFFICULTY,
   TOTAL_ROUNDS,
+  bigTapHitScale,
+  bigTapMotion,
+  bigTapSpeedScale,
   introRuleText,
   isCalmLevel,
   advanceStreak,
@@ -24,8 +30,10 @@ import {
   dayDistance,
   localDayKey,
   motionForRound,
+  normalizeBigTap,
   normalizeCalm,
   normalizeScenery,
+  popPieceCount,
   sceneryFromServer,
   paceLine,
   playHintText,
@@ -1702,4 +1710,118 @@ test('best times are kept per level, like bestRounds', () => {
   store.submitCount();
   assert.equal(store.state.bestTimes.hard[3], 20);
   assert.equal(store.state.bestTimes.normal[3], 41, 'normal keeps its best across the switch');
+});
+
+// Request #85: Big Tap is a grown-up comfort setting. Its scales are pure
+// so the checks cannot drift from what the renderers apply.
+test('Big Tap helpers scale hits, speed and pop pieces only when exactly on', () => {
+  assert.equal(BIG_TAP_HIT_SCALE, 1.4);
+  assert.equal(BIG_TAP_SPEED, 0.7);
+  assert.equal(BIG_TAP_PIECES, 0.5);
+  assert.equal(bigTapHitScale(false), 1);
+  assert.equal(bigTapHitScale(true), 1.4);
+  assert.equal(bigTapSpeedScale(false), 1);
+  assert.equal(bigTapSpeedScale(true), 0.7);
+  assert.equal(popPieceCount(14, false), 14);
+  assert.equal(popPieceCount(14, true), 7);
+  assert.equal(popPieceCount(18, false), 18);
+  assert.equal(popPieceCount(18, true), 9);
+  assert.equal(popPieceCount(6, true), 3);
+  assert.equal(normalizeBigTap(true), true);
+  assert.equal(normalizeBigTap(false), false);
+  assert.equal(normalizeBigTap('1'), false);
+  assert.equal(normalizeBigTap(1), false);
+  assert.equal(normalizeBigTap(undefined), false);
+});
+
+test('Big Tap slows every level without changing where a sheep can roam', () => {
+  for (const difficulty of ['calm', 'easy', 'normal', 'hard', 'expert']) {
+    for (let round = 1; round <= 12; round += 1) {
+      const raw = motionForRound(round, difficulty);
+      const slowed = bigTapMotion(raw, true);
+      assert.ok(Math.abs(slowed.speed - raw.speed * 0.7) < 1e-9, `${difficulty} r${round} speed`);
+      assert.equal(slowed.radius, raw.radius);
+      assert.equal(slowed.bounceMix, raw.bounceMix);
+      assert.equal(slowed.jitterAmp, raw.jitterAmp);
+      // The roam bound is unchanged and still holds for the slower flock.
+      const bound = roamRadius(round, difficulty);
+      const n = sheepForRound(round, difficulty);
+      for (let t = 0; t < 30; t += 0.5) {
+        const o = wanderOffset(roundSeed(round), 0, n, t, slowed);
+        assert.ok(Math.hypot(o.x, o.z) <= bound + 1e-9, `${difficulty} r${round} stayed in view`);
+      }
+      // Off leaves the profile exactly as the round made it.
+      assert.deepEqual(bigTapMotion(raw, false), raw);
+    }
+  }
+});
+
+test('Big Tap leaves Calm mode as calm as it already was', () => {
+  assert.equal(CALM_SPEED, 0.35);
+  for (const round of [1, 2, 5, 9]) {
+    const calm = calmMotion(round, 'normal');
+    const withBigTap = bigTapMotion(calm, true);
+    assert.ok(withBigTap.speed <= calm.speed, 'Big Tap never speeds Calm up');
+    assert.ok(Math.abs(withBigTap.speed - calm.speed * 0.7) < 1e-9);
+    assert.equal(withBigTap.jitterAmp, calm.jitterAmp);
+    assert.equal(withBigTap.radius, calm.radius);
+  }
+});
+
+test('Big Tap applies from the next round, never the round in progress', () => {
+  const { store } = newStore();
+  store.startRound(3, { silent: true });
+  assert.equal(store.state.bigTapRound, false);
+  store.setBigTapOn(true);
+  assert.equal(store.state.bigTapOn, true);
+  assert.equal(store.state.bigTapRound, false, 'the board on screen keeps its behavior');
+  store.startRound(4, { silent: true });
+  assert.equal(store.state.bigTapRound, true, 'the next round picks up the setting');
+  store.setBigTapOn(false);
+  assert.equal(store.state.bigTapRound, true, 'turning it off also waits for the next round');
+  store.startRound(5, { silent: true });
+  assert.equal(store.state.bigTapRound, false);
+});
+
+test('Big Tap is saved, restored and never sent to the server', async () => {
+  await withFakeBrowser(null, null, async (store) => {
+    let fetched = 0;
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (...args) => { fetched += 1; return prevFetch(...args); };
+    try {
+      store.setBigTapOn(true);
+    } finally {
+      globalThis.fetch = prevFetch;
+    }
+    assert.equal(fetched, 0, 'Big Tap never schedules a server sync');
+    const saved = JSON.parse(localStorage.getItem(store.storageKey));
+    assert.equal(saved.bigTapOn, true);
+
+    const restored = new StateStore({ userId: 'u1' });
+    restored.loadLocal();
+    assert.equal(restored.state.bigTapOn, true);
+    assert.equal(restored.state.bigTapRound, true);
+
+    assert.equal(restored.loadLocalFrom({ bigTapOn: true, round: 3 }).bigTapRound, true);
+    assert.equal(restored.loadLocalFrom({ round: 3 }).bigTapOn, false, 'old saves read off');
+  });
+});
+
+test('a mid-round snapshot keeps the Big Tap mode the round started with', () => {
+  const { store } = newStore();
+  store.startRound(3, { silent: true });
+  store.setBigTapOn(true);
+  assert.equal(store.snapshotRound().bigTap, false, 'the snapshot carries this board, not the setting');
+  store.startRound(3, { silent: true });
+  const snapshot = store.snapshotRound();
+  assert.equal(snapshot.bigTap, true);
+  store.setBigTapOn(false);
+  store.resumeMidRound(snapshot, { silent: true });
+  assert.equal(store.state.bigTapRound, true, 'a reload restores the round as it started');
+  assert.equal(store.state.bigTapOn, false);
+  // A snapshot written before the feature reads off.
+  const old = { ...snapshot };
+  delete old.bigTap;
+  store.resumeMidRound(old, { silent: true });
+  assert.equal(store.state.bigTapRound, false);
 });

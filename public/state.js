@@ -15,6 +15,7 @@ import {
   advanceStreak,
   isCalmLevel,
   localDayKey,
+  normalizeBigTap,
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
@@ -168,6 +169,12 @@ export function createDefaultState() {
     scenery: 'meadow',
     nightOn: false,
     calmOn: false,
+    // Big Tap: a device-local comfort setting (bigger tap areas, slower
+    // sheep, less confetti). bigTapOn is the grown-up's choice; the board
+    // only reads bigTapRound, which is copied when a round starts, so a
+    // mid-round flip waits for the next round.
+    bigTapOn: false,
+    bigTapRound: false,
     namesOn: false,
     difficulty: DEFAULT_DIFFICULTY,
     speedOn: false,
@@ -304,6 +311,7 @@ export class StateStore {
         scenery,
         nightOn: scenery === 'night',
         calmOn: normalizeCalm(saved.calmOn),
+        bigTapOn: normalizeBigTap(saved.bigTapOn),
         namesOn: !!saved.namesOn,
         difficulty: normalizeDifficulty(saved.difficulty),
         speedOn: normalizeSpeedRound(saved.speedOn),
@@ -350,6 +358,7 @@ export class StateStore {
         scenery: this.state.scenery,
         nightOn: this.state.nightOn,
         calmOn: this.state.calmOn,
+        bigTapOn: this.state.bigTapOn,
         namesOn: this.state.namesOn,
         speedOn: this.state.speedOn,
         streakDays: this.state.streakDays,
@@ -488,6 +497,10 @@ export class StateStore {
       // A new board never carries the previous round's recap: the card is
       // filled fresh at the next pass, so a stale one cannot linger.
       recap: null,
+      // Big Tap applies from the next round: a board already in progress
+      // keeps its value (seen on a server-sync keepBoard), otherwise the
+      // new board copies the grown-up's current setting.
+      bigTapRound: keepBoard ? this.state.bigTapRound : normalizeBigTap(this.state.bigTapOn),
       wolfIndex: keepBoard ? this.state.wolfIndex : wolfFor(next, seed, sheepCount, this.state.difficulty),
       // A restart to round 1 is a new run, so the current streak resets.
       // bestSafeStreak survives, like bestRounds.
@@ -546,6 +559,7 @@ export class StateStore {
           scenery,
           nightOn: scenery === 'night',
           calmOn: normalizeCalm(saved.calmOn),
+          bigTapOn: normalizeBigTap(saved.bigTapOn),
           namesOn: !!saved.namesOn,
           difficulty: normalizeDifficulty(saved.difficulty),
           speedOn: normalizeSpeedRound(saved.speedOn),
@@ -631,6 +645,10 @@ export class StateStore {
       endedBy: null,
       speedOn: !!snapshot.speedOn,
       secondsLeft,
+      // A round interrupted by a reload comes back the way it started:
+      // the snapshot carries the board's Big Tap flag, never the current
+      // setting. Older snapshots without it read false.
+      bigTapRound: normalizeBigTap(snapshot.bigTap),
     };
     this._hasMidRoundSnapshot = true;
     // Resuming a board is playing: the streak records the day too.
@@ -667,6 +685,7 @@ export class StateStore {
       phase: this.state.phase,
       speedOn: this.state.speedOn,
       secondsLeft: this.state.secondsLeft,
+      bigTap: this.state.bigTapRound,
     };
   }
 
@@ -1008,6 +1027,16 @@ export class StateStore {
   // real player, and it stays whatever the device last chose.
   setNamesOn(on) {
     this.state = { ...this.state, namesOn: !!on };
+    this.saveLocal();
+    this.onChange(this.state);
+  }
+
+  // Big Tap is a comfort setting kept on this device, like Name labels:
+  // it never rides the server sync and only changes the setting, never
+  // the board already in progress, which keeps its bigTapRound until the
+  // next round starts.
+  setBigTapOn(on) {
+    this.state = { ...this.state, bigTapOn: normalizeBigTap(on) };
     this.saveLocal();
     this.onChange(this.state);
   }

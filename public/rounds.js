@@ -131,6 +131,45 @@ export function normalizeCalm(on) {
   return on === true;
 }
 
+// ---- Big Tap ----
+// A grown-up's comfort setting, aimed at a child who struggles to land a
+// tap: an invisible tap area 40 percent bigger, a flock moving at 0.7x the
+// round's speed, and half as many confetti and candy pieces. Calm's own
+// tempo is untouched: renderers compose bigTapMotion on top of calmMotion,
+// so a Calm round with Big Tap is never faster than Calm alone.
+export const BIG_TAP_HIT_SCALE = 1.4;
+export const BIG_TAP_SPEED = 0.7;
+export const BIG_TAP_PIECES = 0.5;
+
+// A Big Tap flag survives a save and a deep link only when it is exactly
+// true, like the calm flag.
+export function normalizeBigTap(on) {
+  return on === true;
+}
+
+export function bigTapHitScale(on) {
+  return normalizeBigTap(on) ? BIG_TAP_HIT_SCALE : 1;
+}
+
+export function bigTapSpeedScale(on) {
+  return normalizeBigTap(on) ? BIG_TAP_SPEED : 1;
+}
+
+// Slowing the flock only touches the motion clock. Radius, bounceMix and
+// jitterAmp stay exactly as they were, so roamRadius remains a true upper
+// bound and the camera fit needs no change.
+export function bigTapMotion(motion, on) {
+  if (!normalizeBigTap(on)) return motion;
+  return { ...motion, speed: motion.speed * BIG_TAP_SPEED };
+}
+
+// How many confetti or candy pieces a pop burst leaves: half, rounded up,
+// when Big Tap is on.
+export function popPieceCount(base, on) {
+  const n = Math.max(0, Math.floor(Number(base) || 0));
+  return normalizeBigTap(on) ? Math.ceil(n * BIG_TAP_PIECES) : n;
+}
+
 // ---- Scenery ----
 // Which scenery the flock stands on. Meadow is the default; night is the
 // old Night Meadow; moon is the new grey one. Like the level and the mode,

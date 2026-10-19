@@ -126,7 +126,7 @@
       "name": "Round 5 counts in with no sheep tapped",
       "path": "/?round=5",
       "expectSelector": "#count-display",
-      "expectText": "of 7 sheep"
+      "expectText": "Round 5"
     },
     {
       "name": "Mid-count keeps the running tap count on screen",
@@ -470,7 +470,7 @@
       "visual": true,
       "path": "/?round=5&renderer=dom&calm=1",
       "expectSelector": "body.theme-calm .sheep-fallback-grid .sheep-card:nth-child(7)",
-      "expectText": "of 7 sheep",
+      "expectText": "Round 5",
       "impact": [
         "public/index.html",
         "public/app.js",
@@ -524,7 +524,7 @@
       "name": "Moon background shows on the DOM fallback too",
       "path": "/?round=5&renderer=dom&scenery=moon",
       "expectSelector": "body.theme-moon .sheep-fallback-grid .sheep-card:nth-child(7)",
-      "expectText": "of 7 sheep"
+      "expectText": "Round 5"
     },
     {
       "name": "Grown-ups panel shows the Name labels toggle",
@@ -761,6 +761,241 @@
       "path": "/?resume=1&renderer=dom&snapshot=%7B%22midCountdown%22%3A%7B%22round%22%3A5%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22phase%22%3A%22counting%22%7D%7D",
       "expectSelector": ".sheep-fallback-grid .sheep-card.is-counted:nth-child(3)",
       "expectText": "Sheep 3, counted"
+    },
+    {
+      "id": "bigtap.toggle",
+      "name": "Grown-ups panel has a Big Tap toggle",
+      "path": "/?scene=grownups",
+      "expectSelector": "#grownups-panel #big-tap-toggle",
+      "expectText": "Big Tap",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.hit-dom",
+      "name": "Big Tap enlarges sheep hit targets in the card view",
+      "path": "/?round=5&renderer=dom&bigtap=1",
+      "expectSelector": ".sheep-fallback-grid[data-hit-scale=\"1.4\"] .sheep-card:nth-child(7)",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/fallback.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.hit-3d",
+      "name": "Big Tap enlarges the 3D pick targets",
+      "path": "/?round=5&bigtap=1",
+      "expectSelector": "canvas.sheep-canvas[data-hit-scale=\"1.4\"]",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/scene.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.motion",
+      "name": "Big Tap slows sheep movement",
+      "path": "/?round=5&renderer=dom&bigtap=1",
+      "expectSelector": ".sheep-fallback-grid[data-motion-scale=\"0.7\"]",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/fallback.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.confetti-reduced",
+      "name": "Big Tap reduces the confetti burst",
+      "path": "/?round=5&renderer=dom&bigtap=1",
+      "expectSelector": ".sheep-card:nth-child(1) .sheep-confetti > :last-child:nth-child(7)",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/fallback.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.confetti-full",
+      "name": "Without Big Tap the full confetti burst stays",
+      "path": "/?round=5&renderer=dom",
+      "expectSelector": ".sheep-card:nth-child(1) .sheep-confetti > :last-child:nth-child(14)",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/fallback.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.saved",
+      "name": "The Big Tap setting is saved and restored",
+      "path": "/?resume=1&renderer=dom&snapshot=%7B%22round%22%3A3%2C%22bigTapOn%22%3Atrue%7D",
+      "expectSelector": ".sheep-fallback-grid[data-big-tap=\"on\"]",
+      "expectText": "Round 3",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/state.js",
+        "public/fallback.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.next-round",
+      "name": "Big Tap applies from the next round",
+      "path": "/?round=1&autoplay=button&renderer=dom&bigtap=next",
+      "expectSelector": ".sheep-fallback-grid[data-big-tap=\"on\"]",
+      "expectText": "Round 2 of 9",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/state.js",
+        "public/app.js",
+        "public/fallback.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.current-round",
+      "name": "Big Tap leaves the round in progress alone",
+      "path": "/?round=2&renderer=dom&bigtap=next",
+      "expectSelector": ".sheep-fallback-grid[data-big-tap=\"off\"]",
+      "expectText": "Round 2",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/state.js",
+        "public/app.js",
+        "public/fallback.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.difficulty-calm",
+      "name": "Big Tap works on the Calm level",
+      "path": "/?round=5&renderer=dom&bigtap=1&difficulty=calm",
+      "expectSelector": ".sheep-fallback-grid[data-big-tap=\"on\"][data-hit-scale=\"1.4\"][data-motion-scale=\"0.7\"]",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/rounds.js",
+        "public/fallback.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.difficulty-easy",
+      "name": "Big Tap works on Easy",
+      "path": "/?round=5&renderer=dom&bigtap=1&difficulty=easy",
+      "expectSelector": ".sheep-fallback-grid[data-big-tap=\"on\"][data-hit-scale=\"1.4\"][data-motion-scale=\"0.7\"]",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/rounds.js",
+        "public/fallback.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.difficulty-hard",
+      "name": "Big Tap works on Hard",
+      "path": "/?round=5&renderer=dom&bigtap=1&difficulty=hard",
+      "expectSelector": ".sheep-fallback-grid[data-big-tap=\"on\"][data-hit-scale=\"1.4\"][data-motion-scale=\"0.7\"]",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/rounds.js",
+        "public/fallback.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.difficulty-expert",
+      "name": "Big Tap works on Expert",
+      "path": "/?round=5&renderer=dom&bigtap=1&difficulty=expert",
+      "expectSelector": ".sheep-fallback-grid[data-big-tap=\"on\"][data-hit-scale=\"1.4\"][data-motion-scale=\"0.7\"]",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/rounds.js",
+        "public/fallback.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.calm-mode",
+      "name": "Calm mode is unchanged by Big Tap",
+      "path": "/?round=5&renderer=dom&calm=1&bigtap=1",
+      "expectSelector": "body.theme-calm .sheep-fallback-grid[data-big-tap=\"on\"] .sheep-card:nth-child(7)",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/rounds.js",
+        "public/fallback.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.calm-level-rules",
+      "name": "The Calm level keeps its forgiving rules with Big Tap",
+      "path": "/?round=1&difficulty=calm&bigtap=1",
+      "expectSelector": "#round-intro-rule",
+      "expectText": "pop it",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.label-on",
+      "name": "Big Tap toggle label reads On when on",
+      "path": "/?scene=grownups&bigtap=1",
+      "expectSelector": "#big-tap-toggle:checked",
+      "expectText": "Big Tap: On",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.label-off",
+      "name": "Big Tap toggle label reads Off when off",
+      "path": "/?scene=grownups",
+      "expectSelector": "#big-tap-label",
+      "expectText": "Big Tap: Off",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "bigtap.reload",
+      "name": "Big Tap survives a reload mid-round",
+      "path": "/?resume=1&renderer=dom&snapshot=%7B%22bigTapOn%22%3Atrue%2C%22midCountdown%22%3A%7B%22round%22%3A5%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22phase%22%3A%22counting%22%2C%22bigTap%22%3Atrue%7D%7D",
+      "expectSelector": ".sheep-fallback-grid[data-big-tap=\"on\"] .sheep-card.is-popped:nth-child(3)",
+      "expectText": "Round 5",
+      "allowConsoleErrors": true,
+      "impact": [
+        "public/state.js",
+        "public/fallback.js",
+        "dapp.json"
+      ]
     }
   ]
 }

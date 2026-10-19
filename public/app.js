@@ -103,6 +103,11 @@ const fixtureScenery = normalizeScenery(sceneryParam, nightParam === '1');
 // ?calm=1 boots straight into Calm mode for the fixture/deep-link run;
 // like night and sound it is never persisted from a deep link.
 const calmParam = params.get('calm');
+// ?bigtap=1 opens the run with Big Tap on (applied before the first round
+// starts); ?bigtap=next flips the setting after the first board was built,
+// so the next round picks it up. Like ?calm=1 it is never persisted from a
+// deep link.
+const bigtapParam = params.get('bigtap');
 // The autoplay harness for the recap deep links (?round=N&autoplay=...):
 // '1' plays one round and stops at the recap card; 'tap' and 'button'
 // then dismiss it the two ways a player can. It rides the existing
@@ -229,6 +234,8 @@ const els = {
   soundBtn: document.getElementById('sound-btn'),
   scenerySelect: document.getElementById('scenery-select'),
   calmToggle: document.getElementById('calm-toggle'),
+  bigTapToggle: document.getElementById('big-tap-toggle'),
+  bigTapLabel: document.getElementById('big-tap-label'),
   namesToggle: document.getElementById('names-toggle'),
   startOverBtn: document.getElementById('start-over-btn'),
   roundValue: document.getElementById('round-value'),
@@ -370,6 +377,10 @@ function buildStaticState() {
     // deep link (?scenery=moon, or the legacy ?night=1) and nowhere else.
     scenery: fixtureScenery,
     nightOn: fixtureScenery === 'night',
+    // Frozen fixtures may show Big Tap from the deep link only, and the
+    // board copy matches the setting so a screenshot shows its effect.
+    bigTapOn: bigtapParam === '1',
+    bigTapRound: bigtapParam === '1',
     ...extra,
   });
   if (sceneParam === 'flock') return at(9);
@@ -568,6 +579,7 @@ async function boot() {
     if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
     if (hasSpeedParam) store.state = { ...store.state, speedOn: speedParam };
     if (calmParam !== null) store.state = { ...store.state, calmOn: normalizeCalm(calmParam === '1') };
+    if (bigtapParam === '1') store.state = { ...store.state, bigTapOn: true };
     // &sound=0/1 pins the sound button's icon for the capture run; like the
     // other knobs it is applied to the ephemeral store and never persisted.
     if (soundParam !== null) store.state = { ...store.state, soundOn: soundParam === '1' };
@@ -580,6 +592,10 @@ async function boot() {
       store.state = { ...store.state, duel: true };
     }
     store.startRound(normalizeRound(roundParam), { silent: true });
+    // ?bigtap=next flips the setting only after the first board exists, so
+    // the visible round keeps its original behavior and the next one is
+    // already slowed and enlarged.
+    if (bigtapParam === 'next') store.setBigTapOn(true);
     if (wolfParam === '1' && !isCalmLevel(store.state.difficulty)) {
       // A wolf needs a flock to hide in: round 1's single sheep stays a
       // sheep even when the deep link asks for one.
@@ -1482,6 +1498,14 @@ function syncSoundButton(state) {
     : 'Sound effects: off. Tap to turn on');
 }
 
+// The grown-ups panel's only on/off word: the row says whether Big Tap is
+// on, beside its checkbox, and updates the moment the box is ticked.
+function syncBigTap(state) {
+  const on = !!state.bigTapOn;
+  els.bigTapToggle.checked = on;
+  els.bigTapLabel.textContent = `Big Tap: ${on ? 'On' : 'Off'}`;
+}
+
 function updateChrome(state) {
   // Keep the audio module's enabled flag in lockstep with the toggle, so
   // every sound path (chime, baa, celebration) reads one source of truth.
@@ -1526,6 +1550,7 @@ function updateChrome(state) {
   syncSoundButton(state);
   els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
+  syncBigTap(state);
   els.namesToggle.checked = !!state.namesOn;
   applyTheme(state);
   applyNames(state);
@@ -1751,6 +1776,7 @@ function openGrownups(state) {
   syncSoundButton(state);
   els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
+  syncBigTap(state);
   els.grownupsPanel.hidden = false;
 }
 function closeGrownups() {
@@ -1779,6 +1805,11 @@ els.scenerySelect.addEventListener('change', (e) => {
 els.calmToggle.addEventListener('change', (e) => {
   if (staticMode) return;
   store.setCalmOn(e.target.checked);
+});
+
+els.bigTapToggle.addEventListener('change', (e) => {
+  if (staticMode) return;
+  store.setBigTapOn(e.target.checked);
 });
 
 els.namesToggle.addEventListener('change', (e) => {

@@ -176,6 +176,19 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   `public/rounds.js` beside `normalizeCalm` and are asserted in
   `tests/game.test.mjs`. `?scenery=` on a deep link or fixture is applied
   to the ephemeral store only and never writes a real player's pick.
+- **Big Tap (`bigTapOn`) is device-local; renderers read only
+  `bigTapRound`.** The grown-ups Big Tap toggle is saved in the same
+  per-user localStorage payload as Calm and Name labels and never rides
+  `/api/state` or a `sheep_progress` column. `startRound` copies
+  `bigTapOn` onto `bigTapRound` and `snapshotRound` carries `bigTap` in the
+  mid-round snapshot, so a flip mid-round (or a reload) leaves the board on
+  screen exactly as it started; both renderers read only `bigTapRound`.
+  The scales are pure helpers in `public/rounds.js` (`bigTapHitScale`,
+  `bigTapSpeedScale`, `bigTapMotion`, `popPieceCount`), and the renderers
+  compose `bigTapMotion` *on top of* `calmMotion`, never instead of it, so
+  Calm can only get slower. `?bigtap=1` applies it before the first round;
+  `?bigtap=next` flips it after the board is built; both ride the existing
+  `?round=` / `?scene=` ephemeral path.
 - **`sheep_progress`** is a public table (per-user counters: which round
   to start on, best round reached, lifetime total) — nothing in it is
   sensitive. Only run-spanning values are stored: a half-counted round is

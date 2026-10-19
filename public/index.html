@@ -709,6 +709,15 @@
       animation-delay: var(--bob-delay, 0s);
     }
     .sheep-card:active { transform: scale(0.96); }
+    /* Big Tap: the card's invisible tap area grows by 40 percent in every
+       direction (1.4x), while the sheep is drawn exactly the same. The
+       pseudo-element inherits pointer-events, so a popped card's area
+       stays untappable. */
+    .sheep-fallback-grid[data-big-tap="on"] .sheep-card::after {
+      content: '';
+      position: absolute;
+      inset: -20%;
+    }
     .sheep-card.is-counted {
       background: color-mix(in srgb, var(--ribbon, #ff8fab) 18%, #fff);
       border-color: var(--ribbon, #ff8fab);
@@ -1182,6 +1191,11 @@
         <label class="setting-row">
           <span>Calm mode</span>
           <input id="calm-toggle" type="checkbox">
+        </label>
+
+        <label class="setting-row">
+          <span id="big-tap-label">Big Tap: Off</span>
+          <input id="big-tap-toggle" type="checkbox">
         </label>
 
         <label class="setting-row">

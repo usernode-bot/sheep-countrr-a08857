@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { layoutPositions, NUMBER_COLORS, POP_PUFF_SECONDS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { MAX_SHEEP, calmMotion, isCalmLevel, motionForRound, roamRadius, wolfDisguiseTier } from './rounds.js';
+import { MAX_SHEEP, bigTapHitScale, bigTapMotion, bigTapSpeedScale, calmMotion, isCalmLevel, motionForRound, popPieceCount, roamRadius, wolfDisguiseTier } from './rounds.js';
 
 const COLORS = {
   wool: '#f4eadb',
@@ -696,16 +696,28 @@ function createPopBurstPool(scene, bursts) {
     dirty = true;
   }
 
-  function burst(index, x, z, number, startTime, { settled = false, slow = false, seed = 1 } = {}) {
+  function burst(index, x, z, number, startTime, { settled = false, slow = false, seed = 1, bigTap = false } = {}) {
     const rand = mulberry32((seed ^ (index * 2654435761)) >>> 0);
     const g = slow ? 1.1 : 2.3;
     const spread = slow ? 0.6 : 1;
     const y0 = 0.7;
+    // Big Tap leaves half the confetti and half the candy: the tail of each
+    // kind stays hidden in the shared pool, so the pool size is unchanged.
+    const confettiKept = popPieceCount(CONFETTI_PER_BURST, bigTap);
+    const candyKept = popPieceCount(CANDY_PER_BURST, bigTap);
     for (let i = 0; i < PIECES_PER_BURST; i++) {
       const candy = i >= CONFETTI_PER_BURST;
       const p = pieces[index * PIECES_PER_BURST + i];
       p.candy = candy;
       p.slot = candy ? index * CANDY_PER_BURST + (i - CONFETTI_PER_BURST) : index * CONFETTI_PER_BURST + i;
+      const inKind = candy ? i - CONFETTI_PER_BURST : i;
+      if (inKind >= (candy ? candyKept : confettiKept)) {
+        p.live = false;
+        p.settled = false;
+        p.start = -1;
+        writeHidden(p);
+        continue;
+      }
       p.start = startTime;
       p.live = true;
       p.settled = !!settled;
@@ -1089,7 +1101,16 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
   function buildFlock(state) {
     lastState = state;
     namesOn = !!state.namesOn;
-    motion = state.calmOn ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty);
+    motion = bigTapMotion(
+      state.calmOn ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty),
+      state.bigTapRound
+    );
+    // Stamp the board's Big Tap copy for the checks; the 3D view has no
+    // visible on-screen sign, only the bigger picks, slower flock and
+    // smaller burst.
+    canvas.dataset.bigTap = state.bigTapRound ? 'on' : 'off';
+    canvas.dataset.hitScale = String(bigTapHitScale(state.bigTapRound));
+    canvas.dataset.motionScale = String(bigTapSpeedScale(state.bigTapRound));
     // A fresh board leaves only grass: no confetti piles from the last round.
     popPool.reset();
     scene.remove(sheepGroup);
@@ -1140,9 +1161,11 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       nameSprite.visible = namesOn;
       g.add(nameSprite);
 
-      // Large invisible pick target so small fingers land the tap.
+      // Large invisible pick target so small fingers land the tap. Big Tap
+      // grows this sphere (never the sheep) by 40 percent.
       const pick = new THREE.Mesh(pickGeo, pickMat);
       pick.position.y = 0.62;
+      pick.scale.setScalar(bigTapHitScale(state.bigTapRound));
       g.add(pick);
 
       const pos = positions[i];
@@ -1287,6 +1310,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
       const calm = isCalmLevel(lastState && lastState.difficulty);
       popPool.burst(index, s.origin.x, s.origin.z, number, elapsedSeconds(), {
         settled: true, slow: calm, seed: lastState ? lastState.seed : 1,
+        bigTap: !!(lastState && lastState.bigTapRound),
       });
     }
   }
@@ -1551,6 +1575,7 @@ export function createSceneRenderer({ container, onTap, reducedMotion, onFatal, 
           const pos = s.group.position;
           popPool.burst(s.index, pos.x, pos.z, s.popNumber, t, {
             slow: calm, seed: lastState ? lastState.seed : 1,
+            bigTap: !!(lastState && lastState.bigTapRound),
           });
         } else if (p > 0) {
           // Squash and puff happen early, then the puffed sheep holds

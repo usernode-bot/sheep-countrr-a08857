@@ -4,7 +4,7 @@
 // same pastel per number.
 import { NUMBER_COLORS, POP_PUFF_SECONDS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { calmMotion, isCalmLevel, motionForRound, wolfDisguiseTier } from './rounds.js';
+import { bigTapHitScale, bigTapMotion, bigTapSpeedScale, calmMotion, isCalmLevel, motionForRound, popPieceCount, wolfDisguiseTier } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -124,12 +124,12 @@ function mulberry32(a) {
   };
 }
 
-function buildPopPieces(seed, index) {
+function buildPopPieces(seed, index, count = POP_PIECES) {
   const wrap = document.createElement('span');
   wrap.className = 'sheep-confetti';
   wrap.hidden = true;
   const rand = mulberry32((seed ^ (index * 2654435761)) >>> 0);
-  for (let k = 0; k < POP_PIECES; k++) {
+  for (let k = 0; k < count; k++) {
     const piece = document.createElement('span');
     piece.className = k % 4 === 3 ? 'cd' : 'cf';
     piece.dataset.rx = ((rand() - 0.5) * 76).toFixed(1);
@@ -166,8 +166,18 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     cards = [];
     current = state;
     calm = !!state.calmOn;
-    motion = calm ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty);
+    // Big Tap is composed on top of Calm's tempo, never instead of it, so
+    // a Calm round can only get slower.
+    motion = bigTapMotion(
+      calm ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty),
+      state.bigTapRound
+    );
     grid.dataset.size = String(state.sheepCount);
+    // The board's own Big Tap copy (not the live setting): a grown-up who
+    // flips the switch mid-round sees the change with the next flock.
+    grid.dataset.bigTap = state.bigTapRound ? 'on' : 'off';
+    grid.dataset.hitScale = String(bigTapHitScale(state.bigTapRound));
+    grid.dataset.motionScale = String(bigTapSpeedScale(state.bigTapRound));
     for (let i = 0; i < state.sheepCount; i++) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -194,7 +204,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
           + '<span class="sheep-card-badge" hidden></span>'
           + '<span class="sheep-tap-ripple" hidden></span>';
       }
-      btn.appendChild(buildPopPieces(state.seed, i));
+      btn.appendChild(buildPopPieces(state.seed, i, popPieceCount(POP_PIECES, state.bigTapRound)));
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
       cards.push(btn);

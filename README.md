@@ -57,6 +57,16 @@ keeping track of who you already counted does not.
 - **Sound is on by default.** Every sheep tap gives a soft baa (counted
   sheep add a gentle chime, Web Audio only, no asset files). A grown-up
   can mute it with the Sound effects toggle in the grown-ups panel.
+- **Big Tap.** The grown-ups panel's Big Tap toggle makes the game
+  physically easier for a child who struggles to land taps. When it is
+  on, the invisible tap area around each sheep is 40 percent bigger (the
+  sheep look the same), the flock moves at 70 percent of the round's
+  speed, and a popped sheep leaves half as many confetti and candy
+  pieces. It works on every level and stacks on top of Calm's own slower
+  tempo, never replacing it. The setting is remembered on the device,
+  applies from the next round (never the one being played), and a round
+  interrupted by a reload comes back the way it started. Its row reads
+  "Big Tap: On" or "Big Tap: Off".
 - **The grown-ups panel** (sound, progress, start over) is reached by a
   ~1.5 second press-and-hold on the small gear icon in the corner, or
   Enter/Space with a keyboard. A quick tap does nothing, so a child
