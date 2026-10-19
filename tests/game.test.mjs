@@ -1309,6 +1309,11 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 test('a counting tap updates the board first and saves right after', () => withMemoryStorage(async (read) => {
   const store = new StateStore({ userId: 'tap-save' });
   store.startRound(3, { silent: true });
+  // This test pins the tap-path save ordering, not the wolf draw. A
+  // persistent store seeds randomly, so round 3's 20% wolf chance can
+  // land on sheep 0 and turn the first tap into a wolfTap; take the
+  // wolf out of the round like a no-wolf draw would.
+  store.state = { ...store.state, wolfIndex: null };
   const countedOnDisk = () => read(store.storageKey).midCountdown?.counted ?? [];
 
   assert.equal(store.tapSheep(0).outcome, 'counted');
@@ -1330,6 +1335,9 @@ test('a counting tap updates the board first and saves right after', () => withM
 test('a run that ends before the deferred save never resurrects the board', () => withMemoryStorage(async (read) => {
   const store = new StateStore({ userId: 'tap-end' });
   store.startRound(3, { silent: true });
+  // Same wolf pin as its sibling test: the random seed could put the
+  // wolf on sheep 0 and end the run on the first tap instead.
+  store.state = { ...store.state, wolfIndex: null };
   store.tapSheep(0);
   // Double tap in the same task: the run ends and the snapshot is cleared.
   store.tapSheep(0);
