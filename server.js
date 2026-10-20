@@ -210,8 +210,10 @@ function normalizeHandle(raw) {
 app.post('/api/runs', async (req, res) => {
   const roundReached = clamp(parseInt((req.body || {}).roundReached, 10) || 1, 1, MAX_ROUND);
   // 'wolf' is the run a wolf tap ended; without it here a shared card for
-  // that run fell back to "Some sheep were left uncounted."
-  const endReason = ['doubleTap', 'missed', 'timeUp', 'wolf'].includes((req.body || {}).endedBy)
+  // that run fell back to "Some sheep were left uncounted." 'complete' is
+  // the run the ladder's final round passed: no next flock, so the shared
+  // card shows the finish instead of a scatter line.
+  const endReason = ['doubleTap', 'missed', 'timeUp', 'wolf', 'complete'].includes((req.body || {}).endedBy)
     ? (req.body || {}).endedBy : null;
   // Speed Rounds carry their own tag so the weekly leaderboard can show
   // them separately from normal rounds.
@@ -507,12 +509,12 @@ app.get('/api/state', async (req, res) => {
       // later read agrees, but this first answer says "no saved level"
       // (null), so a pick this device already holds is never overwritten.
       await pool.query(
-        `INSERT INTO sheep_progress (user_id, username, round, best_round, seed, difficulty)
-         VALUES ($1, $2, 1, 1, $3, 'calm')
+        `INSERT INTO sheep_progress (user_id, username, round, best_round, seed, difficulty, sound_on)
+         VALUES ($1, $2, 1, 1, $3, 'calm', true)
          ON CONFLICT (user_id) DO NOTHING`,
         [req.user.id, req.user.username, randomSeed()]
       );
-      row = { round: 1, best_round: 1, best_safe_streak: 0, bonus_counted: 0, total_counted: 0, sound_on: false, night_on: false, calm_on: false, difficulty: null, best_rounds: {} };
+      row = { round: 1, best_round: 1, best_safe_streak: 0, bonus_counted: 0, total_counted: 0, sound_on: true, night_on: false, calm_on: false, difficulty: null, best_rounds: {} };
     }
 
     const { rows: totalRows } = await pool.query(
@@ -776,7 +778,7 @@ async function start() {
       counted JSONB NOT NULL DEFAULT '[]',
       best INTEGER NOT NULL DEFAULT 0,
       total_counted INTEGER NOT NULL DEFAULT 0,
-      sound_on BOOLEAN NOT NULL DEFAULT false,
+      sound_on BOOLEAN NOT NULL DEFAULT true,
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);

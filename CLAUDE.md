@@ -64,12 +64,17 @@ A round-based tap-to-count game for young children. Round 1 is one
 stationary sheep; each completed round adds roughly one or two more and
 raises the movement speed and randomness, so remembering which sheep you
 already counted is the difficulty. Tapping an uncounted sheep counts it
-and marks it permanently (numbered ribbon, eyes closed, motion stopped);
-tapping a counted sheep, or submitting a short count, ends the run and
-shows the round reached with a restart button. Sound is off by default; a
-grown-up reaches settings (sound, progress, start over) only via a ~1.5s
+and pops it like a piñata: it puffs up, vanishes, and leaves a pile of
+pastel confetti and candy where it stood for the rest of the round; a
+popped spot ignores taps, so it can never end a run. Submitting a short
+count ends the run and shows the round reached with a restart button. Sound is on by default: a
+soft Web Audio baa plays each time a sheep is tapped, and a grown-up
+mutes it (and reaches settings: progress, start over) only via a ~1.5s
 press-and-hold on the corner gear icon, so a child mashing the screen
-cannot wander in. See `README.md` for the full feature description.
+cannot wander in. The on-by-default flip carries a one-time migration
+(see `restoredSound` in `public/state.js`): saves written before the flip
+carry a `soundSet` marker; a pre-marker save takes the new default once,
+and a mute made after it persists the marker and stays off. See `README.md` for the full feature description.
 
 ## App-specific conventions
 
@@ -88,8 +93,9 @@ cannot wander in. See `README.md` for the full feature description.
   or writes localStorage or the server. That is what lets it share the
   auth exemption with `?scene=`; keep it side-effect-free.
 - **Frozen screenshot fixtures live behind `?scene=`** (`portrait`,
-  `empty`, `midcount`, `roundcomplete`, `gameover`, `grownups`, `flock`
-  — see `dapp.json`'s `tests`). `public/app.js`'s `staticMode` branch
+  `empty`, `midcount`, `allcounted`, `roundcomplete`, `gameover`,
+  `grownups`, `flock`, `moon` — see `dapp.json`'s `tests`). `public/app.js`'s
+  `staticMode` branch
   renders these from hardcoded data only (`buildStaticState()`) and never
   touches localStorage or the server — keep it that way, since these
   routes are exempted from the auth gate in `server.js` specifically
@@ -119,6 +125,33 @@ cannot wander in. See `README.md` for the full feature description.
   `buildStaticState()` instead. The pure arithmetic (`localDayKey`,
   `dayDistance`, `advanceStreak`) lives in `rounds.js` with the other
   copy/curve helpers and is asserted in `tests/game.test.mjs`.
+- **The round recap card is stamped at the pass, never persisted.** When
+  `submitCount()` passes a round, the store fills `state.recap`
+  (`{ round, counted, seconds, bestSeconds, newBest }`) and the card
+  waits for the player (Next round button, tap anywhere, Enter/Space);
+  the old auto-advance timer is gone. `startRound` clears `recap`, and
+  it is deliberately left out of saves and snapshots, so a resumed
+  board never shows a stale card. Passing the ladder's final round
+  (`TOTAL_ROUNDS` = 9) instead ends the run with `endedBy: 'complete'`
+  (`ENDED_COMPLETE`, part of the `/api/runs` end-reason allowlist) and
+  no card. **Per-round best times (`state.bestTimes[difficulty][round]`)
+  are device-local, never a server column**, same precedent as the
+  streak: saved in the per-user localStorage payload, normalized by
+  `normalizeBestTimes` on restore, per difficulty. The recap copy
+  helpers (`formatRoundSeconds`, `recapSheepLine`, `recapTimeLine`,
+  `recapBestLine`) live in `rounds.js` and are asserted in
+  `tests/game.test.mjs`.
+- **`?round=N&autoplay=button|tap|1` is a side-effect-free playable
+  harness** for the load-only dapp.json checks: it rides the existing
+  `?round=` auth exemption, forces the store ephemeral (unlike a plain
+  `?round=N`, whose store is persistent today), plays a real round via
+  the same `handleTap`/`submitCount` path a player uses (skipping the
+  wolf index so a drawn wolf cannot end the run), then either clicks
+  Next round (`button`), dispatches a real `pointerdown` on the recap
+  card (`tap`), or stops at the card (`1`), which is what lets the
+  "Next round starts the next round" and "tap anywhere dismisses"
+  checks assert on a real run. Never read `autoplay` outside the
+  store-construction/harness seam in `app.js`.
 - **`?renderer=dom` forces the DOM/card fallback** (used by the
   "No-WebGL fallback" test) even on a device that supports WebGL. It
   shares the same `onTap(index)` contract and counting logic as the 3D
@@ -133,6 +166,16 @@ cannot wander in. See `README.md` for the full feature description.
   routes remain fully gated. If you ever add a new screenshot-state
   fixture parameter, extend this exemption deliberately and keep the
   fixture side-effect-free, the same way `?scene=` is.
+- **The scenery pick (`scenery`) is client-side only, never a server
+  column.** The grown-ups Background menu stores
+  `'meadow' | 'night' | 'moon'` in the same per-user localStorage payload
+  as the other settings; `nightOn` is derived from it (`scenery ===
+  'night'`), so the server's `night_on` contract and its cross-device sync
+  for Night Meadow are unchanged, and Moon stays per device. Pure helpers
+  (`SCENERY_KEYS`, `normalizeScenery`, `sceneryFromServer`) live in
+  `public/rounds.js` beside `normalizeCalm` and are asserted in
+  `tests/game.test.mjs`. `?scenery=` on a deep link or fixture is applied
+  to the ephemeral store only and never writes a real player's pick.
 - **`sheep_progress`** is a public table (per-user counters: which round
   to start on, best round reached, lifetime total) — nothing in it is
   sensitive. Only run-spanning values are stored: a half-counted round is
@@ -171,10 +214,11 @@ cannot wander in. See `README.md` for the full feature description.
   moves sheep in world units; `fallback.js` applies the same offsets via
   the individual CSS `translate` property (compositor-only, no per-frame
   layout), deliberately leaving `transform` to the tap and wiggle
-  animations. A counted sheep snaps
-  back to its home spot and stops moving in both.
-- **`NUMBER_COLORS` in `layout.js`** is the one pastel-per-number palette
-  used by the 3D ribbon/number plate and the DOM fallback badge. Both
+  animations. A counted sheep pops away (its group hides and a seeded
+  confetti-and-candy burst settles where it stood), so its spot is
+  untappable and never moves again, in both renderers.
+- **`NUMBER_COLORS` in `layout.js`** is the one pastel-per-number palette,
+  used by the pop burst's confetti and candy in both renderers. Both
   renderers also expose an optional `celebrate()`; `app.js` calls it
   when a round is passed.
 - **User-facing copy carries no em dashes** (index.html and every string

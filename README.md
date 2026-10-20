@@ -13,14 +13,20 @@ keeping track of who you already counted does not.
   adds roughly one or two more sheep (up to twelve, so every sheep stays
   tappable on a phone) and turns up the movement: a slow drift at first,
   then pacing and bouncing, then a nervous jitter on top.
-- **Counting.** Tap a sheep to count it. It stops, closes its eyes and
-  puts on a numbered ribbon, so a counted sheep is impossible to mistake
-  for an uncounted one. The current round and the running tap count sit
-  at the top of the screen the whole time.
+- **Counting.** Tap a sheep to count it: it baas, puffs up, pops like a
+  piñata and is gone, leaving a little pile of pastel confetti and candy
+  on the grass where it stood for the rest of the round. A popped sheep's
+  spot cannot be tapped, so a counted sheep is impossible to mistake for
+  an uncounted one and empty grass never ends a run. The running tap count
+  sits in a small counter in the top-left corner (with a row of progress
+  dots underneath, one dot per sheep, filled in the counted sheep's
+  pastel colour), leaving the middle of the screen to the flock, and the
+  hint at the bottom counts down as sheep are counted: "Tap every sheep.",
+  then "4 left!" and so on, then "That is all of them. Tap Done counting.".
 - **Before you start.** The first round of a run opens on a short "Get
-  ready" card that names the round and its flock, explains that a tap
-  counts a sheep and gives it a number, and warns that counting the same
-  sheep twice ends the run. Its one button, "Start counting", dismisses
+  ready" card that names the round and its flock, explains that tapping a
+  sheep pops it, and warns that saying done too early ends the run. Its
+  one button, "Start counting", dismisses
   the card and begins the round. It returns at the start of every run
   (after "Start again" or "Start over at round 1"), and later rounds in
   a run skip it since the round-complete message already previews the
@@ -31,7 +37,7 @@ keeping track of who you already counted does not.
   Chaos and Legend. A player with no saved level starts on
   Calm; a saved pick is kept. On Calm the sheep only ever drift as slowly
   as an early round, the flock grows by one every two rounds and stops at
-  five, a sheep tapped twice just gives a sleepy wiggle, "Done counting"
+  five, the confetti falls more slowly after each pop, "Done counting"
   with sheep left wiggles the ones still awake, and there is no wolf,
   Speed Round, Duel or game over. Calm rounds keep their own best round
   but never count toward the Global, Friends or weekly leaderboards.
@@ -44,13 +50,13 @@ keeping track of who you already counted does not.
   round hides one. The wolf's chance and disguise also scale on the
   original levels, so Easy's wolf is gentler and Hard's slightly sharper
   than Normal's.
-- **Finishing a round.** Tap every sheep and the round completes itself,
-  or tap "Done counting" when you think you have them all. A correct
-  count shows a short round-complete message and moves on.
-- **Ending a run.** Tapping a sheep you already counted, or saying you
-  are done while sheep are still uncounted, ends the run. The game-over
-  screen names the round you reached and offers "Start again", which
-  returns to round 1.
+- **Finishing a round.** Tapping the last sheep only marks it; the round
+  waits for the "Done counting" tap. Saying done with every sheep counted
+  shows a short round-complete message and moves on.
+- **Ending a run.** Saying you are done while sheep are still uncounted
+  ends the run; a popped sheep's spot ignores taps, so it can never end
+  one. The game-over screen names the round you reached and offers
+  "Start again", which returns to round 1.
 - **Touch first.** The whole board is taps: big hit targets, no drag, no
   pinch, and the Done button sits clear of the safe area at the bottom.
   The camera reframes on rotation so the whole flock stays visible.
@@ -58,12 +64,20 @@ keeping track of who you already counted does not.
   grassy field). Devices without WebGL, or `?renderer=dom`, fall back to
   a grid of big round cards that drift with the same seeded motion and
   share the same counting logic.
-- **Sound is off by default.** Soft chimes only play once a grown-up
-  turns sound on.
+- **Sound is on by default.** Every sheep tap gives a soft baa (counted
+  sheep add a gentle chime, Web Audio only, no asset files). A grown-up
+  can mute it with the Sound effects toggle in the grown-ups panel.
 - **The grown-ups panel** (sound, progress, start over) is reached by a
   ~1.5 second press-and-hold on the small gear icon in the corner, or
   Enter/Space with a keyboard. A quick tap does nothing, so a child
   mashing the screen cannot wander into settings.
+- **Background picker.** The grown-ups panel's Background menu picks the
+  scenery the flock stands on: Pastel Meadow, Night Meadow or Moon (grey
+  ground, lavender-blue sky with small stars). Scenery only: the sheep,
+  the counting and the difficulty never change. The pick is remembered on
+  the device like the other settings; Night Meadow still syncs to the
+  server as before (`scenery` is client-side only, with `nightOn`
+  derived from it), and Moon stays per device.
 - **Progress syncs to the server** per signed-in user (which round to
   start on, best round reached, lifetime sheep counted) plus a community
   total shown in the grown-ups panel. A half-counted round is never

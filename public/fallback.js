@@ -2,9 +2,9 @@
 // is set for testing. Shares the exact same counting semantics as the
 // 3D scene: same tap contract (onTap(index)), same counted-badge numbers,
 // same pastel per number.
-import { NUMBER_COLORS, sheepName } from './layout.js';
+import { NUMBER_COLORS, POP_PUFF_SECONDS, sheepName } from './layout.js';
 import { wanderOffset } from './movement.js';
-import { calmMotion, isCalmLevel, motionForRound, wolfDisguiseTier } from './rounds.js';
+import { BIG_TAP_CONFETTI_KEEP, flockMotion, isCalmLevel, wolfDisguiseTier } from './rounds.js';
 
 // A friendly little sheep, drawn once as inline SVG per card. Eyes carry a
 // class so CSS can blink them; the bow only shows once counted.
@@ -104,6 +104,42 @@ const WOLF_CUES_SVG = `
     </g>
   </g>`;
 
+// A counted sheep pops like a piñata: its card empties out and holds a
+// little pile of confetti and candy instead. Each card carries a hidden
+// span of seeded pieces (confetti rectangles and round candies), built
+// once per flock; the resting spots come from mulberry32 seeded with the
+// round's seed and the card's index, so the frozen ?scene= fixtures
+// render the same piles every time. Colors are picked when the sheep is
+// counted, cycling NUMBER_COLORS from its count number, exactly like the
+// 3D scene's burst.
+const POP_PIECES = 14;
+
+function mulberry32(a) {
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function buildPopPieces(seed, index) {
+  const wrap = document.createElement('span');
+  wrap.className = 'sheep-confetti';
+  wrap.hidden = true;
+  const rand = mulberry32((seed ^ (index * 2654435761)) >>> 0);
+  for (let k = 0; k < POP_PIECES; k++) {
+    const piece = document.createElement('span');
+    piece.className = k % 4 === 3 ? 'cd' : 'cf';
+    piece.dataset.rx = ((rand() - 0.5) * 76).toFixed(1);
+    piece.dataset.ry = (rand() * 34 - 4).toFixed(1);
+    piece.dataset.rot = ((rand() - 0.5) * 160).toFixed(0);
+    wrap.appendChild(piece);
+  }
+  return wrap;
+}
+
 export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   const field = document.createElement('div');
   field.className = 'sheep-fallback-field';
@@ -115,7 +151,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   let cards = [];
   let current = null;
   let calm = false;
-  let motion = motionForRound(1);
+  let motion = flockMotion(1);
   let rafId = null;
   // The round's animation clock. setRoundClock resumes a saved board at
   // the exact time it was left, so the flock is standing where it was.
@@ -130,7 +166,12 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     cards = [];
     current = state;
     calm = !!state.calmOn;
-    motion = calm ? calmMotion(state.round, state.difficulty) : motionForRound(state.round, state.difficulty);
+    motion = flockMotion(state.round, state.difficulty, { calmOn: !!state.calmOn, bigTapOn: !!state.bigTap });
+    // Big Tap markers: the card is the tap target here, so the grid's
+    // data-bigtap grows it by 40% (index.html CSS); the field's
+    // data-bigtap-slow records that this round's drift is the slowed one.
+    grid.toggleAttribute('data-bigtap', !!state.bigTap);
+    field.dataset.bigtapSlow = !!(state.bigTap && !calm) ? '1' : '0';
     grid.dataset.size = String(state.sheepCount);
     for (let i = 0; i < state.sheepCount; i++) {
       const btn = document.createElement('button');
@@ -158,6 +199,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
           + '<span class="sheep-card-badge" hidden></span>'
           + '<span class="sheep-tap-ripple" hidden></span>';
       }
+      btn.appendChild(buildPopPieces(state.seed, i));
       btn.addEventListener('click', () => onTap(i));
       grid.appendChild(btn);
       cards.push(btn);
@@ -217,28 +259,78 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
   function markCounted(index, number, animate = true) {
     const btn = cards[index];
     if (!btn) return;
-    const color = NUMBER_COLORS[(number - 1) % NUMBER_COLORS.length];
-    btn.classList.add('is-counted');
+    btn.classList.add('is-counted', 'is-popped');
     btn.style.translate = 'none';
     btn.style.willChange = '';
-    btn.style.setProperty('--ribbon', color);
-    const badge = btn.querySelector('.sheep-card-badge');
-    badge.hidden = false;
-    badge.textContent = String(number);
+    // No ribbon and no badge: a popped sheep leaves only confetti and
+    // candy on the card.
+    const wrap = btn.querySelector('.sheep-confetti');
+    if (!wrap) return;
+    wrap.hidden = false;
+    const calm = isCalmLevel(current && current.difficulty);
+    const reducedConfetti = !!(current && current.bigTap) && !calm;
+    wrap.dataset.reduced = reducedConfetti ? '1' : '0';
+    const pieces = wrap.children;
+    // Big Tap: half the confetti pieces stay hidden, so the pile reads
+    // quieter; the candies are untouched. Calm never reduces.
+    let cfTotal = 0;
+    for (const piece of pieces) {
+      if (piece.classList.contains('cf')) cfTotal++;
+    }
+    const keepCf = reducedConfetti ? Math.ceil(cfTotal * BIG_TAP_CONFETTI_KEEP) : cfTotal;
+    let cfSeen = 0;
+    for (let k = 0; k < pieces.length; k++) {
+      const piece = pieces[k];
+      if (reducedConfetti && piece.classList.contains('cf') && cfSeen++ >= keepCf) {
+        piece.hidden = true;
+        continue;
+      }
+      piece.style.background = NUMBER_COLORS[(number - 1 + k) % NUMBER_COLORS.length];
+      const rest = `translate(${piece.dataset.rx}px, ${piece.dataset.ry}px) rotate(${piece.dataset.rot}deg)`;
+      if (animate && !reducedMotion && btn.animate) {
+        // Compositor-only: transform and opacity, from the card center
+        // out to the seeded resting spot in the card's lower half. The
+        // burst waits for the baa-baaa call to finish; the leading
+        // opacity 0 keyframe keeps each piece invisible through its
+        // delay, which fill 'both' would otherwise light up at the card
+        // center.
+        const start = 'translate(0px, -16px) rotate(0deg) scale(1.1)';
+        piece.animate(
+          [
+            { transform: start, opacity: 0 },
+            { transform: start, opacity: 1, offset: 0.08 },
+            { transform: rest, opacity: 1 },
+          ],
+          {
+            duration: calm ? 1700 : 850,
+            delay: POP_PUFF_SECONDS * 1000 + (k % 5) * 40,
+            easing: 'cubic-bezier(.2,.7,.3,1)',
+            fill: 'both',
+          }
+        );
+      } else {
+        // Resume, fixtures or reduced motion: the pieces already lie
+        // settled where the pop left them.
+        piece.style.transform = rest;
+      }
+    }
     if (animate && !reducedMotion && btn.animate) {
-      // Calm skips the card's hop; the number badge still pops in.
-      if (!isCalmLevel(current && current.difficulty)) btn.animate(
+      // The card's sheep squashes, puffs up bigger, holds while the counted
+      // sheep finishes its baa-baaa call, then fades; the puff beat is the
+      // same length in Calm and normal play, so the burst lands at the same
+      // moment as the 3D scene's.
+      const svg = btn.querySelector('.sheep-svg');
+      const puffMs = POP_PUFF_SECONDS * 1000;
+      const fadeMs = 350;
+      svg?.animate(
         [
-          { transform: 'scale(1)' },
-          { transform: 'scale(0.98)' },
-          { transform: 'scale(1.02)' },
-          { transform: 'scale(1)' },
+          { transform: 'scale(1)', opacity: 1 },
+          { transform: 'scale(1.15, 0.85)', opacity: 1, offset: (puffMs * 0.075) / (puffMs + fadeMs) },
+          { transform: 'scale(1.4)', opacity: 1, offset: (puffMs * 0.25) / (puffMs + fadeMs) },
+          { transform: 'scale(1.4)', opacity: 1, offset: puffMs / (puffMs + fadeMs) },
+          { transform: 'scale(1.4)', opacity: 0 },
         ],
-        { duration: 900, easing: 'cubic-bezier(.34,1.56,.64,1)' }
-      );
-      badge.animate(
-        [{ transform: 'scale(0)' }, { transform: 'scale(1.25)' }, { transform: 'scale(1)' }],
-        { duration: 380, easing: 'ease-out' }
+        { duration: puffMs + fadeMs, easing: 'ease-out', fill: 'forwards' }
       );
     }
   }
@@ -288,11 +380,12 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
 
   function celebrate() {}
 
-  // Night Meadow: the field's ground gradients are CSS variables on the
-  // body class (see index.html), so the DOM renderer only has to mirror
-  // the state flag into its own styling scope. Nothing else changes.
-  function setNight(on) {
-    field.classList.toggle('theme-night', !!on);
+  // Scenery: the field's ground gradients are CSS variables on the theme
+  // classes (see index.html), so the DOM renderer only has to mirror the
+  // pick into its own styling scope. Nothing else changes.
+  function setScenery(key) {
+    field.classList.toggle('theme-night', key === 'night');
+    field.classList.toggle('theme-moon', key === 'moon');
   }
 
   // Calm mode: the field already reads its soft palette from the same
@@ -312,7 +405,7 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     },
     setState(state) {
       render(state);
-      setNight(!!state.nightOn);
+      setScenery(state.scenery);
       setCalm(!!state.calmOn);
     },
     countSheep(index, number) {
@@ -336,8 +429,8 @@ export function createFallbackRenderer({ container, onTap, reducedMotion }) {
     resetRound(state) {
       render(state);
     },
-    setNight(on) {
-      setNight(on);
+    setScenery(key) {
+      setScenery(key);
     },
     setCalm(on) {
       setCalm(on);

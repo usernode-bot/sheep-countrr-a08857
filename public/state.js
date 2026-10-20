@@ -14,12 +14,16 @@ import {
   SPEED_ROUND_SECONDS,
   advanceStreak,
   isCalmLevel,
+  normalizeBigTap,
   localDayKey,
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
+  normalizeScenery,
   normalizeSpeedRound,
   roundSeed,
+  TOTAL_ROUNDS,
+  sceneryFromServer,
   sheepForRound,
   WOLF_BONUS,
   wolfIndexForRound,
@@ -38,11 +42,13 @@ export const RUN_OVER = 'runOver';
 
 // Why a run ended, for the game-over copy. A Speed Round can also end on
 // its own clock; the reason is stored with the run so a shared card shows
-// the same line the player saw.
+// the same line the player saw. A run that passes the ladder's final
+// round ends complete: there is no next flock, so no recap card shows.
 export const ENDED_DOUBLE_TAP = 'doubleTap';
 export const ENDED_MISSED = 'missed';
 export const ENDED_WOLF = 'wolf';
 export const ENDED_TIME_UP = 'timeUp';
+export const ENDED_COMPLETE = 'complete';
 
 // One best round per difficulty, kept in a map so a best on Easy can never
 // masquerade as one on Hard. normalizeBestRounds derives its default map
@@ -76,6 +82,18 @@ function normalizeStreakCount(raw) {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+// ---- Sound default ----
+// Sound defaults ON: every counted sheep gives a soft baa. Saves written
+// before that was the default carry soundOn:false only because off was
+// what the app shipped with, not because a grown-up chose silence. The
+// soundSet marker (written with every save since) separates "never chose"
+// from "chose off": a pre-marker save takes the new default once, and a
+// mute made after it persists the marker and stays off.
+function restoredSound(saved) {
+  const chose = saved.soundSet === true;
+  return { soundOn: chose ? !!saved.soundOn : true, preBaaSave: !chose };
+}
+
 function normalizeBestRounds(raw, fallback) {
   const out = {};
   for (const key of DIFFICULTY_KEYS) out[key] = 1;
@@ -87,6 +105,32 @@ function normalizeBestRounds(raw, fallback) {
   // so a pre-difficulty player keeps their best round on Normal.
   if (!source || !Object.keys(source).length) {
     out.normal = Math.max(out.normal, normalizeRound(fallback || 1));
+  }
+  return out;
+}
+
+// One best time (whole seconds) per round per difficulty, in a map of
+// maps so a Hard best can never masquerade as a Normal one. Device-local
+// like the streak: it rides localStorage only, never the server sync, so
+// a deep link or a fixture cannot move a real player's best. Anything
+// non-finite, negative or out of range reads as "no time yet"; unknown
+// difficulty keys are dropped rather than carried.
+function normalizeBestTimes(raw) {
+  const out = {};
+  const source = raw && typeof raw === 'object' ? raw : {};
+  for (const key of DIFFICULTY_KEYS) {
+    const rounds = source[key];
+    if (!rounds || typeof rounds !== 'object') continue;
+    const times = {};
+    for (const [roundKey, roundValue] of Object.entries(rounds)) {
+      const round = Math.floor(Number(roundKey));
+      const seconds = Math.floor(Number(roundValue));
+      if (Number.isFinite(round) && round >= 1 && round <= 999
+        && Number.isFinite(seconds) && seconds >= 0) {
+        times[round] = seconds;
+      }
+    }
+    if (Object.keys(times).length) out[key] = times;
   }
   return out;
 }
@@ -109,12 +153,30 @@ export function createDefaultState() {
     bestSafeStreak: 0,
     bonusCounted: 0,
     bestRounds: { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1 },
+    // Best whole-second time per round per difficulty (see
+    // normalizeBestTimes). Set on every passed round; shown by the recap
+    // card and kept across sessions like bestRounds.
+    bestTimes: {},
+    // The recap card's facts for the round just passed: { round, counted,
+    // seconds, bestSeconds, newBest }, or null when there is nothing to
+    // recap (a fresh board, or the final round, which ends the run
+    // instead). Never persisted: it is filled at the pass and read by the
+    // card, so a reload never resurrects a stale recap.
+    recap: null,
     totalCounted: 0,
     communityTotal: 0,
-    soundOn: false,
+    soundOn: true,
+    // Which scenery the flock stands on ('meadow' | 'night' | 'moon').
+    // The one source of truth for the look; nightOn below is derived from
+    // it so the server's night_on contract stays unchanged. Moon is saved
+    // on this device only, never sent to the server.
+    scenery: 'meadow',
     nightOn: false,
     calmOn: false,
     namesOn: false,
+    // Big Tap (accessibility): bigger hit targets, slower flock, less
+    // confetti. Device-local like namesOn, never sent to the server.
+    bigTap: false,
     difficulty: DEFAULT_DIFFICULTY,
     speedOn: false,
     secondsLeft: null,
@@ -168,6 +230,11 @@ export class StateStore {
     this.roundClock = null;
     // True while a resumable board is on screen (see hasMidRoundSnapshot).
     this._hasMidRoundSnapshot = false;
+    // Sound settings: whether a saved choice exists (the soundSet marker)
+    // and whether the local save read last boot predated the baa default,
+    // which also decides how this boot's server sync reads soundOn.
+    this._soundChosen = false;
+    this._preBaaSave = false;
     // A counting tap's localStorage write, deferred off the tap path (see
     // flushPendingSave). Any other storage write flushes it first, so it
     // can never land after (and undo) a later clearMidRound.
@@ -216,10 +283,20 @@ export class StateStore {
         // Nothing saved on this device: a new player opens on Calm. A
         // level saved on the server still wins in loadRemote.
         this.state = { ...this.state, difficulty: NEW_PLAYER_DIFFICULTY };
+        this._soundChosen = true;
         this.startRound(1, { silent: true });
         return this.state;
       }
       const saved = JSON.parse(raw);
+      const sound = restoredSound(saved);
+      // Reading the save decides the sound value either way (restored, or
+      // the baa default applied once), so this boot's saves carry the
+      // marker and later boots restore instead of re-applying.
+      this._soundChosen = true;
+      this._preBaaSave = sound.preBaaSave;
+      // The scenery pick migrates from the old Night Meadow checkbox: a
+      // save without a scenery key reads the legacy nightOn flag.
+      const scenery = normalizeScenery(saved.scenery, saved.nightOn);
       // Only the run-spanning values are restored. A half-counted round
       // is never resumed: coming back mid-round and finding taps you do
       // not remember making is a run-ending trap.
@@ -227,13 +304,16 @@ export class StateStore {
         ...this.state,
         round: normalizeRound(saved.round),
         bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
+        bestTimes: normalizeBestTimes(saved.bestTimes),
         bestSafeStreak: Math.max(0, Number(saved.bestSafeStreak) || 0),
         bonusCounted: Math.max(0, Number(saved.bonusCounted) || 0),
         totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
-        soundOn: !!saved.soundOn,
-        nightOn: !!saved.nightOn,
+        soundOn: sound.soundOn,
+        scenery,
+        nightOn: scenery === 'night',
         calmOn: normalizeCalm(saved.calmOn),
         namesOn: !!saved.namesOn,
+        bigTap: normalizeBigTap(saved.bigTap),
         difficulty: normalizeDifficulty(saved.difficulty),
         speedOn: normalizeSpeedRound(saved.speedOn),
         streakDays: normalizeStreakCount(saved.streakDays),
@@ -270,13 +350,17 @@ export class StateStore {
         round: this.state.round,
         difficulty: this.state.difficulty,
         bestRounds: this.state.bestRounds,
+        bestTimes: this.state.bestTimes,
         bestSafeStreak: this.state.bestSafeStreak,
         bonusCounted: this.state.bonusCounted,
         totalCounted: this.state.totalCounted,
         soundOn: this.state.soundOn,
+        soundSet: this._soundChosen === true,
+        scenery: this.state.scenery,
         nightOn: this.state.nightOn,
         calmOn: this.state.calmOn,
         namesOn: this.state.namesOn,
+        bigTap: this.state.bigTap,
         speedOn: this.state.speedOn,
         streakDays: this.state.streakDays,
         bestStreakDays: this.state.bestStreakDays,
@@ -314,8 +398,17 @@ export class StateStore {
         bonusCounted: Math.max(0, Number(data.bonusCounted) || 0),
         totalCounted: Math.max(0, Number(data.totalCounted) || 0),
         communityTotal: Math.max(0, Number(data.communityTotal) || 0),
-        soundOn: !!data.soundOn,
-        nightOn: !!data.nightOn,
+        // A save that predates the baa default carries soundOn:false only
+        // because off was the old default, and the server row says the
+        // same; neither is a choice, so the new default stands and the
+        // next sync writes it up. A post-change mute rides the normal
+        // restore.
+        soundOn: this._preBaaSave ? true : !!data.soundOn,
+        // The server only knows night_on. A device-local moon pick survives
+        // both server values; meadow and night follow the server exactly as
+        // nightOn does today.
+        scenery: sceneryFromServer(this.state.scenery, data.nightOn),
+        nightOn: sceneryFromServer(this.state.scenery, data.nightOn) === 'night',
         calmOn: normalizeCalm(data.calmOn),
         // A null difficulty means the server has no saved pick (its row
         // was created by this very read), so the local one stands: Calm
@@ -402,6 +495,9 @@ export class StateStore {
       roundElapsed: keepBoard ? this.state.roundElapsed : 0,
       phase: COUNTING,
       endedBy: null,
+      // A new board never carries the previous round's recap: the card is
+      // filled fresh at the next pass, so a stale one cannot linger.
+      recap: null,
       wolfIndex: keepBoard ? this.state.wolfIndex : wolfFor(next, seed, sheepCount, this.state.difficulty),
       // A restart to round 1 is a new run, so the current streak resets.
       // bestSafeStreak survives, like bestRounds.
@@ -445,15 +541,23 @@ export class StateStore {
   // A pure save/restore shape used by the tests to exercise the same
   // normalization loadLocal applies, without touching localStorage.
   loadLocalFrom(saved) {
+    const sound = restoredSound(saved);
+    this._soundChosen = true;
+    this._preBaaSave = sound.preBaaSave;
+    // Same scenery migration loadLocal applies, kept pure for the tests.
+    const scenery = normalizeScenery(saved.scenery, saved.nightOn);
     this.state = {
       ...this.state,
       round: normalizeRound(saved.round),
       bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
+      bestTimes: normalizeBestTimes(saved.bestTimes),
           totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
-          soundOn: !!saved.soundOn,
-          nightOn: !!saved.nightOn,
+          soundOn: sound.soundOn,
+          scenery,
+          nightOn: scenery === 'night',
           calmOn: normalizeCalm(saved.calmOn),
           namesOn: !!saved.namesOn,
+          bigTap: normalizeBigTap(saved.bigTap),
           difficulty: normalizeDifficulty(saved.difficulty),
           speedOn: normalizeSpeedRound(saved.speedOn),
           streakDays: normalizeStreakCount(saved.streakDays),
@@ -762,14 +866,45 @@ export class StateStore {
         bestSafeStreak = Math.max(bestSafeStreak, safeStreak);
         this.unsyncedBonus += WOLF_BONUS;
       }
+      // The recap card's facts, stamped at the moment of the pass: this
+      // round's own clock in whole seconds (stamped onto the state so the
+      // card can show it after the renderer resets), and the per-round
+      // best time it sets or keeps. Best times live in the same
+      // device-local map family as the streak, so a deep link or a
+      // fixture can never move a real player's best.
+      const round = this.state.round;
+      const difficulty = this.state.difficulty;
+      const elapsed = this.currentElapsed();
+      const seconds = Math.max(0, Math.round(elapsed));
+      const prevBest = this.state.bestTimes[difficulty]?.[round];
+      const newBest = prevBest == null || seconds < prevBest;
+      const bestSeconds = newBest ? seconds : prevBest;
+      const bestTimes = {
+        ...this.state.bestTimes,
+        [difficulty]: { ...this.state.bestTimes[difficulty], [round]: bestSeconds },
+      };
       this.state = {
         ...this.state,
         phase: ROUND_PASSED,
+        roundElapsed: elapsed,
         safeStreak,
         bestSafeStreak,
         bonusCounted: this.state.bonusCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
         totalCounted: this.state.totalCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
+        bestTimes,
+        // The final round has no next flock to preview, so it never shows
+        // a recap: the run completes and the game-over card takes over.
+        recap: round < TOTAL_ROUNDS
+          ? { round, counted: this.state.count, seconds, bestSeconds, newBest }
+          : null,
       };
+      // The ladder's top round is the end of the run. End it with its own
+      // reason so the game-over card shows the completion; the recap card
+      // and its Next round button have nothing to offer there.
+      if (round >= TOTAL_ROUNDS) {
+        this.endRun(ENDED_COMPLETE);
+        return { outcome: 'passed', round };
+      }
       this.saveLocal();
       // A passed round is over; resuming into it would show a board with
       // nothing left to tap. The next visit starts the round fresh,
@@ -777,7 +912,7 @@ export class StateStore {
       this.clearMidRound();
       this.flush();
       this.onChange(this.state);
-      return { outcome: 'passed', round: this.state.round };
+      return { outcome: 'passed', round };
     }
     if (forgiving(this.state)) {
       const awake = [];
@@ -841,14 +976,29 @@ export class StateStore {
   }
 
   setSoundOn(on) {
+    // Touching the toggle is a real choice: mark the save so later boots
+    // restore exactly this value instead of re-applying the default.
+    this._soundChosen = true;
+    this._preBaaSave = false;
     this.state = { ...this.state, soundOn: !!on };
     this.saveLocal();
     this.scheduleSync();
     this.onChange(this.state);
   }
 
-  setNightOn(on) {
-    this.state = { ...this.state, nightOn: !!on };
+  // The grown-ups Background picker. Normalizes the pick, then keeps
+  // nightOn derived from it: a Night Meadow choice still syncs to the
+  // server exactly as the old toggle did; Moon is device-local and posts
+  // nightOn: false.
+  setScenery(key) {
+    // A pick from the menu is always a known value; anything else (a
+    // hostile call) reads as the meadow default, never as the legacy flag.
+    const scenery = normalizeScenery(key);
+    this.state = {
+      ...this.state,
+      scenery,
+      nightOn: scenery === 'night',
+    };
     this.saveLocal();
     this.scheduleSync();
     this.onChange(this.state);
@@ -869,6 +1019,16 @@ export class StateStore {
   // real player, and it stays whatever the device last chose.
   setNamesOn(on) {
     this.state = { ...this.state, namesOn: !!on };
+    this.saveLocal();
+    this.onChange(this.state);
+  }
+
+  // Big Tap is a device-local accessibility choice like the name labels:
+  // bigger hit targets, a slower flock and lighter pop bursts for whoever
+  // is holding this device, never synced to the server. It applies from
+  // the next flock build (the next round), not retroactively mid-round.
+  setBigTapOn(on) {
+    this.state = { ...this.state, bigTap: normalizeBigTap(on) };
     this.saveLocal();
     this.onChange(this.state);
   }

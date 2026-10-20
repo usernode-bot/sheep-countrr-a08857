@@ -187,6 +187,53 @@
         linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
     }
 
+    /* Moon: the same scenery-only move as Night Meadow. Lavender-blue sky,
+       grey ground and ridges; the plate, pills, buttons and text keep the
+       day palette. Placed after theme-calm so picking the Moon with Calm
+       on keeps the Moon's colors (Calm keeps its tempo only). */
+    body.theme-moon {
+      --sky-top: #2f3466;
+      --sky-mid: #4f5390;
+      --sky-low: #8183b8;
+      --horizon: #bdb8da;
+      --meadow-ground-1: #b3b1c2;
+      --meadow-ground-2: #a7a5b8;
+      --meadow-ground-3: #9d9bb0;
+      --meadow-glow: rgba(226, 224, 244, 0.5);
+      --meadow-hill-a: #8c8aa0;
+      --meadow-hill-b: #7f7d95;
+      --meadow-hill-c: #737189;
+      --meadow-fog: #6e7199;
+    }
+    body.theme-moon #scene-root {
+      /* A handful of small, still stars in the top of the sky, then the
+         same gradient shape the other themes use. */
+      background:
+        radial-gradient(1.5px 1.5px at 12% 8%, #fff 99%, transparent),
+        radial-gradient(2px 2px at 30% 18%, #fff 99%, transparent),
+        radial-gradient(1.5px 1.5px at 52% 6%, #fff 99%, transparent),
+        radial-gradient(2px 2px at 68% 22%, #fff 99%, transparent),
+        radial-gradient(1.5px 1.5px at 84% 12%, #fff 99%, transparent),
+        radial-gradient(1.5px 1.5px at 92% 30%, #fff 99%, transparent),
+        radial-gradient(2px 2px at 8% 32%, #fff 99%, transparent),
+        radial-gradient(1.5px 1.5px at 44% 34%, #fff 99%, transparent),
+        linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 38%, var(--sky-low) 62%, var(--horizon) 100%);
+    }
+    /* The DOM fallback's field gains two shallow crater blobs on the Moon;
+       the ground wash itself comes from the same variables as the meadow. */
+    body.theme-moon .sheep-fallback-field {
+      background:
+        radial-gradient(9% 4% at 18% 84%, #9593a8 0 60%, transparent 61%),
+        radial-gradient(11% 5% at 76% 92%, #9593a8 0 60%, transparent 61%),
+        radial-gradient(45% 22% at 12% 92%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(60% 26% at 70% 96%, var(--meadow-ground-2) 0 60%, transparent 61%),
+        radial-gradient(70% 30% at 40% 104%, var(--meadow-ground-3) 0 60%, transparent 61%),
+        radial-gradient(30% 14% at 88% 78%, var(--meadow-ground-1) 0 60%, transparent 61%),
+        radial-gradient(14% 8% at 22% 66%, var(--meadow-glow) 0 60%, transparent 61%),
+        radial-gradient(18% 9% at 74% 58%, var(--meadow-glow) 0 60%, transparent 61%),
+        transparent;
+    }
+
     html, body { height: 100%; overscroll-behavior: none; }
     body {
       touch-action: manipulation;
@@ -207,34 +254,30 @@
     #scene-root canvas.sheep-canvas { display: block; width: 100%; height: 100%; }
 
     /* ---- Number plate ---- */
-    #count-badge { padding-top: calc(var(--safe-top) + 14px); }
+    /* The counter is a corner column (round tag, plate, progress dots)
+       hugging the top-left edge, so the flock owns the centre of the
+       screen. The plate grows away from the edge when it bumps. */
+    #count-badge {
+      padding-top: calc(var(--safe-top) + 14px);
+      padding-left: calc(var(--safe-left) + 12px);
+      gap: 6px;
+    }
     .count-plate {
       position: relative;
-      min-width: 8.5rem;
-      padding: 0.55rem 1.6rem 0.7rem;
-      border-radius: 2rem;
+      min-width: 6rem;
+      padding: 0.35rem 1rem 0.45rem;
+      border-radius: 1.4rem;
       background: var(--cream);
       border: 3px solid #8f6ba8;
+      transform-origin: left center;
       box-shadow:
         0 10px 24px rgba(90, 60, 120, 0.18),
         0 4px 0 #f4c6d6,
         inset 0 -6px 0 #fff0f4;
     }
-    .count-plate::before,
-    .count-plate::after {
-      content: "";
-      position: absolute;
-      top: -14px;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: var(--pink-soft);
-    }
-    .count-plate::before { left: 22px; }
-    .count-plate::after { right: 22px; }
     #count-display {
       display: block;
-      font-size: 4.6rem;
+      font-size: 2.9rem;
       line-height: 1;
       font-weight: 900;
       letter-spacing: -0.03em;
@@ -245,7 +288,7 @@
     #count-word {
       display: block;
       margin-top: 0.15rem;
-      font-size: 1.05rem;
+      font-size: 0.75rem;
       font-weight: 800;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -254,7 +297,36 @@
     .count-pop { animation: count-pop 0.42s cubic-bezier(.34,1.56,.64,1); }
     @keyframes count-pop {
       0% { transform: scale(1); }
-      35% { transform: scale(1.22) rotate(-3deg); }
+      35% { transform: scale(1.3) rotate(-3deg); }
+      100% { transform: scale(1); }
+    }
+
+    /* Progress dots: one small dot per real sheep, filling in the same
+       pastel colour the sheep's confetti carries (the inline --dot value
+       comes from app.js, via NUMBER_COLORS). The newest dot pops in. */
+    .count-dots {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      max-width: 8.5rem;
+      padding-left: 4px;
+    }
+    .count-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(255, 250, 242, 0.75);
+      border: 2px solid #dccbe9;
+      box-sizing: border-box;
+    }
+    .count-dot.is-filled {
+      background: var(--dot, var(--pink));
+      border-color: var(--dot, var(--pink));
+    }
+    .count-dot.dot-pop { animation: dot-pop 0.35s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes dot-pop {
+      0% { transform: scale(0.4); }
+      60% { transform: scale(1.35); }
       100% { transform: scale(1); }
     }
 
@@ -271,6 +343,15 @@
       text-transform: uppercase;
       color: var(--plum);
       box-shadow: 0 6px 16px rgba(90, 60, 120, 0.16);
+    }
+    /* The corner round tag: the same pill shape, quieted down so the
+       counter plate carries the column. The Speed Round and Duel clocks
+       keep the full pill size on purpose: a child needs to see the time. */
+    .round-pill.round-tag {
+      padding: 0.15rem 0.7rem;
+      border-width: 2px;
+      font-size: 0.72rem;
+      box-shadow: 0 3px 8px rgba(90, 60, 120, 0.12);
     }
 
     /* ---- Speed Round countdown pill: the round pill's shape, in the
@@ -343,6 +424,17 @@
       letter-spacing: 0.01em;
       border: 2px solid #8f6ba8;
       touch-action: manipulation;
+      transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+    /* The quiet start: before the first sheep is counted, Done counting
+       wears the grown-ups panel's soft light-button look, so the screen's
+       one job (tapping sheep) stays the loudest thing on it. It still
+       works, and saying done early still ends the run. */
+    .submit-btn.is-quiet {
+      background: #f4ecfa;
+      color: var(--plum);
+      border-color: #dccbe9;
+      box-shadow: 0 5px 0 #dccbe9;
     }
     .submit-btn:active { transform: translateY(5px); box-shadow: none; }
     .submit-btn[disabled] { opacity: 0.5; box-shadow: none; transform: none; color: #565f6a; }
@@ -350,6 +442,27 @@
     /* ---- Grown-ups corner button: big target, quiet look ---- */
     #grownups-btn {
       top: calc(var(--safe-top) + 10px);
+      right: calc(var(--safe-right) + 10px);
+      width: 3.5rem;
+      height: 3.5rem;
+      border-radius: 9999px;
+      background: var(--plum);
+      color: var(--cream);
+      font-size: 1.35rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(90, 60, 120, 0.12);
+      -webkit-touch-callout: none;
+      touch-action: none;
+    }
+
+    /* ---- One-tap sound button: the same quiet circle as the grown-ups
+         gear, stacked directly beneath it (gear spans safe-top+10 to +66,
+         so +74 leaves an 8px gap). Stays clear of the count plate, which
+         parks top-left on short landscape screens. ---- */
+    #sound-btn {
+      top: calc(var(--safe-top) + 74px);
       right: calc(var(--safe-right) + 10px);
       width: 3.5rem;
       height: 3.5rem;
@@ -518,6 +631,36 @@
       font-size: 1.15rem;
     }
 
+    /* Round-complete facts box: the stats-card look holding the round line
+       and the Next up line together under the praise. Its first line is
+       the stronger one, so the round just counted leads the numbers. */
+    .round-complete-facts {
+      width: 100%;
+      border-radius: 1.5rem;
+      background: #fff;
+      box-shadow: 0 3px 0 #f0e2f7;
+      padding: 0.9rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .round-complete-facts .bedtime-message:first-child {
+      font-weight: 900;
+      color: var(--plum);
+      font-size: 1.15rem;
+    }
+
+    /* Recap lines: the round's own facts, large and readable, so a young
+       player can read them before tapping anywhere to move on. Same plum
+       as the round line, with tabular numerals so the seconds sit still. */
+    .recap-line {
+      margin: 0;
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: var(--plum);
+      font-variant-numeric: tabular-nums;
+    }
+
     /* ---- DOM fallback (no WebGL) ---- */
     .sheep-fallback-field {
       position: absolute;
@@ -589,6 +732,24 @@
     }
     .sheep-bow { opacity: 0; transform: scale(0); transform-origin: 60px 80px; transition: transform 0.35s cubic-bezier(.34,1.56,.64,1), opacity 0.2s; }
     .is-counted .sheep-bow { opacity: 1; transform: scale(1); }
+    /* A counted sheep pops like a piñata: the card empties out and holds a
+       little pile of confetti and candy. No body, no bow, no badge. The
+       pop itself is the Web Animations API on the SVG and the pieces; this
+       CSS is the state they settle into (and the reduced-motion endpoint). */
+    .sheep-card.is-popped {
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+      pointer-events: none;
+      animation: none;
+    }
+    .sheep-card.is-popped .sheep-svg { opacity: 0; }
+    .sheep-card.is-popped .sheep-card-badge { display: none; }
+    .sheep-card.is-popped .sheep-bow { opacity: 0; transform: scale(0); }
+    .sheep-confetti { position: absolute; left: 50%; top: 64%; width: 0; height: 0; pointer-events: none; }
+    .sheep-confetti .cf, .sheep-confetti .cd { position: absolute; left: 0; top: 0; }
+    .sheep-confetti .cf { width: 9px; height: 5px; border-radius: 1px; }
+    .sheep-confetti .cd { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.08); }
     /* Calm mode: a gentle recolor of the fleece SVG instead of a new
        drawing. The sheep keeps its shape, its eyes and its badge; only
        the wash gets softer. */
@@ -753,12 +914,12 @@
       white-space: nowrap;
     }
 
-    /* Short landscape screens (a phone on its side): tuck the plate into
-       the top-left corner and shrink it so the flock keeps the height. */
+    /* Short landscape screens (a phone on its side): the corner column is
+       already top-left, so only the plate shrinks a little more so the
+       flock keeps the height. */
     @media (orientation: landscape) and (max-height: 520px) {
-      #count-badge { justify-content: flex-start; padding-left: calc(var(--safe-left) + 12px); padding-top: calc(var(--safe-top) + 10px); }
+      #count-badge { padding-top: calc(var(--safe-top) + 10px); }
       .count-plate { min-width: 6.5rem; padding: 0.4rem 1.1rem 0.5rem; border-radius: 1.5rem; }
-      .count-plate::before, .count-plate::after { display: none; }
       #count-display { font-size: 3.2rem; }
       #count-word { font-size: 0.85rem; }
       .sheep-fallback-grid { padding-top: calc(var(--safe-top) + 24px); padding-left: calc(var(--safe-left) + 140px); }
@@ -776,6 +937,13 @@
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--plum-soft);
+    }
+    /* The Get ready card's eyebrow, though: sentence case at the body
+       size, so the briefing opens in the same voice as its body lines. */
+    #round-intro .bedtime-eyebrow {
+      font-size: 1.05rem;
+      letter-spacing: normal;
+      text-transform: none;
     }
     .bedtime-message {
       margin: 0;
@@ -824,15 +992,17 @@
     <!-- The 3D pasture (or the card fallback) fills the screen. -->
     <div id="scene-root" class="absolute inset-0"></div>
 
-    <!-- Round and running tap count, on screen at all times. -->
-    <div id="count-badge" class="pointer-events-none absolute top-0 inset-x-0 flex flex-col items-center gap-2">
-      <div id="round-badge" class="round-pill">Round 1</div>
+    <!-- Round and running tap count, on screen at all times. The column hugs
+         the top-left corner so the flock owns the middle of the screen. -->
+    <div id="count-badge" class="pointer-events-none absolute top-0 left-0 flex flex-col items-start gap-2">
+      <div id="round-badge" class="round-pill round-tag">Round 1 of 9</div>
       <div id="speed-timer" class="round-pill speed-timer" hidden aria-live="off">30</div>
       <div id="duel-turn-clock" class="round-pill duel-timer" hidden aria-live="off">45</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
         <span id="count-display">0</span>
         <span id="count-word">of 1 sheep</span>
       </div>
+      <div id="count-dots" class="count-dots" aria-hidden="true"></div>
     </div>
 
     <!-- On the public invite page only: a read-only card naming the game
@@ -854,6 +1024,15 @@
     <button id="grownups-btn" type="button" class="absolute"
       aria-label="Grown-ups: press and hold to open settings">
       &#9881;
+    </button>
+
+    <!-- One-tap mute beside the grown-ups gear: deliberately NOT behind the
+         press-and-hold, since muting is child-safe and reversible. The
+         glyph mirrors the sound setting; app.js keeps it in lockstep with
+         the Grown-ups panel's Sound effects switch. -->
+    <button id="sound-btn" type="button" class="absolute"
+      aria-pressed="true" aria-label="Sound effects: on. Tap to turn off">
+      &#128266;
     </button>
 
     <!-- Hidden accessible mirror of every sheep, for keyboard/screen-reader use. -->
@@ -885,14 +1064,22 @@
       </div>
     </div>
 
-    <!-- Round passed: the success state. Praise first, then the round just
-         counted and a preview of the next, bigger flock. -->
-    <div id="round-complete" hidden role="status" class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
+    <!-- Round passed: the success state. Praise first, then the recap card's
+         facts (what was counted, how long it took, the best time for the
+         round), then a preview of the next, bigger flock. The polite live
+         region announces the whole card when it opens. -->
+    <div id="round-complete" hidden role="status" aria-live="polite" class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
+        <div class="confetti-strip w-full" aria-hidden="true"></div>
         <p class="celebration-sheep" aria-hidden="true"><span>&#128017;</span><span>&#128017;</span><span>&#128017;</span></p>
         <p id="success-title" class="celebration-title">Great job! You found all the sheep.</p>
-        <p id="round-complete-title" class="bedtime-message">Round 1 counted.</p>
-        <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
+        <div class="round-complete-facts">
+          <p id="round-complete-title" class="bedtime-message">Round 1 counted.</p>
+          <p id="recap-sheep" class="recap-line" hidden>You counted 1 sheep.</p>
+          <p id="recap-time" class="recap-line" hidden>That took 10 seconds.</p>
+          <p id="recap-best" class="recap-line" hidden>Best time for round 1: 10 seconds.</p>
+          <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
+        </div>
         <button id="next-round-btn" type="button" class="big-btn">
           Next round
         </button>
@@ -902,7 +1089,7 @@
     <!-- Run over: how far the player got, and a way back to round 1. -->
     <div id="game-over" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
-        <p class="bedtime-eyebrow">The flock scattered</p>
+        <p id="game-over-eyebrow" class="bedtime-eyebrow">The flock scattered</p>
         <p id="game-over-reason" class="bedtime-message">Some sheep were left uncounted.</p>
         <p id="game-over-streak" class="bedtime-message" hidden>You dodged some wolf rounds in a row.</p>
         <p class="celebration-title">You reached round <span id="game-over-round" class="celebration-total">1</span>.</p>
@@ -942,7 +1129,7 @@
         <p class="celebration-title">Tap every sheep.</p>
         <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
         <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
-        <p id="round-intro-rule" class="bedtime-message">Count each sheep once, then tap Done counting. Tapping the same sheep twice ends the run.</p>
+        <p id="round-intro-rule" class="bedtime-message">Tap each sheep once to pop it, then tap Done counting. Saying done too early ends the run.</p>
         <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Counting it ends the run.</p>
         <div class="intro-chip-row">
         <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
@@ -987,8 +1174,12 @@
         </label>
 
         <label class="setting-row">
-          <span>Night Meadow</span>
-          <input id="night-toggle" type="checkbox">
+          <span>Background</span>
+          <select id="scenery-select">
+            <option value="meadow">Pastel Meadow</option>
+            <option value="night">Night Meadow</option>
+            <option value="moon">Moon</option>
+          </select>
         </label>
 
         <label class="setting-row">
@@ -999,6 +1190,14 @@
         <label class="setting-row">
           <span>Name labels</span>
           <input id="names-toggle" type="checkbox">
+        </label>
+
+        <!-- Big Tap: bigger tap targets, a slower flock and lighter pop
+             bursts, for small or less accurate fingers. The label names
+             its state (app.js writes "Big Tap: on" / "Big Tap: off"). -->
+        <label class="setting-row">
+          <span id="bigtap-label">Big Tap</span>
+          <input id="bigtap-toggle" type="checkbox">
         </label>
 
         <div class="stats-card">
@@ -1164,7 +1363,7 @@
       .panel-card { gap: 0.7rem; }
       .panel-card.p-7 { padding: 1.35rem; }
       .panel-card.p-6 { padding: 1.35rem; }
-      .difficulty-pill { min-height: 2.4rem; padding: 0 1rem; font-size: 1rem; }
+      .difficulty-pill { min-height: 2.75rem; padding: 0 1rem; font-size: 1rem; }
       .celebration-title { font-size: 1.6rem; }
     }
 
@@ -1179,6 +1378,24 @@
       .sheep-fallback-grid[data-size="4"] { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
       .sheep-fallback-grid { padding-top: calc(var(--safe-top) + 178px); }
     }
+
+    /* Big Tap: the card is the tap target in this renderer, so the whole
+       card grows by 40% (the 3D scene grows its invisible pick sphere
+       instead). Same columns, only scaled; placed after the compact
+       small-screen overrides above so Big Tap always wins. */
+    .sheep-fallback-grid[data-bigtap] {
+      grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
+      gap: 22px 17px;
+    }
+    .sheep-fallback-grid[data-bigtap][data-size="1"],
+    .sheep-fallback-grid[data-bigtap][data-size="2"] {
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    }
+    .sheep-fallback-grid[data-bigtap][data-size="3"],
+    .sheep-fallback-grid[data-bigtap][data-size="4"] {
+      grid-template-columns: repeat(2, minmax(168px, 240px));
+    }
+    .sheep-fallback-grid[data-bigtap] .sheep-card { max-width: 252px; }
   </style>
   <!-- Boot watchdog (#44). Classic script, no dependencies: it must work
        when the bridge, the stylesheet or app.js itself never arrives.

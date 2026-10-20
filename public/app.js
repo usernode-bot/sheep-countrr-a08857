@@ -5,6 +5,7 @@ import {
   ROUND_PASSED,
   RUN_OVER,
   ENDED_DOUBLE_TAP,
+  ENDED_COMPLETE,
   ENDED_WOLF,
   ENDED_TIME_UP,
 } from './state.js';
@@ -16,8 +17,13 @@ import {
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
+  normalizeScenery,
   normalizeSpeedRound,
   paceLine,
+  playHintText,
+  recapBestLine,
+  recapSheepLine,
+  recapTimeLine,
   roundCompleteTitle,
   roundIntroText,
   roundSeed,
@@ -25,6 +31,7 @@ import {
   sheepPhrase,
   speedRoundClock,
   successMessage,
+  TOTAL_ROUNDS,
   WOLF_BONUS,
   wolfCueText,
   wolfDisguiseTier,
@@ -32,9 +39,9 @@ import {
   roundBadgeText,
   weeklyScoreLabel,
 } from './rounds.js';
-import { playTapChime, playBaa, playCelebration, setSoundEnabled } from './sound.js';
+import { playTapChime, playBaa, playBaaBaaa, playCelebration, setSoundEnabled } from './sound.js';
 import { sortScoreRows } from './leaderboard.js';
-import { sheepName } from './layout.js';
+import { NUMBER_COLORS, sheepName } from './layout.js';
 import { bestRoundsCsv, weeklyHistoryCsv } from './export.js';
 
 // Pass-and-play Duel: shared controller state, exported for the unit suite.
@@ -88,13 +95,31 @@ const soundParam = params.get('sound');
 // The grown-ups fixture can force the Night Meadow toggle the same way
 // (?night=1 shows the night scene without touching localStorage).
 const nightParam = params.get('night');
+// Deep-link knob for the Background picker (?scenery=moon): it names the
+// scenery for the run it opens and, like night, is never persisted from a
+// deep link. ?night=1 keeps working as shorthand for scenery=night.
+const sceneryParam = params.get('scenery');
+const fixtureScenery = normalizeScenery(sceneryParam, nightParam === '1');
 // ?calm=1 boots straight into Calm mode for the fixture/deep-link run;
 // like night and sound it is never persisted from a deep link.
 const calmParam = params.get('calm');
+// The autoplay harness for the recap deep links (?round=N&autoplay=...):
+// '1' plays one round and stops at the recap card; 'tap' and 'button'
+// then dismiss it the two ways a player can. It rides the existing
+// ?round= auth exemption, and its store is ephemeral, so a check run
+// never writes localStorage or the server.
+const autoplayParam = params.get('autoplay');
 // The grown-ups fixture can force the Name labels toggle the same way
 // (?names=1 floats playful name labels without touching localStorage).
 const hasNamesParam = params.get('names') !== null;
 const namesParam = params.get('names') === '1';
+// The Big Tap fixture/deep-link knob (?bigtap=1): bigger hit targets, a
+// slower flock and lighter pop bursts for the run it opens. Like the
+// other knobs it is applied to the store and never persisted from a
+// deep link; the frozen ?scene=grownups fixture uses it to show the
+// toggle in each state.
+const hasBigTapParam = params.get('bigtap') !== null;
+const bigtapParam = params.get('bigtap') === '1';
 // Optional landing tab for the leaderboard fixture (?scene=leaderboard&tab=weekly).
 const tabParam = params.get('tab');
 // The two public share surfaces. Their URLs are plain paths, so detection is
@@ -133,23 +158,18 @@ const RESUME_USER_ID = 'resume-demo';
 
 const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// How long the success message sits before the next round starts. Long
-// enough for the praise line to be read; the Next round button skips it.
-const ADVANCE_DELAY_MS = 2600;
-// A beat after the last sheep is tapped, so the tap reads before the round
-// settles itself.
-const AUTO_SUBMIT_MS = 650;
 // One second per countdown number, per the brief.
 const COUNTDOWN_STEP_MS = 1000;
 
 // Recolors the sky and ground only. The DOM class carries the CSS side
 // (page sky gradient and the DOM fallback's field), and the renderer gets
-// the same flag so the WebGL ground, hills and fog follow. Nothing else on
-// the page changes color.
+// the same pick so the WebGL ground, hills, fog and scenery props follow.
+// Nothing else on the page changes color.
 function applyTheme(state) {
-  document.body.classList.toggle('theme-night', !!state.nightOn);
+  document.body.classList.toggle('theme-night', state.scenery === 'night');
+  document.body.classList.toggle('theme-moon', state.scenery === 'moon');
   document.body.classList.toggle('theme-calm', !!state.calmOn);
-  renderer?.setNight?.(!!state.nightOn);
+  renderer?.setScenery?.(state.scenery);
   renderer?.setCalm?.(!!state.calmOn);
 }
 
@@ -162,6 +182,7 @@ function applyNames(state) {
 const els = {
   countDisplay: document.getElementById('count-display'),
   countWord: document.getElementById('count-word'),
+  countDots: document.getElementById('count-dots'),
   roundBadge: document.getElementById('round-badge'),
   sceneRoot: document.getElementById('scene-root'),
   actionBar: document.getElementById('action-bar'),
@@ -197,9 +218,13 @@ const els = {
   roundComplete: document.getElementById('round-complete'),
   successTitle: document.getElementById('success-title'),
   roundCompleteTitle: document.getElementById('round-complete-title'),
+  recapSheep: document.getElementById('recap-sheep'),
+  recapTime: document.getElementById('recap-time'),
+  recapBest: document.getElementById('recap-best'),
   roundCompleteNext: document.getElementById('round-complete-next'),
   nextRoundBtn: document.getElementById('next-round-btn'),
   gameOver: document.getElementById('game-over'),
+  gameOverEyebrow: document.getElementById('game-over-eyebrow'),
   gameOverReason: document.getElementById('game-over-reason'),
   gameOverStreak: document.getElementById('game-over-streak'),
   gameOverRound: document.getElementById('game-over-round'),
@@ -208,9 +233,12 @@ const els = {
   grownupsPanel: document.getElementById('grownups-panel'),
   grownupsClose: document.getElementById('grownups-close'),
   soundToggle: document.getElementById('sound-toggle'),
-  nightToggle: document.getElementById('night-toggle'),
+  soundBtn: document.getElementById('sound-btn'),
+  scenerySelect: document.getElementById('scenery-select'),
   calmToggle: document.getElementById('calm-toggle'),
   namesToggle: document.getElementById('names-toggle'),
+  bigtapToggle: document.getElementById('bigtap-toggle'),
+  bigtapLabel: document.getElementById('bigtap-label'),
   startOverBtn: document.getElementById('start-over-btn'),
   roundValue: document.getElementById('round-value'),
   bestValue: document.getElementById('best-value'),
@@ -279,7 +307,9 @@ function supportsWebGL() {
 let store = new StateStore({
   userId: resumeParam ? RESUME_USER_ID : userIdFromToken(token),
   token,
-  ephemeral: deepLink,
+  // The autoplay harness plays real taps, so its store must be as
+  // side-effect-free as a fixture's: nothing written anywhere.
+  ephemeral: deepLink || autoplayParam !== null,
   deterministic: deepLink,
   onChange: (state) => updateChrome(state),
 });
@@ -320,8 +350,6 @@ document.querySelectorAll('.panel-backdrop').forEach((el) => {
   backdropObserver.observe(el, { attributes: true, attributeFilter: ['hidden'] });
 });
 
-let advanceTimer = null;
-let autoSubmitTimer = null;
 // True while the pre-round briefing covers the board, so no tap or
 // submit can register before the player taps Start counting.
 let introOpen = false;
@@ -346,7 +374,14 @@ function buildStaticState() {
     secondsLeft: hasSpeedParam && speedParam ? SPEED_ROUND_SECONDS : null,
     sheepCount: sheepForRound(round, difficultyParam),
     seed: roundSeed(round),
+    // The Big Tap knob rides the fixture/deep link the same way (?bigtap=1),
+    // applied to the ephemeral fixture state and never persisted.
+    bigTap: bigtapParam,
     bestRounds: { ...base.bestRounds, [difficultyParam]: Math.max(round, base.bestRounds[difficultyParam]) },
+    // Frozen fixtures never touch storage, so the scenery comes from the
+    // deep link (?scenery=moon, or the legacy ?night=1) and nowhere else.
+    scenery: fixtureScenery,
+    nightOn: fixtureScenery === 'night',
     ...extra,
   });
   if (sceneParam === 'flock') return at(9);
@@ -393,7 +428,23 @@ function buildStaticState() {
   }
   if (sceneParam === 'roundcomplete') {
     const n = sheepForRound(4, difficultyParam);
-    return at(4, { count: n, counted: [...Array(n).keys()], phase: ROUND_PASSED });
+    return at(4, {
+      count: n,
+      counted: [...Array(n).keys()],
+      phase: ROUND_PASSED,
+      // The recap card's frozen facts, hardcoded like every other fixture:
+      // the whole flock counted in 41 seconds, against a 34 second best.
+      recap: { round: 4, counted: n, seconds: 41, bestSeconds: 34, newBest: false },
+      bestTimes: { [difficultyParam]: { 4: 34 } },
+    });
+  }
+  if (sceneParam === 'allcounted') {
+    // A fully counted flock that is still waiting for the Done tap: the
+    // round no longer closes itself when the last sheep is tapped, so the
+    // play screen holds the board (and the count plate) with no success
+    // card. No wolf: every animal in this fixture is a real sheep.
+    const n = sheepForRound(5, difficultyParam);
+    return at(5, { count: n, counted: [...Array(n).keys()] });
   }
   if (sceneParam === 'gameover') {
     return at(6, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
@@ -416,6 +467,12 @@ function buildStaticState() {
     // with the mode still named on the round badge behind the card.
     return at(4, { count: 3, counted: [0, 1, 2], phase: RUN_OVER, speedOn: true, secondsLeft: 0, endedBy: ENDED_TIME_UP });
   }
+  if (sceneParam === 'moon') {
+    // The Moon scenery, frozen mid-count: grey ground, lavender-blue sky,
+    // and the flock unchanged underneath it. Hardcoded only, like every
+    // other fixture here.
+    return at(5, { count: 3, counted: [0, 1, 2], scenery: 'moon', nightOn: false });
+  }
   if (sceneParam === 'grownups') {
     return at(5, {
       bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2 },
@@ -424,7 +481,6 @@ function buildStaticState() {
       bestSafeStreak: 4,
       bonusCounted: 3 * WOLF_BONUS,
       soundOn: soundParam === null || soundParam === '1',
-      nightOn: nightParam === '1',
       calmOn: calmParam === '1',
     });
   }
@@ -524,6 +580,15 @@ async function boot() {
     if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
     if (hasSpeedParam) store.state = { ...store.state, speedOn: speedParam };
     if (calmParam !== null) store.state = { ...store.state, calmOn: normalizeCalm(calmParam === '1') };
+    if (hasBigTapParam) store.state = { ...store.state, bigTap: bigtapParam };
+    // &sound=0/1 pins the sound button's icon for the capture run; like the
+    // other knobs it is applied to the ephemeral store and never persisted.
+    if (soundParam !== null) store.state = { ...store.state, soundOn: soundParam === '1' };
+    // The Background pick rides the deep link for this run only; the
+    // ephemeral store never writes it back to storage.
+    if (sceneryParam !== null || nightParam !== null) {
+      store.state = { ...store.state, scenery: fixtureScenery, nightOn: fixtureScenery === 'night' };
+    }
     if (hasDuelParam && duelParam) {
       store.state = { ...store.state, duel: true };
     }
@@ -645,6 +710,9 @@ async function boot() {
     store.flushPendingSave();
     if (!resumeParam) store.flush();
   });
+
+  // The recap checks' driver: play the round the deep link opened.
+  runAutoplay();
 }
 
 function bootInviteFixture() {
@@ -702,7 +770,9 @@ async function bootShareView() {
     phase: RUN_OVER,
     speedOn: normalizeSpeedRound(data.speedRound),
     secondsLeft: normalizeSpeedRound(data.speedRound) ? SPEED_ROUND_SECONDS : null,
-    endedBy: [ENDED_DOUBLE_TAP, ENDED_WOLF, ENDED_TIME_UP].includes(data.endedBy) ? data.endedBy : null,
+    endedBy: [ENDED_DOUBLE_TAP, ENDED_WOLF, ENDED_TIME_UP, ENDED_COMPLETE].includes(data.endedBy)
+      ? data.endedBy
+      : null,
     count: 0,
     counted: [],
   };
@@ -719,7 +789,9 @@ async function bootShareView() {
       ? 'The clock ran out.'
       : data.endedBy === ENDED_WOLF
         ? 'The wolf tricked you.'
-        : 'Some sheep were left uncounted.';
+        : data.endedBy === ENDED_COMPLETE
+          ? `You finished all ${TOTAL_ROUNDS} rounds.`
+          : 'Some sheep were left uncounted.';
   els.gameOver.hidden = false;
   els.sharedBy.textContent = `Counted by ${data.username}.`;
   els.sharedBy.hidden = false;
@@ -757,12 +829,10 @@ async function mountScene() {
       container: els.sceneRoot,
       reducedMotion,
       onTap: handleTap,
-      // The number plate covers the top of the screen and the Done button
-      // the bottom; the camera frames the flock in the space between.
-      getOverlayRect: () => {
-        const plate = document.querySelector('.count-plate');
-        return plate ? plate.getBoundingClientRect() : null;
-      },
+      // The whole corner column (round tag, timers, plate, dots) covers the
+      // top-left of the screen and the Done button the bottom; the camera
+      // frames the flock in the space between.
+      getOverlayRect: () => (els.countBadge ? els.countBadge.getBoundingClientRect() : null),
       getBottomOverlayRect: () => (els.actionBar ? els.actionBar.getBoundingClientRect() : null),
       onFatal: async () => {
         renderer?.destroy?.();
@@ -804,6 +874,10 @@ function handleTap(index) {
   if (introOpen) return;
   // Same for the countdown overlay: nothing counts until the round starts.
   if (countdownOpen) return;
+  // A popped sheep is gone: its spot cannot be tapped, so a child can
+  // never end a run by tapping empty grass. This covers the 3D scene,
+  // the card view and the screen-reader list in one place.
+  if (store.state.counted.includes(index)) return;
   // Purely visual: a soft ripple where the sheep was tapped, before any
   // counting state changes. Skipped under prefers-reduced-motion, and on
   // Calm, whose feedback stays as quiet as the bedtime original.
@@ -818,20 +892,27 @@ function handleTap(index) {
   }
   const result = store.tapSheep(index);
   if (store.state.duel && store.state.phase !== COUNTING) stopDuelClock();
+  // Every tap on a sheep's body baas, counted or not. The wolf is not a
+  // sheep, and an ignored tap touched nothing, so neither baas. A counted
+  // tap gets the two-note baa-baaa, so the sheep calls out while it puffs
+  // up before it bursts; wiggles and double taps keep the short baa.
+  const sheepTapped = result.outcome === 'counted'
+    || result.outcome === 'doubleTap' || result.outcome === 'wiggle';
+  if (sheepTapped && store.state.soundOn) {
+    if (result.outcome === 'counted') playBaaBaaa();
+    else playBaa();
+  }
   if (result.outcome === 'counted') {
     renderer.countSheep(index, result.number);
     if (store.state.soundOn) {
-      playBaa();
       playTapChime(result.number);
     }
+    // The flock is fully counted: hold the Speed Round clock here while
+    // the player decides to tap Done counting, so a complete count can
+    // never be lost to the clock. The round itself no longer closes on
+    // the last tap; the success message only comes from Done counting.
+    if (store.isComplete()) stopSpeedClock();
     renderA11yList(store.state);
-    if (store.isComplete()) {
-      // Auto-complete: every sheep is marked, so the round closes itself.
-      clearTimeout(autoSubmitTimer);
-      autoSubmitTimer = setTimeout(() => {
-        if (store.state.phase === COUNTING && store.isComplete()) store.submitCount();
-      }, AUTO_SUBMIT_MS);
-    }
     return;
   }
   if (result.outcome === 'doubleTap' || result.outcome === 'wiggle') {
@@ -850,7 +931,6 @@ function handleTap(index) {
 function submitCount() {
   if (introOpen) return;
   if (countdownOpen) return;
-  clearTimeout(autoSubmitTimer);
   const result = store.submitCount();
   // Calm never ends a run on a short count: the sheep still awake give a
   // sleepy wiggle so the player can see who is left, and counting goes on.
@@ -859,6 +939,41 @@ function submitCount() {
     return;
   }
   if (store.state.duel && store.state.phase !== COUNTING) stopDuelClock();
+}
+
+// ---- Autoplay harness (the recap deep links) ----
+// ?round=N&autoplay=... plays one real round through the app's own
+// handlers, so the dapp.json checks (which can only load a page, never
+// interact with it) can reach the recap card and its two dismissal paths:
+//   '1'      play the round and stop at the recap card
+//   'tap'    then dismiss it with a pointerdown anywhere on the card
+//   'button' then dismiss it with the real Next round button
+// The store is ephemeral for these runs, so nothing is written anywhere,
+// and the round's wolf (if it drew one) is left uncounted, exactly as a
+// careful player would.
+function runAutoplay() {
+  if (!autoplayParam || staticMode) return;
+  setTimeout(() => {
+    // Round 1 opens behind the briefing: starting it is step one.
+    if (introOpen) els.startCountingBtn.click();
+    if (introOpen) return;
+    const wolf = store.state.wolfIndex;
+    for (let i = 0; i < store.state.sheepCount; i++) {
+      if (i !== wolf) handleTap(i);
+    }
+    submitCount();
+    if (autoplayParam === '1' || store.state.phase !== ROUND_PASSED) return;
+    // Let the card land before dismissing it, so the checks see one
+    // change at a time.
+    setTimeout(() => {
+      if (store.state.phase !== ROUND_PASSED) return;
+      if (autoplayParam === 'tap') {
+        els.roundComplete.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      } else if (autoplayParam === 'button') {
+        els.nextRoundBtn.click();
+      }
+    }, 400);
+  }, 400);
 }
 
 // ---- Pass-and-play Duel ----
@@ -1265,7 +1380,10 @@ function startSpeedClock() {
   updateChrome(store.state);
   renderA11yList(store.state);
   speedClockTimer = setInterval(() => {
-    if (store.state.phase !== COUNTING || !store.state.speedOn) {
+    // A fully counted flock stops the clock the same way a passed or lost
+    // round does: the player still owes the Done tap, and a complete
+    // count must never be lost to the countdown while they make it.
+    if (store.state.phase !== COUNTING || !store.state.speedOn || store.isComplete()) {
       clearInterval(speedClockTimer);
       return;
     }
@@ -1287,7 +1405,6 @@ function stopSpeedClock() {
 }
 
 function advanceRound() {
-  clearTimeout(advanceTimer);
   stopSpeedClock();
   clearCountdown();
   if (store.state.phase !== ROUND_PASSED) return;
@@ -1303,8 +1420,6 @@ function advanceRound() {
 }
 
 function restartRun() {
-  clearTimeout(advanceTimer);
-  clearTimeout(autoSubmitTimer);
   stopSpeedClock();
   stopDuelClock();
   duelState = null;
@@ -1329,20 +1444,70 @@ function restartRun() {
 function hintFor(state) {
   if (state.phase === ROUND_PASSED) return 'Nicely counted.';
   if (state.phase === RUN_OVER) return 'Tap Start again for round 1.';
-  if (state.count === 0) return state.sheepCount === 1 ? 'Tap the sheep.' : 'Tap every sheep.';
-  const wolves = state.wolfIndex != null ? 1 : 0;
-  if (state.count >= state.sheepCount - wolves) return 'That is all of them.';
-  return 'Tap every sheep, then tap Done counting.';
+  return playHintText(state.count, realSheepCount(state), state.sheepCount);
+}
+
+// One small dot per real sheep, under the counter. Dot i fills in the
+// pastel colour of tap number i+1's confetti (NUMBER_COLORS), so the dot
+// that just popped matches the burst the player just caused. The wolf
+// never gets a dot, matching the "of N sheep" total.
+function renderCountDots(state, animate) {
+  const total = Math.max(0, realSheepCount(state));
+  const dots = els.countDots;
+  if (dots.childElementCount !== total) {
+    dots.replaceChildren();
+    for (let i = 0; i < total; i++) {
+      const dot = document.createElement('span');
+      dot.className = 'count-dot';
+      dots.appendChild(dot);
+    }
+  }
+  const filled = Math.min(total, Math.max(0, state.count));
+  for (let i = 0; i < total; i++) {
+    const dot = dots.children[i];
+    const on = i < filled;
+    dot.classList.toggle('is-filled', on);
+    if (on) dot.style.setProperty('--dot', NUMBER_COLORS[i % NUMBER_COLORS.length]);
+  }
+  if (animate && filled > 0) {
+    const newest = dots.children[filled - 1];
+    newest.classList.remove('dot-pop');
+    // Restart the animation even when two taps land back to back.
+    void newest.offsetWidth;
+    newest.classList.add('dot-pop');
+  }
 }
 
 let lastShownCount = null;
 let lastPhase = null;
+
+// The corner mute button mirrors the sound setting: speaker when on,
+// crossed-out speaker when off, with an aria-pressed and a spoken name
+// that match. Kept beside the Grown-ups panel's Sound effects switch,
+// which reads the same bit, so the two can never disagree.
+function syncSoundButton(state) {
+  if (!els.soundBtn) return;
+  const on = !!state.soundOn;
+  els.soundBtn.textContent = on ? '\u{1F50A}' : '\u{1F507}';
+  els.soundBtn.setAttribute('aria-pressed', String(on));
+  els.soundBtn.setAttribute('aria-label', on
+    ? 'Sound effects: on. Tap to turn off'
+    : 'Sound effects: off. Tap to turn on');
+}
+
+// Big Tap's toggle label names its state, so a grown-up skimming the
+// panel reads the mode without interpreting the checkbox.
+function syncBigTapLabel(on) {
+  if (els.bigtapLabel) els.bigtapLabel.textContent = on ? 'Big Tap: on' : 'Big Tap: off';
+}
+
 function updateChrome(state) {
   // Keep the audio module's enabled flag in lockstep with the toggle, so
   // every sound path (chime, baa, celebration) reads one source of truth.
   setSoundEnabled(!!state.soundOn);
 
-  if (lastShownCount !== null && state.count > lastShownCount) {
+  const countedUp = lastShownCount !== null && state.count > lastShownCount;
+  if (countedUp) {
     const plate = els.countDisplay.parentElement;
     plate.classList.remove('count-pop');
     // Restart the animation even when two taps land back to back.
@@ -1362,8 +1527,12 @@ function updateChrome(state) {
   // The total is the real sheep only. A round's wolf is not one to count:
   // counting "of N" with the wolf in N led a child straight to tapping it.
   els.countWord.textContent = `of ${sheepPhrase(realSheepCount(state))}`;
+  renderCountDots(state, countedUp);
   els.playHint.textContent = hintFor(state);
   els.submitBtn.disabled = state.phase !== COUNTING;
+  // The quiet Done counting: a soft light button until counting starts,
+  // then the usual dark one. It is never disabled during counting.
+  els.submitBtn.classList.toggle('is-quiet', state.phase === COUNTING && state.count === 0);
 
   els.roundValue.textContent = String(state.round);
   els.bestValue.textContent = String(store.bestRound);
@@ -1373,9 +1542,12 @@ function updateChrome(state) {
   els.communityValue.textContent = String(state.communityTotal);
   setExportStatus('');
   els.soundToggle.checked = !!state.soundOn;
-  els.nightToggle.checked = !!state.nightOn;
+  syncSoundButton(state);
+  els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
   els.namesToggle.checked = !!state.namesOn;
+  els.bigtapToggle.checked = !!state.bigTap;
+  syncBigTapLabel(!!state.bigTap);
   applyTheme(state);
   applyNames(state);
 
@@ -1403,11 +1575,28 @@ function syncPanels(state) {
     els.roundCompleteTitle.textContent = roundCompleteTitle(state.round, state.speedOn);
     els.roundCompleteNext.textContent =
       `Next up: ${sheepPhrase(sheepForRound(state.round + 1, state.difficulty))}. ${paceLine(state.round + 1, state.difficulty)}`;
+    // The recap lines: what was counted, how long it took, and the best
+    // time for the round. A state without a recap (older fixtures, duel
+    // turns) hides them rather than showing a stale one.
+    const recap = state.recap || null;
+    els.recapSheep.hidden = !recap;
+    els.recapTime.hidden = !recap;
+    els.recapBest.hidden = !recap;
+    if (recap) {
+      els.recapSheep.textContent = recapSheepLine(recap.counted);
+      els.recapTime.textContent = recapTimeLine(recap.seconds);
+      els.recapBest.textContent = recapBestLine(recap.round, recap.bestSeconds, recap.newBest);
+    }
   }
   if (over) {
     els.gameOverRound.textContent = String(state.round);
+    // A completed ladder is not a scatter: the eyebrow names the finish.
+    els.gameOverEyebrow.textContent = state.endedBy === ENDED_COMPLETE
+      ? 'Every round counted'
+      : 'The flock scattered';
     els.gameOverReason.textContent =
-      state.endedBy === ENDED_WOLF ? 'The wolf tricked you.'
+      state.endedBy === ENDED_COMPLETE ? `You finished all ${TOTAL_ROUNDS} rounds.`
+      : state.endedBy === ENDED_WOLF ? 'The wolf tricked you.'
       : state.endedBy === ENDED_DOUBLE_TAP ? 'You counted the same sheep twice.'
       : state.endedBy === ENDED_TIME_UP ? 'The clock ran out.'
       : `You said done with ${state.count} of ${sheepPhrase(realSheepCount(state))} counted.`;
@@ -1425,12 +1614,14 @@ function syncPanels(state) {
 
   if (state.phase === lastPhase) return;
   lastPhase = state.phase;
-  clearTimeout(advanceTimer);
   if (passed) {
     renderer?.celebrate?.();
     if (!isCalmLevel(state.difficulty)) playCelebration();
-    // Frozen fixtures stay put so a screenshot catches the message.
-    if (!staticMode) advanceTimer = setTimeout(advanceRound, ADVANCE_DELAY_MS);
+    // The card waits for the player now: the Next round button, a tap
+    // anywhere on the card, or Enter or Space. Put the button in focus so
+    // keyboard players land on the action, while the polite live region
+    // announces the recap around it.
+    if (!staticMode) els.nextRoundBtn.focus({ preventScroll: true });
   }
 }
 
@@ -1457,8 +1648,10 @@ function renderA11yList(state) {
   buttons.forEach((btn, i) => {
     // The briefing card or the countdown is open: no tap can land, so the
     // mirror says so instead of offering a button that would silently do
-    // nothing.
-    btn.disabled = introOpen || countdownOpen;
+    // nothing. The recap card covers the board the same way while the
+    // round is passed. And a sheep that already popped is gone from the
+    // screen, so its button is disabled, not tappable.
+    btn.disabled = introOpen || countdownOpen || state.phase === ROUND_PASSED || state.counted.includes(i);
     // With Name labels on, the mirror uses the same playful name the two
     // renderers draw, so a screen reader calls the sheep what the player
     // sees: "Woolly is grazing" / "Woolly, counted as number 3".
@@ -1533,6 +1726,23 @@ document.addEventListener('visibilitychange', () => {
 els.nextRoundBtn.addEventListener('click', advanceRound);
 els.restartBtn.addEventListener('click', restartRun);
 
+// The recap card dismisses on a tap anywhere on it (the backdrop covers
+// the whole screen), or on Enter or Space, so a child mashing the screen
+// moves on without hunting for the button. The Next round button's own
+// click lands afterwards on an already-counting round and does nothing,
+// so a tap on the button is never counted twice. Frozen fixtures hold
+// still for their screenshots.
+els.roundComplete.addEventListener('pointerdown', () => {
+  if (!staticMode && store.state.phase === ROUND_PASSED) advanceRound();
+});
+els.roundComplete.addEventListener('keydown', (e) => {
+  if (!staticMode && store.state.phase === ROUND_PASSED
+    && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    advanceRound();
+  }
+});
+
 // Grown-ups gate: only opens after a ~1.5s press-and-hold, so mashing the
 // screen never lands a child in it.
 let holdTimer = null;
@@ -1559,8 +1769,12 @@ function openGrownups(state) {
   els.bonusValue.textContent = String(state.bonusCounted || 0);
   els.communityValue.textContent = String(state.communityTotal);
   els.soundToggle.checked = !!state.soundOn;
-  els.nightToggle.checked = !!state.nightOn;
+  syncSoundButton(state);
+  els.scenerySelect.value = state.scenery;
   els.calmToggle.checked = !!state.calmOn;
+  els.namesToggle.checked = !!state.namesOn;
+  els.bigtapToggle.checked = !!state.bigTap;
+  syncBigTapLabel(!!state.bigTap);
   els.grownupsPanel.hidden = false;
 }
 function closeGrownups() {
@@ -1573,9 +1787,17 @@ els.soundToggle.addEventListener('change', (e) => {
   store.setSoundOn(e.target.checked);
 });
 
-els.nightToggle.addEventListener('change', (e) => {
+// The corner button is the one-tap version of the same setting. It plays
+// nothing itself: the next counted sheep (or flock landing) is the first
+// sound, so the AudioContext still opens inside a real tap handler.
+els.soundBtn.addEventListener('click', () => {
   if (staticMode) return;
-  store.setNightOn(e.target.checked);
+  store.setSoundOn(!store.state.soundOn);
+});
+
+els.scenerySelect.addEventListener('change', (e) => {
+  if (staticMode) return;
+  store.setScenery(e.target.value);
 });
 
 els.calmToggle.addEventListener('change', (e) => {
@@ -1589,6 +1811,13 @@ els.namesToggle.addEventListener('change', (e) => {
   // The mirror lives outside updateChrome's renderer path, so it needs
   // its own render to switch between "Sheep 3" and "Woolly is grazing".
   renderA11yList(store.state);
+});
+
+els.bigtapToggle.addEventListener('change', (e) => {
+  if (staticMode) return;
+  // Big Tap applies from the next flock build (the next round): the store
+  // holds it, the renderers read it when the round is built.
+  store.setBigTapOn(e.target.checked);
 });
 
 // ---- Grown-ups CSV export ----

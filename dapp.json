@@ -1,6 +1,9 @@
 {
   "name": "Sheep countrr",
-  "icon": { "image": "brand/icon.png", "emoji": "🐑" },
+  "icon": {
+    "image": "brand/icon.png",
+    "emoji": "🐑"
+  },
   "secrets": [],
   "tests": [
     {
@@ -132,6 +135,20 @@
       "expectText": "Round 5"
     },
     {
+      "name": "Mid-count fills the first three progress dots and counts down",
+      "id": "count.dots",
+      "path": "/?scene=midcount",
+      "expectSelector": "#count-dots .count-dot.is-filled:nth-child(3)",
+      "expectText": "4 left!",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Speed Round intro offers the Speed Round toggle",
       "id": "speed.intro",
       "visual": true,
@@ -212,10 +229,35 @@
       "expectText": "Done counting"
     },
     {
+      "name": "Done counting starts quiet before the first sheep",
+      "id": "done.quiet",
+      "path": "/?round=1",
+      "expectSelector": "#submit-count.is-quiet",
+      "expectText": "Done counting",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Round complete message names the next flock",
       "path": "/?scene=roundcomplete",
       "expectSelector": "#round-complete-title",
       "expectText": "Round 4 counted."
+    },
+    {
+      "name": "Round complete holds the round lines in one facts box",
+      "id": "roundcomplete.facts",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete .round-complete-facts #round-complete-title",
+      "expectText": "Round 4 counted.",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
     },
     {
       "name": "Round complete shows the success message",
@@ -228,6 +270,72 @@
         "public/**",
         "dapp.json"
       ]
+    },
+    {
+      "name": "A fully counted flock waits for Done counting",
+      "path": "/?scene=allcounted",
+      "expectSelector": "#round-complete[hidden]",
+      "expectText": "Tap Done counting"
+    },
+    {
+      "name": "The recap card appears after a completed round",
+      "id": "recap.appears",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete:not([hidden]) #recap-sheep",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "The recap card shows the sheep counted in the round",
+      "path": "/?scene=roundcomplete",
+      "expectText": "You counted 5 sheep."
+    },
+    {
+      "name": "The recap card shows the time the round took",
+      "path": "/?scene=roundcomplete",
+      "expectText": "That took 41 seconds."
+    },
+    {
+      "name": "The recap card names the round it recaps",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete-title",
+      "expectText": "Round 4 counted."
+    },
+    {
+      "name": "The recap card shows the best time for that round",
+      "path": "/?scene=roundcomplete",
+      "expectText": "Best time for round 4: 34 seconds."
+    },
+    {
+      "name": "Next round starts the next round from the recap card",
+      "path": "/?round=1&autoplay=button&renderer=dom",
+      "expectText": "Round 2 of 9"
+    },
+    {
+      "name": "Tapping anywhere dismisses the recap card",
+      "path": "/?round=1&autoplay=tap&renderer=dom",
+      "expectText": "Round 2 of 9"
+    },
+    {
+      "name": "No recap card after the final round, just the completion",
+      "path": "/?round=9&autoplay=1&renderer=dom",
+      "expectText": "You finished all 9 rounds."
+    },
+    {
+      "name": "The recap lines render large and readable",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete .recap-line"
+    },
+    {
+      "name": "The recap card is announced politely to screen readers",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete[aria-live='polite']"
     },
     {
       "name": "Game over shows the round reached and a restart",
@@ -310,6 +418,18 @@
       "expectText": "Sound effects"
     },
     {
+      "id": "sound.mute.corner",
+      "name": "The corner mute button mirrors the sound setting",
+      "path": "/?round=1&sound=0",
+      "expectSelector": "#sound-btn[aria-pressed='false']",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
       "id": "grownups.export",
       "name": "Grown-ups panel offers the CSV export",
       "path": "/?scene=grownups",
@@ -324,10 +444,10 @@
       ]
     },
     {
-      "name": "Night Meadow toggle appears in the grown-ups panel",
+      "name": "Background picker appears in the grown-ups panel",
       "path": "/?scene=grownups",
-      "expectSelector": "#night-toggle",
-      "expectText": "Night Meadow",
+      "expectSelector": "#scenery-select",
+      "expectText": "Background",
       "allowConsoleErrors": true
     },
     {
@@ -386,6 +506,27 @@
       "allowConsoleErrors": true
     },
     {
+      "id": "theme.moon",
+      "name": "Moon background recolors sky and ground",
+      "path": "/?scene=moon",
+      "expectSelector": "body.theme-moon #round-badge",
+      "expectText": "Round 5",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/scene.js",
+        "public/state.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Moon background shows on the DOM fallback too",
+      "path": "/?round=5&renderer=dom&scenery=moon",
+      "expectSelector": "body.theme-moon .sheep-fallback-grid .sheep-card:nth-child(7)",
+      "expectText": "of 7 sheep"
+    },
+    {
       "name": "Grown-ups panel shows the Name labels toggle",
       "path": "/?scene=grownups",
       "expectSelector": "#names-toggle",
@@ -428,6 +569,79 @@
       "path": "/?round=8&renderer=dom",
       "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(11)",
       "expectText": "Round 8"
+    },
+    {
+      "id": "bigtap.toggle",
+      "name": "Big Tap toggle appears in the grown-ups panel, off by default",
+      "path": "/?scene=grownups",
+      "expectSelector": "#bigtap-toggle:not(:checked)",
+      "expectText": "Big Tap: off",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Big Tap label names its on state",
+      "path": "/?scene=grownups&bigtap=1",
+      "expectSelector": "#bigtap-toggle:checked",
+      "expectText": "Big Tap: on"
+    },
+    {
+      "id": "bigtap.board",
+      "name": "Big Tap grows the fallback card tap targets by 40%",
+      "path": "/?round=5&bigtap=1&renderer=dom&wolf=0",
+      "expectSelector": ".sheep-fallback-grid[data-bigtap] .sheep-card:nth-child(7)",
+      "expectText": "of 7 sheep",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/fallback.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Big Tap slows the flock's drift",
+      "path": "/?round=5&bigtap=1&renderer=dom",
+      "expectSelector": ".sheep-fallback-field[data-bigtap-slow='1']"
+    },
+    {
+      "name": "A plain flock drifts at its normal pace",
+      "path": "/?round=5&renderer=dom",
+      "expectSelector": ".sheep-fallback-field[data-bigtap-slow='0']"
+    },
+    {
+      "name": "Big Tap halves the pop burst's confetti",
+      "path": "/?scene=midcount&bigtap=1&renderer=dom",
+      "expectSelector": ".sheep-confetti[data-reduced='1']"
+    },
+    {
+      "name": "A plain pop burst keeps its full confetti",
+      "path": "/?scene=midcount&renderer=dom",
+      "expectSelector": ".sheep-confetti[data-reduced='0']"
+    },
+    {
+      "name": "Big Tap applies from the next round after the toggle",
+      "path": "/?round=1&bigtap=1&autoplay=button&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid[data-bigtap]",
+      "expectText": "Round 2 of 9"
+    },
+    {
+      "name": "Big Tap works on Expert too",
+      "path": "/?round=5&bigtap=1&renderer=dom&difficulty=expert",
+      "expectSelector": ".sheep-fallback-field[data-bigtap-slow='1']"
+    },
+    {
+      "name": "Calm keeps its own pace even with Big Tap on",
+      "path": "/?round=5&bigtap=1&calm=1&renderer=dom",
+      "expectSelector": ".sheep-fallback-field[data-bigtap-slow='0']",
+      "expectText": "of 7 sheep"
     },
     {
       "id": "difficulty.expert",
@@ -512,10 +726,10 @@
       "expectText": "Round 5 of 12"
     },
     {
-      "name": "Calm rule line replaces the run-ending warning",
+      "name": "Calm rule line names the pop instead of the run-ending warning",
       "path": "/?round=1&difficulty=calm",
       "expectSelector": "#round-intro-rule",
-      "expectText": "sleepy wiggle"
+      "expectText": "pop it"
     },
     {
       "name": "Calm keeps the round 9 flock small",
