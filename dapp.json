@@ -13,10 +13,10 @@
     },
     {
       "id": "round.one",
-      "name": "Round 1 shows one still sheep",
+      "name": "Level 1 shows one still sheep",
       "path": "/?round=1",
       "expectSelector": "#a11y-sheep-list button:nth-child(1)",
-      "expectText": "Round 1",
+      "expectText": "Level 1",
       "visual": true,
       "impact": [
         "public/**",
@@ -29,7 +29,7 @@
       "name": "App finishes booting and clears the boot card",
       "path": "/?round=1",
       "expectSelector": "html[data-booted] #round-badge",
-      "expectText": "Round 1",
+      "expectText": "Level 1",
       "impact": [
         "public/index.html",
         "public/app.js",
@@ -37,56 +37,23 @@
       ]
     },
     {
-      "name": "Round 1 explains the objective before counting",
-      "id": "round.intro",
+      "id": "round.open",
+      "name": "The app opens straight onto the meadow with no Get ready card",
       "visual": true,
       "path": "/?round=1",
-      "expectSelector": "#round-intro",
-      "expectText": "Tap every sheep",
+      "expectSelector": "body:not(:has(#round-intro)) #play-hint",
+      "expectText": "Tap the sheep to start",
       "impact": [
         "public/**",
         "dapp.json"
       ]
-    },
-    {
-      "name": "Round intro shows the Best Round chip",
-      "id": "round.intro-best",
-      "visual": true,
-      "path": "/?scene=intro",
-      "expectSelector": "#best-round-chip:not([hidden])",
-      "expectText": "Best round",
-      "impact": [
-        "public/**",
-        "dapp.json"
-      ]
-    },
-    {
-      "name": "Round intro shows the day streak flame",
-      "id": "round.intro-streak",
-      "visual": true,
-      "path": "/?scene=intro",
-      "expectSelector": "#streak-chip:not([hidden])",
-      "expectText": "Day streak",
-      "impact": [
-        "public/index.html",
-        "public/app.js",
-        "public/state.js",
-        "public/rounds.js",
-        "dapp.json"
-      ]
-    },
-    {
-      "name": "Streak flame reaches the DOM fallback and its a11y card DOM",
-      "path": "/?scene=intro&renderer=dom",
-      "expectSelector": "#streak-chip:not([hidden])",
-      "expectText": "Day streak"
     },
     {
       "id": "round.chaotic",
-      "name": "Round 8 board renders a jittery flock",
-      "path": "/?round=8",
+      "name": "Level 10 board renders a jittery flock of eleven",
+      "path": "/?round=29",
       "expectSelector": "#a11y-sheep-list button:nth-child(11)",
-      "expectText": "Round 8",
+      "expectText": "Level 10",
       "visual": true,
       "impact": [
         "public/rounds.js",
@@ -103,12 +70,12 @@
       "expectText": "of 1 sheep"
     },
     {
-      "name": "Round badge shows the ladder length",
+      "name": "Corner tag names the level",
       "id": "round.progress",
       "visual": true,
       "path": "/?round=5",
       "expectSelector": "#round-badge",
-      "expectText": "Round 5 of 9",
+      "expectText": "Level 2",
       "impact": [
         "public/index.html",
         "public/app.js",
@@ -117,22 +84,22 @@
       ]
     },
     {
-      "name": "Round ladder is mirrored in the accessibility layer",
+      "name": "Level and round are mirrored in the accessibility layer",
       "path": "/?round=5&renderer=dom",
       "expectSelector": "#a11y-round-progress",
-      "expectText": "Round 5 of 9"
+      "expectText": "Level 2, round 2 of 3"
     },
     {
       "name": "Round 5 counts in with no sheep tapped",
       "path": "/?round=5",
       "expectSelector": "#count-display",
-      "expectText": "of 7 sheep"
+      "expectText": "of 3 sheep"
     },
     {
       "name": "Mid-count keeps the running tap count on screen",
       "path": "/?scene=midcount",
       "expectSelector": "#count-display",
-      "expectText": "Round 5"
+      "expectText": "Level 6"
     },
     {
       "name": "Mid-count fills the first three progress dots and counts down",
@@ -149,199 +116,110 @@
       ]
     },
     {
-      "name": "Speed Round intro offers the Speed Round toggle",
-      "id": "speed.intro",
-      "visual": true,
-      "path": "/?scene=intro",
-      "expectSelector": "#speed-toggle",
-      "expectText": "Speed Round",
-      "impact": [
-        "public/index.html",
-        "public/app.js",
-        "public/state.js",
-        "public/rounds.js",
-        "dapp.json"
-      ]
-    },
-    {
-      "name": "Speed Round board shows the countdown and the same flock",
-      "id": "speed.board",
-      "visual": true,
-      "path": "/?scene=speed",
+      "id": "clock.board",
+      "name": "A level 3 round shows its clock",
+      "path": "/?round=7",
       "expectSelector": "#speed-timer:not([hidden])",
-      "expectText": "30",
       "impact": [
-        "public/index.html",
-        "public/app.js",
-        "public/state.js",
         "public/rounds.js",
-        "public/fallback.js",
-        "public/scene.js",
-        "dapp.json"
-      ]
-    },
-    {
-      "name": "Speed Round countdown is accessible in the a11y list",
-      "path": "/?scene=speed&renderer=dom",
-      "expectSelector": "#a11y-speed-clock",
-      "expectText": "Speed Round, 30 seconds left"
-    },
-    {
-      "name": "Countdown mirrors into the accessible sheep list",
-      "path": "/?scene=countdown&renderer=dom",
-      "expectSelector": "#a11y-countdown-status",
-      "expectText": "Get ready, round starting."
-    },
-    {
-      "id": "round.countdown",
-      "name": "Countdown overlay waits before the round starts",
-      "path": "/?scene=countdown",
-      "expectSelector": "#countdown-overlay:not([hidden]) #countdown-skip-btn",
-      "expectText": "3",
-      "visual": true,
-      "impact": [
-        "public/index.html",
+        "public/state.js",
         "public/app.js",
+        "public/index.html",
         "dapp.json"
       ]
     },
     {
-      "name": "Speed Round play screen keeps the same count plate",
-      "path": "/?round=2&speed=1",
-      "expectSelector": "#count-display",
-      "expectText": "of 2 sheep"
+      "name": "The round clock is mirrored in the accessible sheep list",
+      "path": "/?round=7&renderer=dom",
+      "expectSelector": "#a11y-speed-clock",
+      "expectText": "seconds left"
     },
     {
-      "name": "Speed Round game over names the clock",
-      "path": "/?scene=speedgameover",
+      "name": "Levels 1 and 2 have no clock",
+      "path": "/?round=4",
+      "expectSelector": "#speed-timer[hidden]"
+    },
+    {
+      "name": "Running out of clock ends the run with its own line",
+      "path": "/?scene=timeupgameover",
       "expectSelector": "#game-over-reason",
       "expectText": "The clock ran out."
     },
     {
-      "name": "Round complete shows the Next round action",
-      "path": "/?scene=roundcomplete",
-      "expectSelector": "#next-round-btn",
-      "expectText": "Next round"
+      "name": "Solo play has no Done counting button",
+      "id": "done.solo-hidden",
+      "path": "/?round=1",
+      "expectSelector": "#submit-count[hidden]"
     },
     {
-      "name": "Done counting action is on the play screen",
-      "path": "/?round=1",
+      "name": "A duel turn keeps its Done counting hand-in",
+      "path": "/?round=1&duel=1",
+      "expectSelector": "#submit-count:not([hidden])",
       "expectText": "Done counting"
     },
     {
-      "name": "Done counting starts quiet before the first sheep",
-      "id": "done.quiet",
-      "path": "/?round=1",
-      "expectSelector": "#submit-count.is-quiet",
-      "expectText": "Done counting",
-      "impact": [
-        "public/index.html",
-        "public/app.js",
-        "dapp.json"
-      ]
-    },
-    {
-      "name": "Round complete message names the next flock",
-      "path": "/?scene=roundcomplete",
-      "expectSelector": "#round-complete-title",
-      "expectText": "Round 4 counted."
-    },
-    {
-      "name": "Round complete holds the round lines in one facts box",
-      "id": "roundcomplete.facts",
-      "path": "/?scene=roundcomplete",
-      "expectSelector": "#round-complete .round-complete-facts #round-complete-title",
-      "expectText": "Round 4 counted.",
+      "id": "flow.pass",
+      "name": "A counted round shows the short count in the meadow, not a card",
       "visual": true,
-      "impact": [
-        "public/index.html",
-        "public/app.js",
-        "dapp.json"
-      ]
-    },
-    {
-      "name": "Round complete shows the success message",
-      "id": "round.success",
-      "visual": true,
-      "path": "/?scene=roundcomplete",
-      "expectSelector": "#success-title",
-      "expectText": "You found all the sheep.",
+      "path": "/?scene=roundpass",
+      "expectSelector": "#flow-banner:not([hidden]) #flow-banner-line",
+      "expectText": "You counted 4 sheep.",
       "impact": [
         "public/**",
         "dapp.json"
       ]
     },
     {
-      "name": "A fully counted flock waits for Done counting",
-      "path": "/?scene=allcounted",
-      "expectSelector": "#round-complete[hidden]",
-      "expectText": "Tap Done counting"
+      "name": "A plain round pass has no level-up title",
+      "path": "/?scene=roundpass",
+      "expectSelector": "#flow-banner #flow-banner-title[hidden]"
     },
     {
-      "name": "The recap card appears after a completed round",
-      "id": "recap.appears",
-      "path": "/?scene=roundcomplete",
-      "expectSelector": "#round-complete:not([hidden]) #recap-sheep",
+      "id": "flow.levelup",
+      "name": "Every third round plays the level-up moment",
       "visual": true,
+      "path": "/?scene=levelup",
+      "expectSelector": "#flow-banner:not([hidden]) #flow-banner-title:not([hidden])",
+      "expectText": "Level 3!",
       "impact": [
-        "public/index.html",
-        "public/app.js",
-        "public/state.js",
-        "public/rounds.js",
+        "public/**",
         "dapp.json"
       ]
     },
     {
-      "name": "The recap card shows the sheep counted in the round",
-      "path": "/?scene=roundcomplete",
-      "expectText": "You counted 5 sheep."
+      "name": "The pass banner is announced politely and never blocks a tap",
+      "path": "/?scene=levelup",
+      "expectSelector": "#flow-banner.pointer-events-none[aria-live='polite']"
     },
     {
-      "name": "The recap card shows the time the round took",
-      "path": "/?scene=roundcomplete",
-      "expectText": "That took 41 seconds."
+      "name": "Counting the last sheep shows the short count on a real run",
+      "path": "/?round=1&autoplay=1&renderer=dom",
+      "expectSelector": "#flow-banner:not([hidden]) #flow-banner-line",
+      "expectText": "You counted 1 sheep."
     },
     {
-      "name": "The recap card names the round it recaps",
-      "path": "/?scene=roundcomplete",
-      "expectSelector": "#round-complete-title",
-      "expectText": "Round 4 counted."
+      "name": "The next flock walks in by itself after a round",
+      "path": "/?round=1&autoplay=next&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(2)",
+      "expectText": "Level 1"
     },
     {
-      "name": "The recap card shows the best time for that round",
-      "path": "/?scene=roundcomplete",
-      "expectText": "Best time for round 4: 34 seconds."
-    },
-    {
-      "name": "Next round starts the next round from the recap card",
-      "path": "/?round=1&autoplay=button&renderer=dom",
-      "expectText": "Round 2 of 9"
-    },
-    {
-      "name": "Tapping anywhere dismisses the recap card",
-      "path": "/?round=1&autoplay=tap&renderer=dom",
-      "expectText": "Round 2 of 9"
-    },
-    {
-      "name": "No recap card after the final round, just the completion",
+      "name": "Passing a level's last round plays the level-up on a real run",
       "path": "/?round=9&autoplay=1&renderer=dom",
-      "expectText": "You finished all 9 rounds."
+      "expectSelector": "#flow-banner-title:not([hidden])",
+      "expectText": "Level 4!"
     },
     {
-      "name": "The recap lines render large and readable",
-      "path": "/?scene=roundcomplete",
-      "expectSelector": "#round-complete .recap-line"
+      "name": "There is no last round: round 9 leads into level 4",
+      "path": "/?round=9&autoplay=next&renderer=dom",
+      "expectSelector": "#round-badge",
+      "expectText": "Level 4"
     },
     {
-      "name": "The recap card is announced politely to screen readers",
-      "path": "/?scene=roundcomplete",
-      "expectSelector": "#round-complete[aria-live='polite']"
-    },
-    {
-      "name": "Game over shows the round reached and a restart",
+      "name": "Game over shows the level reached and a restart",
       "path": "/?scene=gameover",
       "expectSelector": "#restart-btn",
-      "expectText": "You reached round"
+      "expectText": "You reached level"
     },
     {
       "name": "Game over offers Share result",
@@ -349,11 +227,71 @@
       "expectText": "Share result"
     },
     {
+      "id": "gameover.best",
+      "name": "Game over shows the Best level chip",
+      "visual": true,
+      "path": "/?scene=gameover",
+      "expectSelector": "#best-round-chip:not([hidden])",
+      "expectText": "Best level",
+      "impact": [
+        "public/**",
+        "dapp.json"
+      ]
+    },
+    {
+      "id": "gameover.streak",
+      "name": "Game over shows the day streak flame",
+      "path": "/?scene=gameover",
+      "expectSelector": "#streak-chip:not([hidden])",
+      "expectText": "Day streak",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/state.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Streak flame reaches the DOM fallback game over",
+      "path": "/?scene=gameover&renderer=dom",
+      "expectSelector": "#streak-chip:not([hidden])",
+      "expectText": "Day streak"
+    },
+    {
+      "id": "gameover.levels",
+      "name": "Game over offers Start at level shortcuts up to the best level",
+      "path": "/?scene=gameover",
+      "expectSelector": "#start-level-picker .difficulty-pill[data-level='4']",
+      "expectText": "Start at level",
+      "impact": [
+        "public/**",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Start at level stops at the best level reached",
+      "path": "/?scene=gameover",
+      "expectSelector": "#start-level-picker:not(:has([data-level='7'])) .difficulty-pill[data-level='1']"
+    },
+    {
+      "name": "Game over offers Calm",
+      "path": "/?scene=gameover",
+      "expectSelector": "#start-level-picker .difficulty-pill[data-calm]",
+      "expectText": "Calm"
+    },
+    {
+      "name": "Game over offers Pass-and-play Duel",
+      "path": "/?scene=gameover",
+      "expectSelector": "#duel-start-btn",
+      "expectText": "Pass-and-play Duel"
+    },
+    {
       "id": "share.view",
       "name": "Shared result link shows the shared round read-only",
       "path": "/?scene=sharegameover",
       "expectSelector": "#shared-by",
-      "expectText": "You reached round 8",
+      "expectText": "You reached level 3",
       "visual": true,
       "impact": [
         "public/app.js",
@@ -361,6 +299,11 @@
         "server.js",
         "dapp.json"
       ]
+    },
+    {
+      "name": "A shared result shows no next-run choices",
+      "path": "/?scene=sharegameover",
+      "expectSelector": "#game-over-options[hidden]"
     },
     {
       "name": "This week tab marks Speed Round runs",
@@ -468,7 +411,7 @@
       "name": "Calm mode softens the board and keeps the same flock",
       "id": "calm.board",
       "visual": true,
-      "path": "/?round=5&renderer=dom&calm=1",
+      "path": "/?round=17&renderer=dom&calm=1&wolf=0",
       "expectSelector": "body.theme-calm .sheep-fallback-grid .sheep-card:nth-child(7)",
       "expectText": "of 7 sheep",
       "impact": [
@@ -485,7 +428,7 @@
     },
     {
       "name": "Calm mode a11y list keeps the same sheep slots",
-      "path": "/?round=5&renderer=dom&calm=1",
+      "path": "/?round=17&renderer=dom&calm=1&wolf=0",
       "expectSelector": "#a11y-sheep-list button:nth-child(7)",
       "expectText": "Sheep 7"
     },
@@ -510,7 +453,7 @@
       "name": "Moon background recolors sky and ground",
       "path": "/?scene=moon",
       "expectSelector": "body.theme-moon #round-badge",
-      "expectText": "Round 5",
+      "expectText": "Level 6",
       "visual": true,
       "impact": [
         "public/index.html",
@@ -522,7 +465,7 @@
     },
     {
       "name": "Moon background shows on the DOM fallback too",
-      "path": "/?round=5&renderer=dom&scenery=moon",
+      "path": "/?round=17&renderer=dom&scenery=moon&wolf=0",
       "expectSelector": "body.theme-moon .sheep-fallback-grid .sheep-card:nth-child(7)",
       "expectText": "of 7 sheep"
     },
@@ -566,9 +509,9 @@
     },
     {
       "name": "No-WebGL fallback renders the same round",
-      "path": "/?round=8&renderer=dom",
+      "path": "/?round=29&renderer=dom",
       "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(11)",
-      "expectText": "Round 8"
+      "expectText": "Level 10"
     },
     {
       "id": "bigtap.toggle",
@@ -594,7 +537,7 @@
     {
       "id": "bigtap.board",
       "name": "Big Tap grows the fallback card tap targets by 40%",
-      "path": "/?round=5&bigtap=1&renderer=dom&wolf=0",
+      "path": "/?round=17&bigtap=1&renderer=dom&wolf=0",
       "expectSelector": ".sheep-fallback-grid[data-bigtap] .sheep-card:nth-child(7)",
       "expectText": "of 7 sheep",
       "visual": true,
@@ -628,108 +571,26 @@
     },
     {
       "name": "Big Tap applies from the next round after the toggle",
-      "path": "/?round=1&bigtap=1&autoplay=button&renderer=dom",
-      "expectSelector": ".sheep-fallback-grid[data-bigtap]",
-      "expectText": "Round 2 of 9"
+      "path": "/?round=1&bigtap=1&autoplay=next&renderer=dom",
+      "expectSelector": ".sheep-fallback-grid[data-bigtap] .sheep-card:nth-child(2)",
+      "expectText": "Level 1"
     },
     {
-      "name": "Big Tap works on Expert too",
-      "path": "/?round=5&bigtap=1&renderer=dom&difficulty=expert",
+      "name": "Big Tap works at the higher levels too",
+      "path": "/?round=22&bigtap=1&renderer=dom",
       "expectSelector": ".sheep-fallback-field[data-bigtap-slow='1']"
     },
     {
       "name": "Calm keeps its own pace even with Big Tap on",
-      "path": "/?round=5&bigtap=1&calm=1&renderer=dom",
+      "path": "/?round=17&bigtap=1&calm=1&renderer=dom&wolf=0",
       "expectSelector": ".sheep-fallback-field[data-bigtap-slow='0']",
       "expectText": "of 7 sheep"
     },
     {
-      "id": "difficulty.expert",
-      "name": "Expert difficulty marks Expert on the briefing card",
-      "path": "/?round=1&difficulty=expert",
-      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=expert][aria-checked=true]",
-      "visual": true,
-      "impact": [
-        "public/rounds.js",
-        "public/state.js",
-        "public/app.js",
-        "public/index.html",
-        "dapp.json"
-      ]
-    },
-    {
-      "id": "difficulty.calm",
-      "name": "Calm is the first level on the briefing card and promises the sleepy wiggle",
-      "path": "/?round=1&difficulty=calm",
-      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=calm][aria-checked=true]",
-      "visual": true,
-      "impact": [
-        "public/rounds.js",
-        "public/state.js",
-        "public/app.js",
-        "public/index.html",
-        "dapp.json"
-      ]
-    },
-    {
-      "id": "difficulty.insane",
-      "name": "Insane difficulty marks Insane on the briefing card",
-      "path": "/?round=1&difficulty=insane",
-      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=insane][aria-checked=true]",
-      "visual": true,
-      "impact": [
-        "public/rounds.js",
-        "public/state.js",
-        "public/app.js",
-        "public/index.html",
-        "dapp.json"
-      ]
-    },
-    {
-      "id": "difficulty.chaos",
-      "name": "Chaos difficulty marks Chaos on the briefing card",
-      "path": "/?round=1&difficulty=chaos",
-      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=chaos][aria-checked=true]",
-      "visual": true,
-      "impact": [
-        "public/rounds.js",
-        "public/state.js",
-        "public/app.js",
-        "public/index.html",
-        "dapp.json"
-      ]
-    },
-    {
-      "id": "difficulty.legend",
-      "name": "Legend difficulty marks Legend on the briefing card",
-      "path": "/?round=1&difficulty=legend",
-      "expectSelector": "#difficulty-picker .difficulty-pill[data-difficulty=legend][aria-checked=true]",
-      "visual": true,
-      "impact": [
-        "public/rounds.js",
-        "public/state.js",
-        "public/app.js",
-        "public/index.html",
-        "dapp.json"
-      ]
-    },
-    {
-      "name": "Legend fills the round 10 flock and the longer ladder",
+      "name": "A link to a retired level plays the ladder",
       "path": "/?round=10&difficulty=legend",
       "expectSelector": "#count-display",
-      "expectText": "of 12 sheep"
-    },
-    {
-      "name": "Legend badge names the longer 12-round ladder",
-      "path": "/?round=5&difficulty=legend",
-      "expectSelector": "#round-badge",
-      "expectText": "Round 5 of 12"
-    },
-    {
-      "name": "Calm rule line names the pop instead of the run-ending warning",
-      "path": "/?round=1&difficulty=calm",
-      "expectSelector": "#round-intro-rule",
-      "expectText": "pop it"
+      "expectText": "of 4 sheep"
     },
     {
       "name": "Calm keeps the round 9 flock small",
@@ -741,14 +602,14 @@
       "name": "Largest flock still fits the board",
       "path": "/?scene=flock",
       "expectSelector": "#a11y-sheep-list button:nth-child(12)",
-      "expectText": "Round 9"
+      "expectText": "Level 11"
     },
     {
       "id": "wolf.round",
       "name": "The wolf round renders a five-sheep flock with the wolf hiding",
       "path": "/?scene=wolfround",
       "expectSelector": "#a11y-sheep-list button:nth-child(5)",
-      "expectText": "Round 5",
+      "expectText": "Level 5",
       "visual": true,
       "impact": [
         "public/rounds.js",
@@ -758,12 +619,6 @@
         "public/app.js",
         "dapp.json"
       ]
-    },
-    {
-      "name": "Easy difficulty shrinks the round 5 flock",
-      "path": "/?round=5&difficulty=easy",
-      "expectSelector": "#count-display",
-      "expectText": "of 5 sheep"
     },
     {
       "id": "leaderboard.tabs",
@@ -822,7 +677,7 @@
       "id": "wolf.fallback",
       "path": "/?scene=wolfround&renderer=dom",
       "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(5)",
-      "expectText": "Round 5"
+      "expectText": "Level 5"
     },
     {
       "name": "Grown-ups panel shows the wolf record",
@@ -853,7 +708,7 @@
     {
       "id": "round.resume",
       "name": "A saved mid-round board restores on return",
-      "path": "/?resume=1&snapshot=%7B%22midCountdown%22%3A%7B%22round%22%3A5%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22phase%22%3A%22counting%22%7D%7D",
+      "path": "/?resume=1&snapshot=%7B%22midCountdown%22%3A%7B%22round%22%3A8%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22phase%22%3A%22counting%22%7D%7D",
       "expectSelector": "#a11y-sheep-list button:nth-child(3)",
       "expectText": "Sheep 3, counted",
       "visual": true,
@@ -873,19 +728,13 @@
       "expectText": "Pass and play"
     },
     {
-      "name": "Duel toggle appears on the briefing card",
-      "path": "/?scene=intro",
-      "expectSelector": "#duel-toggle",
-      "expectText": "Pass-and-play Duel"
-    },
-    {
       "name": "Duel board renders the DOM fallback with the shared flock",
       "path": "/?round=2&duel=1&renderer=dom",
       "expectSelector": ".sheep-fallback-grid .sheep-card:nth-child(2)"
     },
     {
       "name": "Resumed board restores on the no-WebGL fallback too",
-      "path": "/?resume=1&renderer=dom&snapshot=%7B%22midCountdown%22%3A%7B%22round%22%3A5%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22phase%22%3A%22counting%22%7D%7D",
+      "path": "/?resume=1&renderer=dom&snapshot=%7B%22midCountdown%22%3A%7B%22round%22%3A8%2C%22seed%22%3A387276923%2C%22counted%22%3A%5B0%2C1%2C2%5D%2C%22phase%22%3A%22counting%22%7D%7D",
       "expectSelector": ".sheep-fallback-grid .sheep-card.is-counted:nth-child(3)",
       "expectText": "Sheep 3, counted"
     }

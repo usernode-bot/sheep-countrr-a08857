@@ -345,7 +345,7 @@
       box-shadow: 0 6px 16px rgba(90, 60, 120, 0.16);
     }
     /* The corner round tag: the same pill shape, quieted down so the
-       counter plate carries the column. The Speed Round and Duel clocks
+       counter plate carries the column. The round clock and the Duel clock
        keep the full pill size on purpose: a child needs to see the time. */
     .round-pill.round-tag {
       padding: 0.15rem 0.7rem;
@@ -354,7 +354,7 @@
       box-shadow: 0 3px 8px rgba(90, 60, 120, 0.12);
     }
 
-    /* ---- Speed Round countdown pill: the round pill's shape, in the
+    /* ---- Round clock pill: the round pill's shape, in the
        celebratory yellow the Best Round chip already uses, so the clock
        reads as the mode's own status rather than a warning. ---- */
     .speed-timer {
@@ -368,7 +368,7 @@
     .speed-timer[hidden] { display: none; }
 
     /* ---- Pass-and-play Duel ---- */
-    /* The turn clock is the Speed Round pill's shape in mint,
+    /* The turn clock is the round clock pill's shape in mint,
        so the two modes never fight over the count plate. */
     .duel-timer {
       background: var(--mint);
@@ -392,7 +392,6 @@
     }
     .duel-score-name { color: var(--plum-soft); text-align: left; }
     .duel-score-value { font-weight: 900; color: var(--plum); font-variant-numeric: tabular-nums; }
-    .setting-row.speed-toggle-row { width: 100%; }
 
     /* ---- Bottom action bar ---- */
     #action-bar {
@@ -507,13 +506,6 @@
     @keyframes panel-pop {
       0% { transform: translateY(24px) scale(0.92); opacity: 0; }
       100% { transform: translateY(0) scale(1); opacity: 1; }
-    }
-    .confetti-strip {
-      height: 14px;
-      border-radius: 9999px;
-      background: repeating-linear-gradient(90deg,
-        #ff8fab 0 14px, #ffb347 14px 28px, #ffd93d 28px 42px, #7ed957 42px 56px,
-        #5cc8ff 56px 70px, #b28dff 70px 84px);
     }
     .celebration-sheep {
       font-size: 3.6rem;
@@ -631,34 +623,33 @@
       font-size: 1.15rem;
     }
 
-    /* Round-complete facts box: the stats-card look holding the round line
-       and the Next up line together under the praise. Its first line is
-       the stronger one, so the round just counted leads the numbers. */
-    .round-complete-facts {
-      width: 100%;
-      border-radius: 1.5rem;
-      background: #fff;
-      box-shadow: 0 3px 0 #f0e2f7;
-      padding: 0.9rem 1rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
+    /* The pass banner: the round tag's cream pill, pink border and shadow,
+       floated over the upper meadow below the corner column. The level-up
+       title borrows the celebration title's size so it reads as a moment;
+       a plain pass shows only the small counted line. */
+    #flow-banner { top: calc(var(--safe-top) + 190px); z-index: 5; }
+    .flow-banner-pill {
+      max-width: calc(100% - 2rem);
+      padding: 0.7rem 1.6rem;
+      border-radius: 2rem;
+      background: rgba(255, 250, 242, 0.94);
+      border: 3px solid var(--pink-soft);
+      box-shadow: 0 10px 24px rgba(90, 60, 120, 0.18);
+      text-align: center;
+      animation: panel-pop 0.45s cubic-bezier(.34,1.56,.64,1);
     }
-    .round-complete-facts .bedtime-message:first-child {
-      font-weight: 900;
-      color: var(--plum);
-      font-size: 1.15rem;
-    }
-
-    /* Recap lines: the round's own facts, large and readable, so a young
-       player can read them before tapping anywhere to move on. Same plum
-       as the round line, with tabular numerals so the seconds sit still. */
-    .recap-line {
+    .flow-banner-title {
       margin: 0;
-      font-size: 1.3rem;
+      font-size: 2.6rem;
+      line-height: 1.1;
       font-weight: 900;
       color: var(--plum);
-      font-variant-numeric: tabular-nums;
+    }
+    .flow-banner-line {
+      margin: 0.15rem 0 0;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--plum-soft);
     }
 
     /* ---- DOM fallback (no WebGL) ---- */
@@ -938,13 +929,6 @@
       text-transform: uppercase;
       color: var(--plum-soft);
     }
-    /* The Get ready card's eyebrow, though: sentence case at the body
-       size, so the briefing opens in the same voice as its body lines. */
-    #round-intro .bedtime-eyebrow {
-      font-size: 1.05rem;
-      letter-spacing: normal;
-      text-transform: none;
-    }
     .bedtime-message {
       margin: 0;
       font-size: 1.05rem;
@@ -952,20 +936,6 @@
       line-height: 1.35;
       color: var(--plum-soft);
     }
-    /* 3-2-1 countdown card: one quiet number at a time, sized like the
-       count plate's big digits so the eye is already warmed up. */
-    .countdown-card { cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
-    .countdown-number {
-      margin: 0.25rem 0;
-      font-size: 4.6rem;
-      line-height: 1;
-      font-weight: 900;
-      color: var(--plum);
-      font-variant-numeric: tabular-nums;
-      animation: countdown-rest 0.7s ease-in-out;
-    }
-    @keyframes countdown-rest { from { opacity: 0.25; } to { opacity: 1; } }
-    .countdown-card .soft-btn { pointer-events: auto; }
     .is-counted .sheep-eyes { animation: none; transform: scaleY(.14); }
     button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--plum); outline-offset: 2px; }
     #a11y-sheep-list:focus-within { clip: auto; width: auto; height: auto; inset: auto 12px 132px; white-space: normal; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background: var(--cream); border-radius: 16px; }
@@ -995,7 +965,7 @@
     <!-- Round and running tap count, on screen at all times. The column hugs
          the top-left corner so the flock owns the middle of the screen. -->
     <div id="count-badge" class="pointer-events-none absolute top-0 left-0 flex flex-col items-start gap-2">
-      <div id="round-badge" class="round-pill round-tag">Round 1 of 9</div>
+      <div id="round-badge" class="round-pill round-tag">Level 1</div>
       <div id="speed-timer" class="round-pill speed-timer" hidden aria-live="off">30</div>
       <div id="duel-turn-clock" class="round-pill duel-timer" hidden aria-live="off">45</div>
       <div class="count-plate pointer-events-auto flex flex-col items-center text-center" aria-live="polite">
@@ -1041,63 +1011,53 @@
          the round pill carries it). A static line, not an aria-live one:
          it says where the run is, not what just happened, so it must not
          interrupt the sheep taps the list announces. -->
-    <p id="a11y-round-progress" class="visually-hidden">Round 1 of 9.</p>
+    <p id="a11y-round-progress" class="visually-hidden">Level 1, round 1 of 3.</p>
 
-    <!-- Bottom action bar: the hint, and the button that ends the round. -->
+    <!-- Bottom action bar: the hint. A solo round passes on its last pop,
+         so Done counting only shows during a pass-and-play duel turn. -->
     <div id="action-bar" class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2">
-      <p id="play-hint">Tap every sheep.</p>
-      <button id="submit-count" type="button" class="submit-btn">
+      <p id="play-hint">Tap the sheep to start.</p>
+      <button id="submit-count" type="button" class="submit-btn" hidden>
         Done counting
       </button>
     </div>
 
-    <!-- 3-2-1 countdown: a large, quiet breath before a round starts, so
-         young players can ready their eyes. One tap anywhere (or on the
-         button) skips the rest. Plain DOM, so the card fallback shows it
-         exactly the same as the canvas path. -->
-    <div id="countdown-overlay" hidden class="panel-backdrop absolute inset-0 flex items-center justify-center">
-      <div class="panel-card countdown-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-3">
-        <p class="bedtime-eyebrow">Get ready</p>
-        <p id="countdown-number" class="countdown-number">3</p>
-        <p id="countdown-status" class="visually-hidden" role="status"></p>
-        <button id="countdown-skip-btn" type="button" class="soft-btn">Start now</button>
+    <!-- The pass banner: a moment in the meadow between rounds. It names
+         what was just counted and, every third round, the new level, then
+         the next flock walks in by itself. Taps go straight through it and
+         it never covers the flock, so it is deliberately not a panel. -->
+    <div id="flow-banner" hidden role="status" aria-live="polite" class="pointer-events-none absolute inset-x-0 flex justify-center">
+      <div class="flow-banner-pill">
+        <p id="flow-banner-title" class="flow-banner-title" hidden>Level 2!</p>
+        <p id="flow-banner-line" class="flow-banner-line">You counted 1 sheep.</p>
       </div>
     </div>
 
-    <!-- Round passed: the success state. Praise first, then the recap card's
-         facts (what was counted, how long it took, the best time for the
-         round), then a preview of the next, bigger flock. The polite live
-         region announces the whole card when it opens. -->
-    <div id="round-complete" hidden role="status" aria-live="polite" class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
-      <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
-        <div class="confetti-strip w-full" aria-hidden="true"></div>
-        <p class="celebration-sheep" aria-hidden="true"><span>&#128017;</span><span>&#128017;</span><span>&#128017;</span></p>
-        <p id="success-title" class="celebration-title">Great job! You found all the sheep.</p>
-        <div class="round-complete-facts">
-          <p id="round-complete-title" class="bedtime-message">Round 1 counted.</p>
-          <p id="recap-sheep" class="recap-line" hidden>You counted 1 sheep.</p>
-          <p id="recap-time" class="recap-line" hidden>That took 10 seconds.</p>
-          <p id="recap-best" class="recap-line" hidden>Best time for round 1: 10 seconds.</p>
-          <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
-        </div>
-        <button id="next-round-btn" type="button" class="big-btn">
-          Next round
-        </button>
-      </div>
-    </div>
-
-    <!-- Run over: how far the player got, and a way back to round 1. -->
+    <!-- Run over: how far the player got, and the one place to choose how
+         to play next. Start again is the one primary action; the level
+         shortcuts, Calm, Duel and Share sit under it in the soft styles. -->
     <div id="game-over" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
         <p id="game-over-eyebrow" class="bedtime-eyebrow">The flock scattered</p>
         <p id="game-over-reason" class="bedtime-message">Some sheep were left uncounted.</p>
         <p id="game-over-streak" class="bedtime-message" hidden>You dodged some wolf rounds in a row.</p>
-        <p class="celebration-title">You reached round <span id="game-over-round" class="celebration-total">1</span>.</p>
+        <p class="celebration-title">You reached level <span id="game-over-round" class="celebration-total">1</span>.</p>
+        <div id="game-over-chips" class="intro-chip-row">
+          <p id="best-round-chip" class="best-round-chip" aria-live="off" hidden><span class="chip-label">Best level</span> <span id="best-round-value" class="chip-value">1</span></p>
+          <p id="streak-chip" class="best-round-chip" aria-live="off" hidden><svg class="streak-flame" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 C 13 6, 17 8, 17 13 A 5 5.5 0 0 1 7 13 C 7 8, 11 6, 12 2 Z" fill="#ffb347"></path><path d="M12 8.6 C 12.8 10.8, 15 11.8, 15 14.6 A 3 3.4 0 0 1 9 14.6 C 9 11.8, 11.2 10.8, 12 8.6 Z" fill="#ff8fab"></path></svg><span class="chip-label">Day streak</span> <span id="streak-value" class="chip-value">1</span></p>
+        </div>
         <p id="shared-by" hidden class="bedtime-message"></p>
         <button id="restart-btn" type="button" class="big-btn">
           Start again
         </button>
-        <button id="share-btn" type="button" class="big-btn">
+        <div id="game-over-options" class="flex flex-col items-center gap-3 w-full">
+          <p id="start-level-label" class="bedtime-message">Start at level</p>
+          <div id="start-level-picker" role="radiogroup" aria-labelledby="start-level-label" class="flex flex-wrap justify-center gap-1.5"></div>
+          <button id="duel-start-btn" type="button" class="soft-btn">
+            Pass-and-play Duel
+          </button>
+        </div>
+        <button id="share-btn" type="button" class="soft-btn">
           Share result
         </button>
       </div>
@@ -1117,45 +1077,6 @@
         </button>
         <button id="duel-panel-exit" type="button" class="soft-btn" hidden>
           Back to my game
-        </button>
-      </div>
-    </div>
-
-    <!-- Get ready: the pre-round briefing, shown before the first round of a
-         run starts counting. Same card as the game-over panel. -->
-    <div id="round-intro" hidden class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
-      <div class="panel-card panel-pop w-full max-w-sm p-6 text-center flex flex-col items-center gap-3">
-        <p class="bedtime-eyebrow">Get ready</p>
-        <p class="celebration-title">Tap every sheep.</p>
-        <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
-        <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
-        <p id="round-intro-rule" class="bedtime-message">Tap each sheep once to pop it, then tap Done counting. Saying done too early ends the run.</p>
-        <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Counting it ends the run.</p>
-        <div class="intro-chip-row">
-        <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
-        <p id="streak-chip" class="best-round-chip" aria-live="off"><svg class="streak-flame" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 C 13 6, 17 8, 17 13 A 5 5.5 0 0 1 7 13 C 7 8, 11 6, 12 2 Z" fill="#ffb347"></path><path d="M12 8.6 C 12.8 10.8, 15 11.8, 15 14.6 A 3 3.4 0 0 1 9 14.6 C 9 11.8, 11.2 10.8, 12 8.6 Z" fill="#ff8fab"></path></svg><span class="chip-label">Day streak</span> <span id="streak-value" class="chip-value">1</span> <span id="streak-best" class="chip-label streak-best-label">Best 1</span></p>
-        </div>
-        <label id="speed-toggle-row" class="setting-row speed-toggle-row" for="speed-toggle">
-          <span>Speed Round</span>
-          <input id="speed-toggle" type="checkbox">
-        </label>
-        <label id="duel-toggle-row" class="setting-row speed-toggle-row" for="duel-toggle">
-          <span>Pass-and-play Duel</span>
-          <input id="duel-toggle" type="checkbox">
-        </label>
-
-        <div id="difficulty-picker" role="radiogroup" aria-label="Difficulty" class="flex flex-wrap justify-center gap-1.5">
-          <button type="button" class="difficulty-pill" data-difficulty="calm" role="radio" aria-checked="false">Calm</button>
-          <button type="button" class="difficulty-pill" data-difficulty="easy" role="radio" aria-checked="false">Easy</button>
-          <button type="button" class="difficulty-pill" data-difficulty="normal" role="radio" aria-checked="true">Normal</button>
-          <button type="button" class="difficulty-pill" data-difficulty="hard" role="radio" aria-checked="false">Hard</button>
-          <button type="button" class="difficulty-pill" data-difficulty="expert" role="radio" aria-checked="false">Expert</button>
-          <button type="button" class="difficulty-pill" data-difficulty="insane" role="radio" aria-checked="false">Insane</button>
-          <button type="button" class="difficulty-pill" data-difficulty="chaos" role="radio" aria-checked="false">Chaos</button>
-          <button type="button" class="difficulty-pill" data-difficulty="legend" role="radio" aria-checked="false">Legend</button>
-        </div>
-        <button id="start-counting-btn" type="button" class="big-btn">
-          Start counting
         </button>
       </div>
     </div>
@@ -1201,8 +1122,8 @@
         </label>
 
         <div class="stats-card">
-          <div class="flex justify-between"><span>This round</span><span id="round-value" class="stat-value">1</span></div>
-          <div class="flex justify-between"><span>Difficulty</span><span id="difficulty-value" class="stat-value">Normal</span></div>
+          <div class="flex justify-between"><span>This level</span><span id="round-value" class="stat-value">1</span></div>
+          <div class="flex justify-between"><span>Difficulty</span><span id="difficulty-value" class="stat-value">Levels</span></div>
           <div class="flex justify-between"><span>Best round</span><span id="best-value" class="stat-value">1</span></div>
           <div class="flex justify-between"><span>Sheep counted (you)</span><span id="total-value" class="stat-value">0</span></div>
           <div class="flex justify-between"><span>Best safe streak</span><span id="best-streak-value" class="stat-value">0</span></div>
@@ -1220,7 +1141,7 @@
         </button>
 
         <button id="start-over-btn" type="button" class="soft-btn">
-          Start over at round 1
+          Start over at level 1
         </button>
       </div>
     </div>
@@ -1258,7 +1179,7 @@
   </div>
 
   <style>
-    /* Difficulty pills on the Get ready card: the round pill's look.
+    /* Start-level pills on the game-over card: the round pill's look.
        Plum on cream/pink-soft stays above 7:1 either way; the selected
        level flips to a solid plum fill with a cream label. */
     .difficulty-pill {
@@ -1279,7 +1200,7 @@
       border-color: var(--plum);
     }
 
-    /* Best Round chip on the Get ready card: the same pill shape as the
+    /* Best level chip on the game-over card: the same pill shape as the
        difficulty pills, but non-interactive, filled with the celebratory
        yellow so it reads as an achievement rather than a control. */
     .best-round-chip {
@@ -1316,18 +1237,12 @@
 
     /* Day streak chip: the same achievement pill as the Best Round chip,
        with the flame drawn from the app's own peach and pink (decorative,
-       so the label text carries the meaning for a screen reader). The best
-       streak rides along as a softer second label inside the same pill. */
+       so the label text carries the meaning for a screen reader). */
     #streak-chip .streak-flame {
       width: 1.15em;
       height: 1.15em;
       flex: none;
       margin: -0.1em 0;
-    }
-    #streak-chip .streak-best-label {
-      color: #7a6420;
-      font-weight: 800;
-      margin-left: 0.1rem;
     }
 
     /* Boot card (#44). Plain CSS rather than utilities so it still lays

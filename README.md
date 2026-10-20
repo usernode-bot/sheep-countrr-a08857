@@ -1,62 +1,58 @@
 # Sheep countrr
 
-A tap-to-count game for young children, played in rounds. Round 1 puts
-one sheep on screen and it stands perfectly still. Count it, and the next
-round brings another sheep or two, moving a little faster and a little
-less predictably. Keep going and the flock ends up bouncing and jittering
-across the pasture, which is the whole game: the counting stays easy, the
-keeping track of who you already counted does not.
+A tap-to-count game for young children, played on one endless ladder of
+levels. The app opens straight onto the meadow with one sheep standing
+still: tapping it is the start. Each flock runs straight into the next, and
+every three rounds make a level that brings a few more sheep, a little more
+speed and, from level 3, a shorter clock. The counting stays easy; keeping
+track of who you already counted, against the clock, does not.
 
 ## How it works
 
-- **Rounds.** Round 1 is a single stationary sheep. Each completed round
-  adds roughly one or two more sheep (up to twelve, so every sheep stays
-  tappable on a phone) and turns up the movement: a slow drift at first,
-  then pacing and bouncing, then a nervous jitter on top.
+- **One tap to start.** No Get ready card, no level picker, no countdown.
+  The first round is a single still sheep, and tapping it is the first
+  count.
 - **Counting.** Tap a sheep to count it: it baas, puffs up, pops like a
   piñata and is gone, leaving a little pile of pastel confetti and candy
   on the grass where it stood for the rest of the round. A popped sheep's
-  spot cannot be tapped, so a counted sheep is impossible to mistake for
-  an uncounted one and empty grass never ends a run. The running tap count
-  sits in a small counter in the top-left corner (with a row of progress
-  dots underneath, one dot per sheep, filled in the counted sheep's
-  pastel colour), leaving the middle of the screen to the flock, and the
-  hint at the bottom counts down as sheep are counted: "Tap every sheep.",
-  then "4 left!" and so on, then "That is all of them. Tap Done counting.".
-- **Before you start.** The first round of a run opens on a short "Get
-  ready" card that names the round and its flock, explains that tapping a
-  sheep pops it, and warns that saying done too early ends the run. Its
-  one button, "Start counting", dismisses
-  the card and begins the round. It returns at the start of every run
-  (after "Start again" or "Start over at round 1"), and later rounds in
-  a run skip it since the round-complete message already previews the
-  next flock. The card also carries a streak flame: how many days in a
-  row the player has played, with the best streak ever reached beside it.
-- **Calm, the default level.** The Get ready card lists Calm first, then
-  Easy, Normal, Hard, Expert, and above Expert the long-run levels Insane,
-  Chaos and Legend. A player with no saved level starts on
-  Calm; a saved pick is kept. On Calm the sheep only ever drift as slowly
-  as an early round, the flock grows by one every two rounds and stops at
-  five, the confetti falls more slowly after each pop, "Done counting"
-  with sheep left wiggles the ones still awake, and there is no wolf,
-  Speed Round, Duel or game over. Calm rounds keep their own best round
-  but never count toward the Global, Friends or weekly leaderboards.
-- **The long-run levels.** Insane, Chaos and Legend are for a player who
-  has topped out Expert. Each keeps its own best round and a longer
-  12-round ladder (the round badge reads "of 12"), the flock reaches the
-  full twelve sheep within a few rounds, movement reaches full chaos by
-  round 4 or 5 and keeps creeping up, and the wolf shows up earlier and
-  in better disguise the higher the level: by Legend's round 5, every
-  round hides one. The wolf's chance and disguise also scale on the
-  original levels, so Easy's wolf is gentler and Hard's slightly sharper
-  than Normal's.
-- **Finishing a round.** Tapping the last sheep only marks it; the round
-  waits for the "Done counting" tap. Saying done with every sheep counted
-  shows a short round-complete message and moves on.
-- **Ending a run.** Saying you are done while sheep are still uncounted
-  ends the run; a popped sheep's spot ignores taps, so it can never end
-  one. The game-over screen names the round you reached and offers
-  "Start again", which returns to round 1.
+  spot cannot be tapped, so empty grass never ends a run. The running tap
+  count sits in the top-left corner (with a row of progress dots, one per
+  sheep), and the hint at the bottom counts down: "Tap the sheep to
+  start.", "Tap every sheep.", then "4 left!" and so on.
+- **Rounds run into each other.** The round passes the moment the last
+  sheep pops. A small line in the meadow reads "You counted 4 sheep." for
+  about a second, the confetti plays, and the next flock walks in by
+  itself. There is no card to close and no Done counting button in solo
+  play.
+- **Levels, Tetris style.** Every three rounds make one level. Finishing a
+  level plays a bigger moment (about two seconds): "Level 3!" over the
+  counted line, a confetti burst and the celebration sound, and the corner
+  tag changes to the new level. Level L opens with L sheep and its next two
+  rounds hold one more, up to twelve.
+- **A gentle start.** Levels 1 and 2 have no clock and no wolf; the sheep
+  stand or drift. Level 4 is still calmer than the old Normal round 4.
+- **The clock.** From level 3 every round has its own clock (the yellow
+  pill under the corner tag): 8 seconds a sheep at level 3, 6 at level 4,
+  then shorter each level down to 2, plus a 3 second base. Big Tap gives
+  half as much time again.
+- **The wolf.** From level 4 one of the flock may be a wolf in disguise,
+  more often and better disguised as the levels climb. Tapping it ends the
+  run; the round passes without it.
+- **No last round.** The ladder never runs out. Past level 10 the flock
+  stays at twelve and the sheep keep getting a little faster while the
+  clock keeps getting a little shorter.
+- **Ending a run.** The clock runs out, or the wolf is tapped. The
+  game-over card names the level reached and is the one place to choose
+  how to play next: Start again (level 1), Start at level shortcuts (1, 4,
+  7 ... up to the best level reached), Calm, Pass-and-play Duel and Share
+  result, with the Best level chip and the day streak flame.
+- **Calm.** One switch (the grown-ups panel's Calm mode, or the Calm pill
+  on the game-over card): slow sheep, a flock that grows by one every two
+  rounds up to five, no clock, no wolf, no game over. Calm rounds keep
+  their own best and never count toward the leaderboards.
+- **Pass-and-play Duel.** Started from the game-over card: both players
+  count the flock of the level the run reached, and each turn still ends on
+  Done counting.
 - **Touch first.** The whole board is taps: big hit targets, no drag, no
   pinch, and the Done button sits clear of the safe area at the bottom.
   The camera reframes on rotation so the whole flock stays visible.
@@ -66,7 +62,8 @@ keeping track of who you already counted does not.
   share the same counting logic.
 - **Sound is on by default.** Every sheep tap gives a soft baa (counted
   sheep add a gentle chime, Web Audio only, no asset files). A grown-up
-  can mute it with the Sound effects toggle in the grown-ups panel.
+  can mute it with the corner button or the Sound effects toggle in the
+  grown-ups panel.
 - **The grown-ups panel** (sound, progress, start over) is reached by a
   ~1.5 second press-and-hold on the small gear icon in the corner, or
   Enter/Space with a keyboard. A quick tap does nothing, so a child
@@ -98,19 +95,20 @@ keeping track of who you already counted does not.
 
 Run `npm ci`, `npm run build`, `npm test`.
 
-Review fixtures, all of which avoid localStorage and the server:
+Review fixtures:
 
-- `/?round=N` starts a real, playable run at round N from that round's
-  fixed seed, so the same URL always frames the same pasture. This is the
-  deep link the screenshot checks use: `/?round=8` for a chaotic flock of
-  eleven. `/?round=1` now opens on the "Get ready" card (it is the start
-  of a fresh run); for the bare still-single-sheep board use
-  `/?scene=portrait`, which shows no card.
-- `/?scene=midcount`, `/?scene=roundcomplete`, `/?scene=gameover`,
-  `/?scene=grownups`, `/?scene=flock`, `/?scene=portrait`,
-  `/?scene=empty` freeze one screen for a screenshot.
+- `/?round=N` starts a real, playable run at round N (level ceil(N / 3))
+  from that round's fixed seed, so the same URL always frames the same
+  pasture: `/?round=29` for a jittery flock of eleven, `/?round=7` for the
+  first timed round. `&wolf=0` / `&wolf=1` pin the wolf draw.
+- `/?round=N&autoplay=1` plays the round and stops on the pass banner;
+  `&autoplay=next` lets the next flock walk in.
+- `/?scene=roundpass`, `/?scene=levelup`, `/?scene=midcount`,
+  `/?scene=gameover`, `/?scene=timeupgameover`, `/?scene=grownups`,
+  `/?scene=flock`, `/?scene=portrait`, `/?scene=empty` freeze one screen
+  for a screenshot and never touch localStorage or the server.
 - `?renderer=dom` forces the card fallback and composes with either
-  (`/?round=8&renderer=dom`).
+  (`/?round=29&renderer=dom`).
 
 Use `/` for normal play.
 

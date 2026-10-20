@@ -19,7 +19,9 @@ export function bestRoundsCsv(state) {
   const rows = [
     csvRow(['difficulty', 'best_round']),
   ];
-  for (const difficulty of ['easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend']) {
+  // The level ladder first, then the retired levels' bests, which a
+  // player may still hold from before the ladder.
+  for (const difficulty of ['flow', 'easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend']) {
     rows.push(csvRow([difficulty, (state.bestRounds && state.bestRounds[difficulty]) || 1]));
   }
   return rows.join('\r\n') + '\r\n';

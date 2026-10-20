@@ -10,33 +10,27 @@ import {
   ENDED_TIME_UP,
 } from './state.js';
 import {
-  DEFAULT_DIFFICULTY,
-  SPEED_ROUND_SECONDS,
-  introRuleText,
+  ROUNDS_PER_LEVEL,
   isCalmLevel,
+  levelForRound,
+  levelTagText,
+  levelUpTitle,
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
   normalizeScenery,
-  normalizeSpeedRound,
-  paceLine,
+  passLine,
   playHintText,
-  recapBestLine,
-  recapSheepLine,
-  recapTimeLine,
-  roundCompleteTitle,
-  roundIntroText,
+  roundInLevel,
   roundSeed,
+  secondsForRound,
   sheepForRound,
   sheepPhrase,
   speedRoundClock,
-  successMessage,
-  TOTAL_ROUNDS,
+  startLevelChoices,
   WOLF_BONUS,
   wolfCueText,
-  wolfDisguiseTier,
   wolfIndexForRound,
-  roundBadgeText,
   weeklyScoreLabel,
 } from './rounds.js';
 import { playTapChime, playBaa, playBaaBaaa, playCelebration, setSoundEnabled } from './sound.js';
@@ -75,16 +69,11 @@ const roundParam = params.get('round');
 // Deep-link-only knob: /?round=N&wolf=1 always hides a wolf, &wolf=0 never
 // does. Normal play stays chance-based.
 const wolfParam = params.get('wolf');
-// A deep link may name a difficulty; an unknown value falls back to Normal.
-// It composes with /?round=N and /?scene=X and, like them, is never
-// persisted from a deep link.
+// A deep link may name a difficulty (?difficulty=calm); anything else,
+// a retired level included, plays the flow ladder. It composes with
+// /?round=N and /?scene=X and, like them, is never persisted.
 const difficultyParam = normalizeDifficulty(params.get('difficulty'));
 const hasDifficultyParam = params.get('difficulty') !== null;
-// The Speed Round flag from a deep link (?round=8&speed=1): it applies to
-// the run it opens, but like the difficulty it is never persisted from a
-// deep link, so the store stays ephemeral there.
-const hasSpeedParam = params.get('speed') !== null;
-const speedParam = normalizeSpeedRound(params.get('speed') === '1');
 // The Duel flag from a deep link (?duel=1): it applies to the run it opens,
 // never persisted from a deep link, so the store stays ephemeral there.
 const hasDuelParam = params.get('duel') !== null;
@@ -103,9 +92,9 @@ const fixtureScenery = normalizeScenery(sceneryParam, nightParam === '1');
 // ?calm=1 boots straight into Calm mode for the fixture/deep-link run;
 // like night and sound it is never persisted from a deep link.
 const calmParam = params.get('calm');
-// The autoplay harness for the recap deep links (?round=N&autoplay=...):
-// '1' plays one round and stops at the recap card; 'tap' and 'button'
-// then dismiss it the two ways a player can. It rides the existing
+// The autoplay harness for the flow deep links (?round=N&autoplay=...):
+// '1' plays one round and stops on the pass banner; 'next' then waits
+// through the banner until the next flock is up. It rides the existing
 // ?round= auth exemption, and its store is ephemeral, so a check run
 // never writes localStorage or the server.
 const autoplayParam = params.get('autoplay');
@@ -158,8 +147,10 @@ const RESUME_USER_ID = 'resume-demo';
 
 const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// One second per countdown number, per the brief.
-const COUNTDOWN_STEP_MS = 1000;
+// How long the pass banner holds before the next flock walks in: a short
+// beat for a plain round, a longer moment for a level-up.
+const PASS_MS = 1200;
+const LEVEL_UP_MS = 2200;
 
 // Recolors the sky and ground only. The DOM class carries the CSS side
 // (page sky gradient and the DOM fallback's field), and the renderer gets
@@ -188,24 +179,17 @@ const els = {
   actionBar: document.getElementById('action-bar'),
   playHint: document.getElementById('play-hint'),
   submitBtn: document.getElementById('submit-count'),
-  roundIntro: document.getElementById('round-intro'),
-  roundIntroSize: document.getElementById('round-intro-size'),
-  roundIntroRule: document.getElementById('round-intro-rule'),
-  roundIntroWolf: document.getElementById('round-intro-wolf'),
-  speedToggleRow: document.getElementById('speed-toggle-row'),
-  duelToggleRow: document.getElementById('duel-toggle-row'),
-  countdownOverlay: document.getElementById('countdown-overlay'),
-  countdownNumber: document.getElementById('countdown-number'),
-  countdownStatus: document.getElementById('countdown-status'),
-  countdownSkipBtn: document.getElementById('countdown-skip-btn'),
+  flowBanner: document.getElementById('flow-banner'),
+  flowBannerTitle: document.getElementById('flow-banner-title'),
+  flowBannerLine: document.getElementById('flow-banner-line'),
   bestRoundChip: document.getElementById('best-round-chip'),
   bestRoundValue: document.getElementById('best-round-value'),
   streakChip: document.getElementById('streak-chip'),
   streakValue: document.getElementById('streak-value'),
-  streakBest: document.getElementById('streak-best'),
-  startCountingBtn: document.getElementById('start-counting-btn'),
-  speedToggle: document.getElementById('speed-toggle'),
-  duelToggle: document.getElementById('duel-toggle'),
+  gameOverOptions: document.getElementById('game-over-options'),
+  gameOverChips: document.getElementById('game-over-chips'),
+  startLevelPicker: document.getElementById('start-level-picker'),
+  duelStartBtn: document.getElementById('duel-start-btn'),
   duelPanel: document.getElementById('duel-panel'),
   duelPanelTitle: document.getElementById('duel-panel-title'),
   duelPanelBody: document.getElementById('duel-panel-body'),
@@ -215,14 +199,6 @@ const els = {
   duelPanelExit: document.getElementById('duel-panel-exit'),
   duelTurnClock: document.getElementById('duel-turn-clock'),
   speedTimer: document.getElementById('speed-timer'),
-  roundComplete: document.getElementById('round-complete'),
-  successTitle: document.getElementById('success-title'),
-  roundCompleteTitle: document.getElementById('round-complete-title'),
-  recapSheep: document.getElementById('recap-sheep'),
-  recapTime: document.getElementById('recap-time'),
-  recapBest: document.getElementById('recap-best'),
-  roundCompleteNext: document.getElementById('round-complete-next'),
-  nextRoundBtn: document.getElementById('next-round-btn'),
   gameOver: document.getElementById('game-over'),
   gameOverEyebrow: document.getElementById('game-over-eyebrow'),
   gameOverReason: document.getElementById('game-over-reason'),
@@ -249,7 +225,6 @@ const els = {
   exportBtn: document.getElementById('export-btn'),
   exportStatus: document.getElementById('export-status'),
   difficultyValue: document.getElementById('difficulty-value'),
-  difficultyPicker: document.getElementById('difficulty-picker'),
   a11yList: document.getElementById('a11y-sheep-list'),
   a11yRoundProgress: document.getElementById('a11y-round-progress'),
   leaderboardBtn: document.getElementById('leaderboard-btn'),
@@ -335,8 +310,8 @@ store.state.meUsername = usernameFromToken(token);
 
 let renderer = null;
 
-// Every full panel (Get ready, countdown, Round complete, Game over,
-// Grown-ups, leaderboard, duel and invite cards) is a .panel-backdrop
+// Every full panel (Game over, Grown-ups, leaderboard, duel and invite
+// cards) is a .panel-backdrop
 // shown and hidden through its `hidden` attribute from many places. One
 // observer watches them all and tells the renderer whether the pasture is
 // covered, so the 3D scene can drop to a gentle background drift instead
@@ -350,67 +325,46 @@ document.querySelectorAll('.panel-backdrop').forEach((el) => {
   backdropObserver.observe(el, { attributes: true, attributeFilter: ['hidden'] });
 });
 
-// True while the pre-round briefing covers the board, so no tap or
-// submit can register before the player taps Start counting.
-let introOpen = false;
-// True while the 3-2-1 countdown covers the board. Like the briefing, it
-// is modal: taps, keyboard counting and Done counting all stay blocked
-// until it finishes (or is skipped).
-let countdownOpen = false;
-// The one interval that steps the 3-2-1 overlay. Cleared with the round
-// itself (advance, restart, visibility) so a stale tick can never start
-// a round the player has already left.
-let countdownTimer = null;
+// The one timer that moves a passed round on to the next flock once the
+// pass banner has had its moment. Cleared by a restart, a duel or a fresh
+// board, so a stale timer can never start a round the player has left.
+let passTimer = null;
 
 // Fixed fixtures for the proposal-check deep links, per dapp.json's
-// `tests` array — deliberately not read from any network state.
+// `tests` array — deliberately not read from any network state. Rounds
+// are ladder rounds: round N is level ceil(N / 3).
 function buildStaticState() {
   const base = createDefaultState();
   const at = (round, extra = {}) => ({
     ...base,
     round,
     difficulty: difficultyParam,
-    speedOn: hasSpeedParam && speedParam,
-    secondsLeft: hasSpeedParam && speedParam ? SPEED_ROUND_SECONDS : null,
     sheepCount: sheepForRound(round, difficultyParam),
     seed: roundSeed(round),
+    // The round's own clock, frozen at full: fixtures never tick it.
+    secondsLeft: secondsForRound(round, difficultyParam, { bigTapOn: bigtapParam }),
     // The Big Tap knob rides the fixture/deep link the same way (?bigtap=1),
     // applied to the ephemeral fixture state and never persisted.
     bigTap: bigtapParam,
-    bestRounds: { ...base.bestRounds, [difficultyParam]: Math.max(round, base.bestRounds[difficultyParam]) },
+    bestRounds: { ...base.bestRounds, [difficultyParam]: Math.max(round, base.bestRounds[difficultyParam] || 1) },
     // Frozen fixtures never touch storage, so the scenery comes from the
     // deep link (?scenery=moon, or the legacy ?night=1) and nowhere else.
     scenery: fixtureScenery,
     nightOn: fixtureScenery === 'night',
     ...extra,
   });
-  if (sceneParam === 'flock') return at(9);
-  if (sceneParam === 'countdown') {
-    // The 3-2-1 countdown overlay, frozen with the first number on it.
-    // Everything else reads like a live round-1 board, so the card's
-    // dapp.json check sees the real surface.
-    return at(1);
-  }
-  if (sceneParam === 'intro') {
-    // The Get-ready card with an earned best round on it, so the chip has a
-    // frozen fixture for its dapp.json check. Hardcoded only, like every
-    // other fixture here. The streak flame gets the same treatment: a live
-    // streak and a best one, never read from storage in a fixture.
-    return at(1, {
-      bestRounds: { ...base.bestRounds, [difficultyParam]: 6 },
-      streakDays: 4,
-      bestStreakDays: 6,
-    });
-  }
+  // A full flock of twelve: level 11's last round.
+  if (sceneParam === 'flock') return at(33);
   if (sceneParam === 'portrait') return at(1);
   if (sceneParam === 'empty') return at(3);
-  if (sceneParam === 'midcount') return at(5, { count: 3, counted: [0, 1, 2] });
+  // Level 6, round 2: seven sheep, three popped, four left.
+  if (sceneParam === 'midcount') return at(17, { count: 3, counted: [0, 1, 2] });
   if (sceneParam === 'resumed') {
     // A mid-round board restored from storage, frozen for its dapp.json
     // check: three sheep counted in tap order at fixed clock stamps, the
     // rest of the flock still wandering. Hardcoded only, like every
     // other fixture here.
-    return at(5, {
+    return at(17, {
       count: 3,
       counted: [0, 1, 2],
       countedAt: [
@@ -421,39 +375,48 @@ function buildStaticState() {
       roundElapsed: 12,
     });
   }
-  if (sceneParam === 'speed') {
-    // The Speed Round board mid-count, clock visibly running: the dapp.json
-    // check reads the countdown pill from this route.
-    return at(3, { count: 2, counted: [0, 1], speedOn: true, secondsLeft: SPEED_ROUND_SECONDS });
-  }
-  if (sceneParam === 'roundcomplete') {
-    const n = sheepForRound(4, difficultyParam);
-    return at(4, {
+  if (sceneParam === 'roundpass') {
+    // A plain pass: level 3's second round counted, the small banner line
+    // in the meadow and no level-up title. Frozen: no timer moves it on.
+    const n = sheepForRound(8, difficultyParam);
+    return at(8, {
       count: n,
       counted: [...Array(n).keys()],
       phase: ROUND_PASSED,
-      // The recap card's frozen facts, hardcoded like every other fixture:
-      // the whole flock counted in 41 seconds, against a 34 second best.
-      recap: { round: 4, counted: n, seconds: 41, bestSeconds: 34, newBest: false },
-      bestTimes: { [difficultyParam]: { 4: 34 } },
+      lastPass: { round: 8, counted: n, levelUp: false },
     });
   }
-  if (sceneParam === 'allcounted') {
-    // A fully counted flock that is still waiting for the Done tap: the
-    // round no longer closes itself when the last sheep is tapped, so the
-    // play screen holds the board (and the count plate) with no success
-    // card. No wolf: every animal in this fixture is a real sheep.
-    const n = sheepForRound(5, difficultyParam);
-    return at(5, { count: n, counted: [...Array(n).keys()] });
+  if (sceneParam === 'levelup') {
+    // The level-up moment: level 2's last round counted, "Level 3!" over
+    // the counted line.
+    const n = sheepForRound(6, difficultyParam);
+    return at(6, {
+      count: n,
+      counted: [...Array(n).keys()],
+      phase: ROUND_PASSED,
+      lastPass: { round: 6, counted: n, levelUp: true },
+    });
   }
   if (sceneParam === 'gameover') {
-    return at(6, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
+    // Level 4's clock ran out, with a best of level 6 and a three-day
+    // streak, so the chips and the start-level shortcuts 1 and 4 show.
+    return at(10, {
+      count: 3,
+      counted: [0, 1, 2],
+      phase: RUN_OVER,
+      endedBy: ENDED_TIME_UP,
+      secondsLeft: 0,
+      bestRounds: { ...base.bestRounds, [difficultyParam]: 16 },
+      streakDays: 3,
+      bestStreakDays: 5,
+    });
   }
+  // Level 5, round 1: five animals, three sheep popped, the fifth a wolf.
   if (sceneParam === 'wolfround') {
-    return at(5, { count: 3, counted: [0, 1, 2], wolfIndex: 4 });
+    return at(13, { count: 3, counted: [0, 1, 2], wolfIndex: 4 });
   }
   if (sceneParam === 'wolfgameover') {
-    return at(6, {
+    return at(16, {
       count: 4,
       counted: [0, 1, 2, 3],
       wolfIndex: 5,
@@ -462,20 +425,19 @@ function buildStaticState() {
       safeStreak: 2,
     });
   }
-  if (sceneParam === 'speedgameover') {
-    // A Speed Round the clock ran out on: its own game-over reason line,
-    // with the mode still named on the round badge behind the card.
-    return at(4, { count: 3, counted: [0, 1, 2], phase: RUN_OVER, speedOn: true, secondsLeft: 0, endedBy: ENDED_TIME_UP });
+  if (sceneParam === 'timeupgameover') {
+    // A timed round the clock ran out on: its own game-over reason line.
+    return at(10, { count: 3, counted: [0, 1, 2], phase: RUN_OVER, secondsLeft: 0, endedBy: ENDED_TIME_UP });
   }
   if (sceneParam === 'moon') {
     // The Moon scenery, frozen mid-count: grey ground, lavender-blue sky,
     // and the flock unchanged underneath it. Hardcoded only, like every
     // other fixture here.
-    return at(5, { count: 3, counted: [0, 1, 2], scenery: 'moon', nightOn: false });
+    return at(17, { count: 3, counted: [0, 1, 2], scenery: 'moon', nightOn: false });
   }
   if (sceneParam === 'grownups') {
     return at(5, {
-      bestRounds: { easy: 3, normal: 7, hard: 5, expert: 2 },
+      bestRounds: { calm: 3, flow: 7 },
       totalCounted: 18 + 3 * WOLF_BONUS,
       communityTotal: 39,
       bestSafeStreak: 4,
@@ -487,7 +449,7 @@ function buildStaticState() {
   if (sceneParam === 'duelhandoff') {
     // The frozen pass-the-device card: player 1 counted a clean flock, the
     // board behind the card holds the untouched flock for player 2.
-    els.roundBadge.textContent = 'Round 1';
+    els.roundBadge.textContent = 'Level 1';
     showDuelPanel({
       title: 'Pass the device',
       body: 'Sheep counter 2, you count the same flock as Sheep counter 1.',
@@ -500,7 +462,7 @@ function buildStaticState() {
   if (sceneParam === 'duelresult') {
     // The frozen results card: player 1 found every sheep, player 2 missed
     // one, so the win line and both miss counts are on the card.
-    els.roundBadge.textContent = 'Round 1';
+    els.roundBadge.textContent = 'Level 1';
     showDuelPanel({
       title: 'Duel result',
       body: 'Sheep counter 1 wins.',
@@ -518,7 +480,7 @@ function buildStaticState() {
   if (sceneParam === 'sharegameover') {
     // The public share view for Mabel's seeded demo run: the round-8 flock
     // behind the game-over card, read-only, with the shared-by line.
-    return at(8, { count: 4, counted: [0, 1, 2, 3], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
+    return at(8, { count: 3, counted: [0, 1, 2], phase: RUN_OVER, endedBy: ENDED_DOUBLE_TAP });
   }
   return at(1);
 }
@@ -578,7 +540,6 @@ async function boot() {
     // fixed seed so the same URL always frames the same pasture. An optional
     // difficulty= picks the curve; it stays ephemeral like the round itself.
     if (hasDifficultyParam) store.state = { ...store.state, difficulty: difficultyParam };
-    if (hasSpeedParam) store.state = { ...store.state, speedOn: speedParam };
     if (calmParam !== null) store.state = { ...store.state, calmOn: normalizeCalm(calmParam === '1') };
     if (hasBigTapParam) store.state = { ...store.state, bigTap: bigtapParam };
     // &sound=0/1 pins the sound button's icon for the capture run; like the
@@ -635,46 +596,14 @@ async function boot() {
   // the rest of boot (and every later run) stays solo.
   if (!staticMode && store.state.duel) {
     store.state = { ...store.state, duel: false };
-    els.duelToggle.checked = false;
-    startDuel(store.state.round, { skipIntro: true });
-    showDuelPanel({
-      title: 'Pass and play',
-      body: `${DUEL_PLAYERS[0]} counts first. Pass the device when the card asks.`,
-      scores: [],
-      hint: 'Both players count the same flock. The lower miss count wins.',
-      btn: 'Start counting',
-      onBtn: dismissDuelPanel,
-    });
+    startDuel(store.state.round);
   }
 
-  // The briefing covers the board before the first round of a run starts
-  // counting. Frozen ?scene= fixtures stay card-free, and a player resuming
-  // mid-run at a later round has already played.
-  if (!staticMode && !duelState && !resumeParam && store.state.round === 1) showRoundIntro(store.state);
-  // The frozen intro fixture shows the card with the Best Round chip filled
-  // from hardcoded data, so the chip's check has a deterministic route.
-  if (staticMode && sceneParam === 'intro') showRoundIntro(store.state);
-  // The frozen countdown fixture: the overlay up with the first number on
-  // it, and the a11y mirror in the same state the live overlay puts it in.
-  if (staticMode && sceneParam === 'countdown') {
-    countdownOpen = true;
-    els.countdownOverlay.hidden = false;
-    els.countdownNumber.textContent = '3';
-    els.countdownStatus.textContent = '3';
-    renderA11yList(store.state);
-    els.countdownSkipBtn.focus({ preventScroll: true });
-  }
-  // On a /?round=N deep link the intro is suppressed (the player has
-  // already played), but the difficulty fixtures need the picker to be
-  // visible for their dapp.json check. Render it without opening the card.
-  if (staticMode && roundParam !== null) syncDifficultyPicker(store.state);
-
-  // A run that resumes (or opens on a deep link) into a Speed Round that
-  // is already counting starts its clock here; a round behind the briefing
-  // card starts it when the player taps Start counting. Frozen ?scene=
-  // fixtures hold the clock still (the same rule that parks their
-  // round-complete auto-advance), so a screenshot can catch the countdown.
-  if (!staticMode && !resumeParam && store.state.speedOn && store.state.phase === COUNTING && !introOpen) startSpeedClock();
+  // No briefing and no countdown: the board is live the moment it is up,
+  // and the first tap on a sheep is the start. A board that opens (or
+  // resumes) on a timed round starts its clock here. Frozen ?scene=
+  // fixtures hold the clock still so a screenshot can catch it.
+  if (!staticMode && !duelState && store.state.phase === COUNTING) startRoundClock();
 
   if (sceneParam === 'grownups') openGrownups(store.state);
 
@@ -697,6 +626,8 @@ async function boot() {
     els.sharedBy.hidden = false;
     els.restartBtn.hidden = true;
     els.shareBtn.hidden = true;
+    els.gameOverOptions.hidden = true;
+    els.gameOverChips.hidden = true;
   }
 
   document.addEventListener('visibilitychange', () => {
@@ -711,7 +642,7 @@ async function boot() {
     if (!resumeParam) store.flush();
   });
 
-  // The recap checks' driver: play the round the deep link opened.
+  // The flow checks' driver: play the round the deep link opened.
   runAutoplay();
 }
 
@@ -759,6 +690,8 @@ async function bootShareView() {
     els.sharedBy.hidden = true;
     els.restartBtn.hidden = true;
     els.shareBtn.hidden = true;
+    els.gameOverOptions.hidden = true;
+    els.gameOverChips.hidden = true;
     return;
   }
   const round = normalizeRound(data.roundReached);
@@ -768,8 +701,7 @@ async function bootShareView() {
     sheepCount: sheepForRound(round, store.state.difficulty),
     seed: roundSeed(round),
     phase: RUN_OVER,
-    speedOn: normalizeSpeedRound(data.speedRound),
-    secondsLeft: normalizeSpeedRound(data.speedRound) ? SPEED_ROUND_SECONDS : null,
+    secondsLeft: null,
     endedBy: [ENDED_DOUBLE_TAP, ENDED_WOLF, ENDED_TIME_UP, ENDED_COMPLETE].includes(data.endedBy)
       ? data.endedBy
       : null,
@@ -790,13 +722,15 @@ async function bootShareView() {
       : data.endedBy === ENDED_WOLF
         ? 'The wolf tricked you.'
         : data.endedBy === ENDED_COMPLETE
-          ? `You finished all ${TOTAL_ROUNDS} rounds.`
+          ? 'Every round counted.'
           : 'Some sheep were left uncounted.';
   els.gameOver.hidden = false;
   els.sharedBy.textContent = `Counted by ${data.username}.`;
   els.sharedBy.hidden = false;
   els.restartBtn.hidden = true;
   els.shareBtn.hidden = true;
+  els.gameOverOptions.hidden = true;
+  els.gameOverChips.hidden = true;
 }
 
 async function bootInviteView() {
@@ -830,8 +764,8 @@ async function mountScene() {
       reducedMotion,
       onTap: handleTap,
       // The whole corner column (round tag, timers, plate, dots) covers the
-      // top-left of the screen and the Done button the bottom; the camera
-      // frames the flock in the space between.
+      // top-left of the screen and the hint (plus Done counting in a duel)
+      // the bottom; the camera frames the flock in the space between.
       getOverlayRect: () => (els.countBadge ? els.countBadge.getBoundingClientRect() : null),
       getBottomOverlayRect: () => (els.actionBar ? els.actionBar.getBoundingClientRect() : null),
       onFatal: async () => {
@@ -870,10 +804,9 @@ function syncRoundClock({ resume } = {}) {
 }
 
 function handleTap(index) {
-  // The briefing is open: no count registers until the player starts.
-  if (introOpen) return;
-  // Same for the countdown overlay: nothing counts until the round starts.
-  if (countdownOpen) return;
+  // The pass banner is up: the round is over and the next flock is on its
+  // way, so a tap in between counts nothing (and ripples nothing).
+  if (store.state.phase !== COUNTING) return;
   // A popped sheep is gone: its spot cannot be tapped, so a child can
   // never end a run by tapping empty grass. This covers the 3D scene,
   // the card view and the screen-reader list in one place.
@@ -907,11 +840,9 @@ function handleTap(index) {
     if (store.state.soundOn) {
       playTapChime(result.number);
     }
-    // The flock is fully counted: hold the Speed Round clock here while
-    // the player decides to tap Done counting, so a complete count can
-    // never be lost to the clock. The round itself no longer closes on
-    // the last tap; the success message only comes from Done counting.
-    if (store.isComplete()) stopSpeedClock();
+    // The last real sheep passed the round (the store did it on this very
+    // tap): the clock stops, and syncPanels has already put the banner up.
+    if (result.passed || store.isComplete()) stopRoundClock();
     renderA11yList(store.state);
     return;
   }
@@ -928,9 +859,8 @@ function handleTap(index) {
   }
 }
 
+// Done counting: a duel turn's hand-in. Solo rounds pass on their last pop.
 function submitCount() {
-  if (introOpen) return;
-  if (countdownOpen) return;
   const result = store.submitCount();
   // Calm never ends a run on a short count: the sheep still awake give a
   // sleepy wiggle so the player can see who is left, and counting goes on.
@@ -941,38 +871,25 @@ function submitCount() {
   if (store.state.duel && store.state.phase !== COUNTING) stopDuelClock();
 }
 
-// ---- Autoplay harness (the recap deep links) ----
-// ?round=N&autoplay=... plays one real round through the app's own
-// handlers, so the dapp.json checks (which can only load a page, never
-// interact with it) can reach the recap card and its two dismissal paths:
-//   '1'      play the round and stop at the recap card
-//   'tap'    then dismiss it with a pointerdown anywhere on the card
-//   'button' then dismiss it with the real Next round button
+// ---- Autoplay harness (the flow deep links) ----
+// ?round=N&autoplay=... plays one real round through the app's own tap
+// handler, so the dapp.json checks (which can only load a page, never
+// interact with it) can reach the pass banner and the next flock:
+//   '1'     play the round and stop on the pass banner
+//   'next'  then let the banner run out, so the next flock is up
 // The store is ephemeral for these runs, so nothing is written anywhere,
 // and the round's wolf (if it drew one) is left uncounted, exactly as a
-// careful player would.
+// careful player would. The round passes on its last pop, as in play.
 function runAutoplay() {
   if (!autoplayParam || staticMode) return;
   setTimeout(() => {
-    // Round 1 opens behind the briefing: starting it is step one.
-    if (introOpen) els.startCountingBtn.click();
-    if (introOpen) return;
     const wolf = store.state.wolfIndex;
     for (let i = 0; i < store.state.sheepCount; i++) {
       if (i !== wolf) handleTap(i);
     }
-    submitCount();
-    if (autoplayParam === '1' || store.state.phase !== ROUND_PASSED) return;
-    // Let the card land before dismissing it, so the checks see one
-    // change at a time.
-    setTimeout(() => {
-      if (store.state.phase !== ROUND_PASSED) return;
-      if (autoplayParam === 'tap') {
-        els.roundComplete.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-      } else if (autoplayParam === 'button') {
-        els.nextRoundBtn.click();
-      }
-    }, 400);
+    // 'next' needs nothing more: the pass timer moves the run on. '1'
+    // holds the banner up so the check can read it.
+    if (autoplayParam === '1') clearTimeout(passTimer);
   }, 400);
 }
 
@@ -995,6 +912,9 @@ let duelSecondsLeft = DUEL_TURN_SECONDS;
 
 function startDuel(round, { skipIntro } = {}) {
   const start = normalizeRound(round);
+  // A duel takes the board over: no solo clock or pass banner may run on.
+  stopRoundClock();
+  clearPass();
   // "Count again" starts a duel from inside one: keep the store set aside
   // at the first duel, not the previous duel's turn store.
   if (!soloStore) soloStore = store;
@@ -1068,7 +988,7 @@ function stopDuelClock() {
   clearInterval(duelClockTimer);
 }
 
-// The turn-clock pill follows the same round-pill shape as the Speed Round
+// The turn-clock pill follows the same round-pill shape as the round
 // countdown, so the two modes never fight over the count plate.
 function syncDuelClock(state) {
   const show = !!state.duel && state.phase === COUNTING;
@@ -1155,12 +1075,13 @@ function endDuel() {
     soloStore = null;
   }
   store.state = { ...store.state, duel: false };
-  els.duelToggle.checked = false;
   syncRoundClock();
   renderer?.resetRound(store.state);
   updateChrome(store.state);
   renderA11yList(store.state);
-  if (!staticMode) showRoundIntro(store.state);
+  // A duel is started from the game-over card, so the player's own run is
+  // still over and its card comes back; a live board picks its clock up.
+  if (!staticMode && store.state.phase === COUNTING) startRoundClock();
 }
 
 function showDuelPanel({ title, body, scores, hint, btn, onBtn, exitBtn, onExit }) {
@@ -1196,195 +1117,82 @@ function dismissDuelPanel() {
   els.duelPanel.hidden = true;
 }
 
-// The pre-round briefing. Shown before the first round of a run; the one
-// button starts counting. The difficulty picker lives on the card. Selecting a level
-// immediately rewrites the briefing line, so the player can see what each
-// level means before committing to Start counting.
-const DIFFICULTY_LABELS = { calm: 'Calm', easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert', insane: 'Insane', chaos: 'Chaos', legend: 'Legend' };
+// The grown-ups panel's Difficulty row: the ladder, or Calm.
+const DIFFICULTY_LABELS = { calm: 'Calm', flow: 'Levels' };
 
-// Calm drops the card's challenge lines: its rule line promises the
-// forgiving tap, and the wolf warning, Speed Round and Duel (each a way
-// to end a run) are hidden while Calm is picked.
-function syncCalmCard(state) {
-  const calm = isCalmLevel(state.difficulty);
-  els.roundIntroRule.textContent = introRuleText(state.difficulty);
-  els.roundIntroWolf.hidden = calm;
-  els.speedToggleRow.hidden = calm;
-  els.duelToggleRow.hidden = calm;
-  if (calm && store.state.duel) {
-    store.state = { ...store.state, duel: false };
-    els.duelToggle.checked = false;
-  }
-}
-
-function syncDifficultyPicker(state) {
-  for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
-    const level = normalizeDifficulty(btn.dataset.difficulty);
-    btn.setAttribute('aria-checked', String(level === state.difficulty));
-  }
-  syncCalmCard(state);
-  els.difficultyValue.textContent = DIFFICULTY_LABELS[state.difficulty] || 'Normal';
-  els.bestValue.textContent = String(store.bestRound);
-}
-
-// The chip shows the current level's best only once the player has actually
-// finished a round at that level (best > round 1): a brand-new player has no
-// record to celebrate, so the chip stays hidden there.
-function syncBestRoundChip(state) {
-  const best = store.bestRound;
+// The game-over card's Best level chip shows only once the player has
+// actually climbed past level 1: a brand-new player has no record to
+// celebrate, so the chip stays hidden there.
+function syncBestRoundChip() {
+  const best = store.bestLevel;
   els.bestRoundValue.textContent = String(best);
   els.bestRoundChip.hidden = !(best > 1);
 }
 
-function syncSpeedToggle(state) {
-  els.speedToggle.checked = !!state.speedOn;
-}
-
-// The Duel toggle flips only before Start counting, exactly like the Speed
-// Round toggle. Turning it on arms the duel for the next Start tap; it
-// never touches the board behind the card, since a duel starts its own
-// shared flock when the player commits.
-function syncDuelToggle(state) {
-  els.duelToggle.checked = !!state.duel;
-}
-
-// The round badge names the round and how far the ladder goes, and keeps
-// the Speed Round prefix while that mode is live, so the result reads
-// differently from a normal round in screenshots too. The renderers never
-// touch it: it sits above the canvas and the DOM grid, so both frame the
-// flock exactly as before.
+// The corner tag names the level; the screen-reader mirror adds where in
+// the level the round sits. The renderers never touch it: it sits above
+// the canvas and the DOM grid, so both frame the flock exactly as before.
 function syncRoundBadge(state) {
-  const badge = roundBadgeText(state.round, state.speedOn && state.phase !== RUN_OVER, state.difficulty);
-  els.roundBadge.textContent = badge;
-  els.a11yRoundProgress.textContent = `${badge}.`;
+  els.roundBadge.textContent = levelTagText(state.round);
+  els.a11yRoundProgress.textContent =
+    `${levelTagText(state.round)}, round ${roundInLevel(state.round)} of ${ROUNDS_PER_LEVEL}.`;
 }
 
-// The streak chip counts the consecutive days the player has played, with
-// the best streak ever reached beside it. The store records a day each
-// time a round starts, so the chip reflects the day's play the moment the
-// briefing card appears. It hides entirely when no day has been recorded
-// (storage unavailable, or a deep-link fixture without streak data), the
-// same way the Best Round chip hides until there is a record to show.
+// The streak chip counts the consecutive days the player has played. The
+// store records a day each time a round starts, so the game-over card
+// reflects the day's play. It hides entirely when no day has been
+// recorded (storage unavailable, or a deep-link fixture without streak
+// data), the same way the Best level chip hides until there is a record.
 function syncStreakChip(state) {
   const days = Math.max(0, Math.floor(Number(state.streakDays) || 0));
-  const best = Math.max(days, Math.floor(Number(state.bestStreakDays) || 0));
   els.streakChip.hidden = !(days > 0);
   els.streakValue.textContent = String(days);
-  els.streakBest.textContent = `Best ${best}`;
 }
 
-function showRoundIntro(state) {
-  els.roundIntroSize.textContent = roundIntroText(state.round, state.difficulty, state.speedOn);
-  syncDifficultyPicker(state);
-  syncSpeedToggle(state);
-  syncBestRoundChip(state);
-  syncStreakChip(state);
-  els.roundIntro.hidden = false;
-  introOpen = true;
-}
-
-function dismissRoundIntro() {
-  introOpen = false;
-  els.roundIntro.hidden = true;
-  // The Duel toggle on the card was on: the duel takes over the run here,
-  // drawing its own shared flock and opening its own handoff card. The
-  // toggle resets so the next solo run does not inherit it.
-  if (store.state.duel && !staticMode) {
-    store.state = { ...store.state, duel: false };
-    els.duelToggle.checked = false;
-    startDuel(store.state.round, { skipIntro: true });
-    showDuelPanel({
-      title: 'Pass and play',
-      body: `${DUEL_PLAYERS[0]} counts first. Pass the device when the card asks.`,
-      scores: [],
-      hint: 'Both players count the same flock. The lower miss count wins.',
-      btn: 'Start counting',
-      onBtn: dismissDuelPanel,
-    });
-    return;
+// The game-over card's "Start at level" row: one pill per shortcut up to
+// the best level reached (1, 4, 7 ...), then Calm. Rebuilt when the card
+// opens, from the store's own bests.
+function renderStartLevelPicker(state) {
+  const picker = els.startLevelPicker;
+  picker.replaceChildren();
+  const pill = (label, data) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'difficulty-pill';
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-checked', 'false');
+    Object.assign(btn.dataset, data);
+    btn.textContent = label;
+    picker.appendChild(btn);
+  };
+  for (const level of startLevelChoices(store.bestLevel)) {
+    pill(String(level), { level: String(level) });
   }
-  showCountdown(store.state);
-}
-
-// The 3-2-1 countdown. Covers the board between "Start counting" (or the
-// next round's auto-advance) and the first tap of the round, so young
-// players can ready their eyes. Pure DOM: it sits over both the canvas
-// and the card fallback unchanged. Tapping the card (or the button)
-// skips the rest of the countdown; the round starts either way.
-function showCountdown(state) {
-  // Frozen ?scene= fixtures and deep links hold still for screenshots;
-  // they never run the countdown. Neither does a round that starts
-  // behind the briefing card instead.
-  if (staticMode || introOpen) return;
-  if (roundParam !== null) {
-    // A ?round= link skips the countdown but is still a playable run: a
-    // timed round's clock starts now, as it would when a countdown ends.
-    // Without this, ?round=1&speed=1 (and every later round of a link)
-    // never started its clock.
-    startSpeedClock();
-    return;
-  }
-  clearCountdown();
-  countdownOpen = true;
-  els.countdownNumber.textContent = '3';
-  els.countdownStatus.textContent = '3';
-  els.countdownOverlay.hidden = false;
-  updateChrome(store.state);
-  renderA11yList(store.state);
-  els.countdownSkipBtn.focus({ preventScroll: true });
-  let remaining = 3;
-  countdownTimer = setInterval(() => {
-    remaining -= 1;
-    if (remaining > 0) {
-      els.countdownNumber.textContent = String(remaining);
-      els.countdownStatus.textContent = String(remaining);
-      return;
-    }
-    dismissCountdown();
-  }, COUNTDOWN_STEP_MS);
-}
-
-function dismissCountdown() {
-  clearCountdown();
-  countdownOpen = false;
-  els.countdownOverlay.hidden = true;
-  // The mirror follows the state change: the countdown line leaves the
-  // list and the sheep buttons come back, so screen readers hear the
-  // round become live the same moment sighted players see it.
-  renderA11yList(store.state);
-  // A Speed Round starts when the countdown does.
-  startSpeedClock();
-  // A soft baa announces the new flock. playBaa checks the sound
-  // setting itself, so no extra gate is needed here.
-  playBaa();
-}
-
-function clearCountdown() {
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
+  pill('Calm', { calm: '1' });
+  // The run that just ended marks its own starting point.
+  const current = isCalmLevel(state.difficulty) ? 'calm' : null;
+  for (const btn of picker.children) {
+    if (current && btn.dataset.calm) btn.setAttribute('aria-checked', 'true');
   }
 }
 
-// ---- Speed Round clock ----
-// One interval drives the countdown. The store steps it whole seconds at
-// a time, so every surface reads the same state; the end (time out,
-// before or after the last tap) is the run-end path every other outcome
-// already shares. A fresh round, a restart or a board reset clears it.
-let speedClockTimer = null;
+// ---- Round clock ----
+// One interval drives a timed round's countdown. The store steps it whole
+// seconds at a time, so every surface reads the same state; running out is
+// the run-end path every other outcome already shares. A pass, a restart,
+// a duel or a fresh board clears it. Untimed rounds (levels 1 and 2, Calm)
+// never start one.
+let roundClockTimer = null;
 
-function startSpeedClock() {
-  clearInterval(speedClockTimer);
-  if (!store.state.speedOn || store.state.phase !== COUNTING) return;
+function startRoundClock() {
+  clearInterval(roundClockTimer);
+  if (store.state.duel || store.state.secondsLeft == null || store.state.phase !== COUNTING) return;
   // First update paints the clock without waiting a second.
   updateChrome(store.state);
   renderA11yList(store.state);
-  speedClockTimer = setInterval(() => {
-    // A fully counted flock stops the clock the same way a passed or lost
-    // round does: the player still owes the Done tap, and a complete
-    // count must never be lost to the countdown while they make it.
-    if (store.state.phase !== COUNTING || !store.state.speedOn || store.isComplete()) {
-      clearInterval(speedClockTimer);
+  roundClockTimer = setInterval(() => {
+    if (store.state.phase !== COUNTING || store.state.secondsLeft == null) {
+      clearInterval(roundClockTimer);
       return;
     }
     const alive = store.tickClock();
@@ -1392,58 +1200,86 @@ function startSpeedClock() {
     // only when a sheep is tapped.
     renderA11yList(store.state);
     if (!alive) {
-      clearInterval(speedClockTimer);
-      // Time out before the flock is finished: the run ends, exactly as
-      // a missed count does, with its own reason line.
-      if (store.state.phase === COUNTING && store.state.speedOn) store.endRun(ENDED_TIME_UP);
+      clearInterval(roundClockTimer);
+      // Time out before the flock is finished: the run ends, with its own
+      // reason line.
+      if (store.state.phase === COUNTING) store.endRun(ENDED_TIME_UP);
     }
   }, 1000);
 }
 
-function stopSpeedClock() {
-  clearInterval(speedClockTimer);
+function stopRoundClock() {
+  clearInterval(roundClockTimer);
 }
 
+function clearPass() {
+  clearTimeout(passTimer);
+  passTimer = null;
+}
+
+// The pass banner's moment is over: the next flock walks in and, on a
+// timed level, its fresh clock starts.
 function advanceRound() {
-  stopSpeedClock();
-  clearCountdown();
-  if (store.state.phase !== ROUND_PASSED) return;
+  clearPass();
+  stopRoundClock();
+  if (store.state.phase !== ROUND_PASSED || store.state.duel) return;
   store.nextRound();
   syncRoundClock();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
-  playBaa();
-  // A Speed Round run keeps the mode on for the next flock; the fresh
-  // 30 second clock starts when the countdown ends, not when the flock
-  // lands.
-  showCountdown(store.state);
+  startRoundClock();
 }
 
-function restartRun() {
-  stopSpeedClock();
-  stopDuelClock();
-  duelState = null;
-  // A restart during or after a duel restarts the player's own run, not the
-  // duel's throwaway turn store.
-  if (soloStore) {
-    store = soloStore;
-    soloStore = null;
-  }
-  clearCountdown();
-  store.restartRun();
+// A fresh board for the store's current round (a restart, a level pick, a
+// Calm switch): nothing pending from the last one carries over.
+function freshBoard() {
+  clearPass();
+  stopRoundClock();
   syncRoundClock();
   renderer?.resetRound(store.state);
   renderA11yList(store.state);
+  startRoundClock();
+}
+
+// Back from a duel's throwaway turn store to the player's own, if a duel
+// set one aside.
+function leaveDuel() {
+  stopDuelClock();
+  duelState = null;
+  dismissDuelPanel();
+  if (soloStore) {
+    store = soloStore;
+    soloStore = null;
+    store.state = { ...store.state, duel: false };
+  }
+}
+
+function restartRun() {
+  leaveDuel();
+  store.restartRun();
+  freshBoard();
   playBaa();
-  // A restart is the start of a fresh run, so the briefing comes back,
-  // with the Speed Round toggle off again. Frozen ?scene= fixtures stay
-  // card-free.
-  if (!staticMode) showRoundIntro(store.state);
+}
+
+// "Start at level N" and the Calm pill on the game-over card.
+function startAtLevel(level) {
+  leaveDuel();
+  store.startAtLevel(level);
+  freshBoard();
+  playBaa();
+}
+
+function startCalm() {
+  leaveDuel();
+  if (isCalmLevel(store.state.difficulty)) store.restartRun();
+  else store.setCalmOn(true);
+  freshBoard();
+  playBaa();
 }
 
 function hintFor(state) {
   if (state.phase === ROUND_PASSED) return 'Nicely counted.';
-  if (state.phase === RUN_OVER) return 'Tap Start again for round 1.';
+  if (state.phase === RUN_OVER) return 'Tap Start again to play.';
   return playHintText(state.count, realSheepCount(state), state.sheepCount);
 }
 
@@ -1517,10 +1353,10 @@ function updateChrome(state) {
   lastShownCount = state.count;
 
   syncRoundBadge(state);
-  // The Speed Round countdown is its own pill, so the count plate keeps
-  // its job (taps counted). Hidden the moment the mode is off, the round
-  // is passed or the run ends; a normal round never shows one.
-  const showTimer = !!state.speedOn && state.phase === COUNTING && state.secondsLeft != null;
+  // The round clock is its own pill, so the count plate keeps its job
+  // (taps counted). Hidden the moment the round is passed or the run
+  // ends; an untimed round and a duel turn never show one.
+  const showTimer = !state.duel && state.phase === COUNTING && state.secondsLeft != null;
   els.speedTimer.hidden = !showTimer;
   if (showTimer) els.speedTimer.textContent = speedRoundClock(state.secondsLeft);
   els.countDisplay.textContent = String(state.count);
@@ -1529,13 +1365,17 @@ function updateChrome(state) {
   els.countWord.textContent = `of ${sheepPhrase(realSheepCount(state))}`;
   renderCountDots(state, countedUp);
   els.playHint.textContent = hintFor(state);
+  // Done counting is a duel turn's hand-in only: a solo round passes on
+  // its last pop, so the button would only ever be a trap there.
+  els.submitBtn.hidden = !state.duel;
   els.submitBtn.disabled = state.phase !== COUNTING;
   // The quiet Done counting: a soft light button until counting starts,
   // then the usual dark one. It is never disabled during counting.
   els.submitBtn.classList.toggle('is-quiet', state.phase === COUNTING && state.count === 0);
 
-  els.roundValue.textContent = String(state.round);
+  els.roundValue.textContent = String(levelForRound(state.round));
   els.bestValue.textContent = String(store.bestRound);
+  els.difficultyValue.textContent = DIFFICULTY_LABELS[state.difficulty] || 'Levels';
   els.totalValue.textContent = String(state.totalCounted);
   els.bestStreakValue.textContent = String(state.bestSafeStreak);
   els.bonusValue.textContent = String(state.bonusCounted || 0);
@@ -1570,32 +1410,20 @@ function syncPanels(state) {
     return;
   }
 
-  if (passed) {
-    els.successTitle.textContent = successMessage();
-    els.roundCompleteTitle.textContent = roundCompleteTitle(state.round, state.speedOn);
-    els.roundCompleteNext.textContent =
-      `Next up: ${sheepPhrase(sheepForRound(state.round + 1, state.difficulty))}. ${paceLine(state.round + 1, state.difficulty)}`;
-    // The recap lines: what was counted, how long it took, and the best
-    // time for the round. A state without a recap (older fixtures, duel
-    // turns) hides them rather than showing a stale one.
-    const recap = state.recap || null;
-    els.recapSheep.hidden = !recap;
-    els.recapTime.hidden = !recap;
-    els.recapBest.hidden = !recap;
-    if (recap) {
-      els.recapSheep.textContent = recapSheepLine(recap.counted);
-      els.recapTime.textContent = recapTimeLine(recap.seconds);
-      els.recapBest.textContent = recapBestLine(recap.round, recap.bestSeconds, recap.newBest);
-    }
+  // The pass banner: what was just counted, and on a level-up the new
+  // level above it. It floats in the meadow and never takes a tap.
+  const pass = passed ? state.lastPass : null;
+  els.flowBanner.hidden = !pass;
+  if (pass) {
+    els.flowBannerLine.textContent = passLine(pass.counted);
+    els.flowBannerTitle.hidden = !pass.levelUp;
+    els.flowBannerTitle.textContent = levelUpTitle(levelForRound(pass.round + 1));
   }
   if (over) {
-    els.gameOverRound.textContent = String(state.round);
-    // A completed ladder is not a scatter: the eyebrow names the finish.
-    els.gameOverEyebrow.textContent = state.endedBy === ENDED_COMPLETE
-      ? 'Every round counted'
-      : 'The flock scattered';
+    els.gameOverRound.textContent = String(levelForRound(state.round));
+    els.gameOverEyebrow.textContent = 'The flock scattered';
     els.gameOverReason.textContent =
-      state.endedBy === ENDED_COMPLETE ? `You finished all ${TOTAL_ROUNDS} rounds.`
+      state.endedBy === ENDED_COMPLETE ? 'Every round counted.'
       : state.endedBy === ENDED_WOLF ? 'The wolf tricked you.'
       : state.endedBy === ENDED_DOUBLE_TAP ? 'You counted the same sheep twice.'
       : state.endedBy === ENDED_TIME_UP ? 'The clock ran out.'
@@ -1607,21 +1435,33 @@ function syncPanels(state) {
         ? 'You dodged 1 wolf round in a row.'
         : `You dodged ${dodged} wolf rounds in a row.`;
     }
+    // The choices for the next run: the record chips and the level
+    // shortcuts. A read-only shared card shows neither.
+    const readOnly = !!publicViewMode || sceneParam === 'sharegameover';
+    els.gameOverChips.hidden = readOnly;
+    els.gameOverOptions.hidden = readOnly;
+    if (!readOnly) {
+      syncBestRoundChip();
+      syncStreakChip(state);
+      renderStartLevelPicker(state);
+    }
     playBaa();
   }
-  els.roundComplete.hidden = !passed;
   els.gameOver.hidden = !over;
 
   if (state.phase === lastPhase) return;
   lastPhase = state.phase;
   if (passed) {
     renderer?.celebrate?.();
-    if (!isCalmLevel(state.difficulty)) playCelebration();
-    // The card waits for the player now: the Next round button, a tap
-    // anywhere on the card, or Enter or Space. Put the button in focus so
-    // keyboard players land on the action, while the polite live region
-    // announces the recap around it.
-    if (!staticMode) els.nextRoundBtn.focus({ preventScroll: true });
+    // The bigger moment is for a level-up: the celebration sound joins
+    // the confetti. A plain pass already had its baa on the last pop.
+    if (pass && pass.levelUp && !isCalmLevel(state.difficulty)) playCelebration();
+    // The banner holds for its moment, then the next flock walks in by
+    // itself. Frozen fixtures hold still for their screenshots.
+    if (!staticMode) {
+      clearPass();
+      passTimer = setTimeout(advanceRound, pass && pass.levelUp ? LEVEL_UP_MS : PASS_MS);
+    }
   }
 }
 
@@ -1646,12 +1486,11 @@ function renderA11yList(state) {
     buttons = els.a11yList.querySelectorAll('button');
   }
   buttons.forEach((btn, i) => {
-    // The briefing card or the countdown is open: no tap can land, so the
-    // mirror says so instead of offering a button that would silently do
-    // nothing. The recap card covers the board the same way while the
-    // round is passed. And a sheep that already popped is gone from the
-    // screen, so its button is disabled, not tappable.
-    btn.disabled = introOpen || countdownOpen || state.phase === ROUND_PASSED || state.counted.includes(i);
+    // Between rounds (the pass banner) and after the run no tap can land,
+    // so the mirror says so instead of offering a button that would
+    // silently do nothing. And a sheep that already popped is gone from
+    // the screen, so its button is disabled, not tappable.
+    btn.disabled = state.phase !== COUNTING || state.counted.includes(i);
     // With Name labels on, the mirror uses the same playful name the two
     // renderers draw, so a screen reader calls the sheep what the player
     // sees: "Woolly is grazing" / "Woolly, counted as number 3".
@@ -1664,83 +1503,42 @@ function renderA11yList(state) {
     // The wolf's entry names what gives it away on screen (wolfCueText).
     btn.textContent = state.wolfIndex === i ? `${label}, and ${wolfCueText(state.round, state.difficulty)}` : label;
   });
-  // The countdown mirrors into the a11y channel too, appended after the
-  // clock line, so when the round goes live the clock is the last thing
-  // screen readers hear. The line (and the buttons it belongs with)
-  // leaves with the overlay.
-  let countdownLine = els.a11yList.querySelector('#a11y-countdown-status');
-  if (countdownOpen) {
-    if (!countdownLine) {
-      countdownLine = document.createElement('p');
-      countdownLine.id = 'a11y-countdown-status';
-      els.a11yList.appendChild(countdownLine);
-    }
-    countdownLine.textContent = 'Get ready, round starting.';
-  } else if (countdownLine) {
-    countdownLine.remove();
-  }
   // The clock is part of the round's state, so the screen-reader list
   // mirrors it too. It stays only while the clock is actually running
   // (same condition as the on-screen pill): once the round is passed or
   // the run ends, the line leaves the list. Off or hidden, it stays out
   // of the list entirely.
   let clockLine = els.a11yList.querySelector('#a11y-speed-clock');
-  const clockRunning = state.speedOn && state.phase === COUNTING && state.secondsLeft != null;
+  const clockRunning = !state.duel && state.phase === COUNTING && state.secondsLeft != null;
   if (clockRunning) {
     if (!clockLine) {
       clockLine = document.createElement('p');
       clockLine.id = 'a11y-speed-clock';
       els.a11yList.appendChild(clockLine);
     }
-    clockLine.textContent = `Speed Round, ${speedRoundClock(state.secondsLeft)} seconds left.`;
+    clockLine.textContent = `${speedRoundClock(state.secondsLeft)} seconds left.`;
   } else if (clockLine) {
     clockLine.remove();
   }
 }
 
 els.submitBtn.addEventListener('click', submitCount);
-els.startCountingBtn.addEventListener('click', dismissRoundIntro);
-els.countdownSkipBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  dismissCountdown();
-});
-els.countdownOverlay.addEventListener('pointerdown', () => {
-  if (countdownOpen) dismissCountdown();
-});
-els.countdownOverlay.addEventListener('keydown', (e) => {
-  if (countdownOpen && (e.key === 'Enter' || e.key === ' ')) {
-    e.preventDefault();
-    dismissCountdown();
-  }
-});
-document.addEventListener('visibilitychange', () => {
-  // A stale countdown must never start a round the player is not looking
-  // at: when the app is hidden, pause the tick and keep the overlay up.
-  // The next tap (or the button) starts the round instead. Returning to
-  // view must NOT clear it: the unhide itself fires visibilitychange, and
-  // clearing there would strand the round before it starts.
-  if (countdownOpen && document.hidden) {
-    clearCountdown();
-  }
-});
-els.nextRoundBtn.addEventListener('click', advanceRound);
 els.restartBtn.addEventListener('click', restartRun);
 
-// The recap card dismisses on a tap anywhere on it (the backdrop covers
-// the whole screen), or on Enter or Space, so a child mashing the screen
-// moves on without hunting for the button. The Next round button's own
-// click lands afterwards on an already-counting round and does nothing,
-// so a tap on the button is never counted twice. Frozen fixtures hold
-// still for their screenshots.
-els.roundComplete.addEventListener('pointerdown', () => {
-  if (!staticMode && store.state.phase === ROUND_PASSED) advanceRound();
+// The game-over card's level shortcuts and Calm pill. Frozen fixtures
+// render the pills but ignore taps, like every other fixture control.
+els.startLevelPicker.addEventListener('click', (e) => {
+  const btn = e.target.closest('.difficulty-pill');
+  if (!btn || staticMode || publicViewMode) return;
+  if (btn.dataset.calm) startCalm();
+  else startAtLevel(Number(btn.dataset.level));
 });
-els.roundComplete.addEventListener('keydown', (e) => {
-  if (!staticMode && store.state.phase === ROUND_PASSED
-    && (e.key === 'Enter' || e.key === ' ')) {
-    e.preventDefault();
-    advanceRound();
-  }
+
+// Pass-and-play Duel, started from the game-over card: both players count
+// the flock of the level the run just reached.
+els.duelStartBtn.addEventListener('click', () => {
+  if (staticMode || publicViewMode) return;
+  startDuel(store.state.round);
 });
 
 // Grown-ups gate: only opens after a ~1.5s press-and-hold, so mashing the
@@ -1762,8 +1560,9 @@ els.grownupsBtn.addEventListener('keydown', (e) => {
 
 function openGrownups(state) {
   setExportStatus('');
-  els.roundValue.textContent = String(state.round);
+  els.roundValue.textContent = String(levelForRound(state.round));
   els.bestValue.textContent = String(store.bestRound);
+  els.difficultyValue.textContent = DIFFICULTY_LABELS[state.difficulty] || 'Levels';
   els.totalValue.textContent = String(state.totalCounted);
   els.bestStreakValue.textContent = String(state.bestSafeStreak);
   els.bonusValue.textContent = String(state.bonusCounted || 0);
@@ -1800,9 +1599,13 @@ els.scenerySelect.addEventListener('change', (e) => {
   store.setScenery(e.target.value);
 });
 
+// Calm is one switch: turning it on or off changes the curve, which starts
+// a fresh run at level 1, so the board behind the panel is rebuilt too.
 els.calmToggle.addEventListener('change', (e) => {
   if (staticMode) return;
+  const before = store.state.difficulty;
   store.setCalmOn(e.target.checked);
+  if (store.state.difficulty !== before) freshBoard();
 });
 
 els.namesToggle.addEventListener('change', (e) => {
@@ -1879,42 +1682,6 @@ els.exportBtn.addEventListener('click', async () => {
     exporting = false;
     els.exportBtn.disabled = false;
   }
-});
-
-// Picking a level on the briefing card switches the run to that level at
-// round 1. In staticMode the pills render from the fixture but taps are
-// ignored, exactly like the sound toggle above.
-for (const btn of els.difficultyPicker.querySelectorAll('.difficulty-pill')) {
-  btn.addEventListener('click', () => {
-    if (staticMode) return;
-    store.setDifficulty(btn.dataset.difficulty);
-    syncRoundClock();
-    syncDifficultyPicker(store.state);
-    syncBestRoundChip(store.state);
-    els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty);
-    // The board behind the card shows the new level's round 1 flock.
-    renderer?.resetRound(store.state);
-    renderA11yList(store.state);
-  });
-}
-
-// The Speed Round toggle flips before Start counting. The briefing line
-// and the flock behind the card update so the player sees the mode they
-// are about to play; the flag lives one round, and the next round's
-// briefing asks again.
-els.speedToggle.addEventListener('change', (e) => {
-  if (staticMode) return;
-  store.setSpeedOn(e.target.checked);
-  syncRoundClock();
-  syncSpeedToggle(store.state);
-  els.roundIntroSize.textContent = roundIntroText(store.state.round, store.state.difficulty, store.state.speedOn);
-  renderer?.resetRound(store.state);
-  renderA11yList(store.state);
-});
-
-els.duelToggle.addEventListener('change', (e) => {
-  if (staticMode) return;
-  store.state = { ...store.state, duel: e.target.checked };
 });
 
 els.startOverBtn.addEventListener('click', () => {
