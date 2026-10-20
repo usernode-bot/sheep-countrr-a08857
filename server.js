@@ -210,8 +210,10 @@ function normalizeHandle(raw) {
 app.post('/api/runs', async (req, res) => {
   const roundReached = clamp(parseInt((req.body || {}).roundReached, 10) || 1, 1, MAX_ROUND);
   // 'wolf' is the run a wolf tap ended; without it here a shared card for
-  // that run fell back to "Some sheep were left uncounted."
-  const endReason = ['doubleTap', 'missed', 'timeUp', 'wolf'].includes((req.body || {}).endedBy)
+  // that run fell back to "Some sheep were left uncounted." 'complete' is
+  // the run the ladder's final round passed: no next flock, so the shared
+  // card shows the finish instead of a scatter line.
+  const endReason = ['doubleTap', 'missed', 'timeUp', 'wolf', 'complete'].includes((req.body || {}).endedBy)
     ? (req.body || {}).endedBy : null;
   // Speed Rounds carry their own tag so the weekly leaderboard can show
   // them separately from normal rounds.

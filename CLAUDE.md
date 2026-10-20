@@ -125,6 +125,33 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   `buildStaticState()` instead. The pure arithmetic (`localDayKey`,
   `dayDistance`, `advanceStreak`) lives in `rounds.js` with the other
   copy/curve helpers and is asserted in `tests/game.test.mjs`.
+- **The round recap card is stamped at the pass, never persisted.** When
+  `submitCount()` passes a round, the store fills `state.recap`
+  (`{ round, counted, seconds, bestSeconds, newBest }`) and the card
+  waits for the player (Next round button, tap anywhere, Enter/Space);
+  the old auto-advance timer is gone. `startRound` clears `recap`, and
+  it is deliberately left out of saves and snapshots, so a resumed
+  board never shows a stale card. Passing the ladder's final round
+  (`TOTAL_ROUNDS` = 9) instead ends the run with `endedBy: 'complete'`
+  (`ENDED_COMPLETE`, part of the `/api/runs` end-reason allowlist) and
+  no card. **Per-round best times (`state.bestTimes[difficulty][round]`)
+  are device-local, never a server column**, same precedent as the
+  streak: saved in the per-user localStorage payload, normalized by
+  `normalizeBestTimes` on restore, per difficulty. The recap copy
+  helpers (`formatRoundSeconds`, `recapSheepLine`, `recapTimeLine`,
+  `recapBestLine`) live in `rounds.js` and are asserted in
+  `tests/game.test.mjs`.
+- **`?round=N&autoplay=button|tap|1` is a side-effect-free playable
+  harness** for the load-only dapp.json checks: it rides the existing
+  `?round=` auth exemption, forces the store ephemeral (unlike a plain
+  `?round=N`, whose store is persistent today), plays a real round via
+  the same `handleTap`/`submitCount` path a player uses (skipping the
+  wolf index so a drawn wolf cannot end the run), then either clicks
+  Next round (`button`), dispatches a real `pointerdown` on the recap
+  card (`tap`), or stops at the card (`1`), which is what lets the
+  "Next round starts the next round" and "tap anywhere dismisses"
+  checks assert on a real run. Never read `autoplay` outside the
+  store-construction/harness seam in `app.js`.
 - **`?renderer=dom` forces the DOM/card fallback** (used by the
   "No-WebGL fallback" test) even on a device that supports WebGL. It
   shares the same `onTap(index)` contract and counting logic as the 3D

@@ -14,6 +14,7 @@ import {
   SPEED_ROUND_SECONDS,
   advanceStreak,
   isCalmLevel,
+  normalizeBigTap,
   localDayKey,
   normalizeCalm,
   normalizeDifficulty,
@@ -21,6 +22,7 @@ import {
   normalizeScenery,
   normalizeSpeedRound,
   roundSeed,
+  TOTAL_ROUNDS,
   sceneryFromServer,
   sheepForRound,
   WOLF_BONUS,
@@ -40,11 +42,13 @@ export const RUN_OVER = 'runOver';
 
 // Why a run ended, for the game-over copy. A Speed Round can also end on
 // its own clock; the reason is stored with the run so a shared card shows
-// the same line the player saw.
+// the same line the player saw. A run that passes the ladder's final
+// round ends complete: there is no next flock, so no recap card shows.
 export const ENDED_DOUBLE_TAP = 'doubleTap';
 export const ENDED_MISSED = 'missed';
 export const ENDED_WOLF = 'wolf';
 export const ENDED_TIME_UP = 'timeUp';
+export const ENDED_COMPLETE = 'complete';
 
 // One best round per difficulty, kept in a map so a best on Easy can never
 // masquerade as one on Hard.
@@ -101,6 +105,32 @@ function normalizeBestRounds(raw, fallback) {
   return out;
 }
 
+// One best time (whole seconds) per round per difficulty, in a map of
+// maps so a Hard best can never masquerade as a Normal one. Device-local
+// like the streak: it rides localStorage only, never the server sync, so
+// a deep link or a fixture cannot move a real player's best. Anything
+// non-finite, negative or out of range reads as "no time yet"; unknown
+// difficulty keys are dropped rather than carried.
+function normalizeBestTimes(raw) {
+  const out = {};
+  const source = raw && typeof raw === 'object' ? raw : {};
+  for (const key of DIFFICULTY_KEYS) {
+    const rounds = source[key];
+    if (!rounds || typeof rounds !== 'object') continue;
+    const times = {};
+    for (const [roundKey, roundValue] of Object.entries(rounds)) {
+      const round = Math.floor(Number(roundKey));
+      const seconds = Math.floor(Number(roundValue));
+      if (Number.isFinite(round) && round >= 1 && round <= 999
+        && Number.isFinite(seconds) && seconds >= 0) {
+        times[round] = seconds;
+      }
+    }
+    if (Object.keys(times).length) out[key] = times;
+  }
+  return out;
+}
+
 function randomSeed() {
   return Math.floor(Math.random() * 2 ** 31);
 }
@@ -119,6 +149,16 @@ export function createDefaultState() {
     bestSafeStreak: 0,
     bonusCounted: 0,
     bestRounds: { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1 },
+    // Best whole-second time per round per difficulty (see
+    // normalizeBestTimes). Set on every passed round; shown by the recap
+    // card and kept across sessions like bestRounds.
+    bestTimes: {},
+    // The recap card's facts for the round just passed: { round, counted,
+    // seconds, bestSeconds, newBest }, or null when there is nothing to
+    // recap (a fresh board, or the final round, which ends the run
+    // instead). Never persisted: it is filled at the pass and read by the
+    // card, so a reload never resurrects a stale recap.
+    recap: null,
     totalCounted: 0,
     communityTotal: 0,
     soundOn: true,
@@ -130,6 +170,9 @@ export function createDefaultState() {
     nightOn: false,
     calmOn: false,
     namesOn: false,
+    // Big Tap (accessibility): bigger hit targets, slower flock, less
+    // confetti. Device-local like namesOn, never sent to the server.
+    bigTap: false,
     difficulty: DEFAULT_DIFFICULTY,
     speedOn: false,
     secondsLeft: null,
@@ -257,6 +300,7 @@ export class StateStore {
         ...this.state,
         round: normalizeRound(saved.round),
         bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
+        bestTimes: normalizeBestTimes(saved.bestTimes),
         bestSafeStreak: Math.max(0, Number(saved.bestSafeStreak) || 0),
         bonusCounted: Math.max(0, Number(saved.bonusCounted) || 0),
         totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
@@ -265,6 +309,7 @@ export class StateStore {
         nightOn: scenery === 'night',
         calmOn: normalizeCalm(saved.calmOn),
         namesOn: !!saved.namesOn,
+        bigTap: normalizeBigTap(saved.bigTap),
         difficulty: normalizeDifficulty(saved.difficulty),
         speedOn: normalizeSpeedRound(saved.speedOn),
         streakDays: normalizeStreakCount(saved.streakDays),
@@ -301,6 +346,7 @@ export class StateStore {
         round: this.state.round,
         difficulty: this.state.difficulty,
         bestRounds: this.state.bestRounds,
+        bestTimes: this.state.bestTimes,
         bestSafeStreak: this.state.bestSafeStreak,
         bonusCounted: this.state.bonusCounted,
         totalCounted: this.state.totalCounted,
@@ -310,6 +356,7 @@ export class StateStore {
         nightOn: this.state.nightOn,
         calmOn: this.state.calmOn,
         namesOn: this.state.namesOn,
+        bigTap: this.state.bigTap,
         speedOn: this.state.speedOn,
         streakDays: this.state.streakDays,
         bestStreakDays: this.state.bestStreakDays,
@@ -444,6 +491,9 @@ export class StateStore {
       roundElapsed: keepBoard ? this.state.roundElapsed : 0,
       phase: COUNTING,
       endedBy: null,
+      // A new board never carries the previous round's recap: the card is
+      // filled fresh at the next pass, so a stale one cannot linger.
+      recap: null,
       wolfIndex: keepBoard ? this.state.wolfIndex : wolfFor(next, seed, sheepCount, this.state.difficulty),
       // A restart to round 1 is a new run, so the current streak resets.
       // bestSafeStreak survives, like bestRounds.
@@ -496,12 +546,14 @@ export class StateStore {
       ...this.state,
       round: normalizeRound(saved.round),
       bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
+      bestTimes: normalizeBestTimes(saved.bestTimes),
           totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
           soundOn: sound.soundOn,
           scenery,
           nightOn: scenery === 'night',
           calmOn: normalizeCalm(saved.calmOn),
           namesOn: !!saved.namesOn,
+          bigTap: normalizeBigTap(saved.bigTap),
           difficulty: normalizeDifficulty(saved.difficulty),
           speedOn: normalizeSpeedRound(saved.speedOn),
           streakDays: normalizeStreakCount(saved.streakDays),
@@ -810,14 +862,45 @@ export class StateStore {
         bestSafeStreak = Math.max(bestSafeStreak, safeStreak);
         this.unsyncedBonus += WOLF_BONUS;
       }
+      // The recap card's facts, stamped at the moment of the pass: this
+      // round's own clock in whole seconds (stamped onto the state so the
+      // card can show it after the renderer resets), and the per-round
+      // best time it sets or keeps. Best times live in the same
+      // device-local map family as the streak, so a deep link or a
+      // fixture can never move a real player's best.
+      const round = this.state.round;
+      const difficulty = this.state.difficulty;
+      const elapsed = this.currentElapsed();
+      const seconds = Math.max(0, Math.round(elapsed));
+      const prevBest = this.state.bestTimes[difficulty]?.[round];
+      const newBest = prevBest == null || seconds < prevBest;
+      const bestSeconds = newBest ? seconds : prevBest;
+      const bestTimes = {
+        ...this.state.bestTimes,
+        [difficulty]: { ...this.state.bestTimes[difficulty], [round]: bestSeconds },
+      };
       this.state = {
         ...this.state,
         phase: ROUND_PASSED,
+        roundElapsed: elapsed,
         safeStreak,
         bestSafeStreak,
         bonusCounted: this.state.bonusCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
         totalCounted: this.state.totalCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
+        bestTimes,
+        // The final round has no next flock to preview, so it never shows
+        // a recap: the run completes and the game-over card takes over.
+        recap: round < TOTAL_ROUNDS
+          ? { round, counted: this.state.count, seconds, bestSeconds, newBest }
+          : null,
       };
+      // The ladder's top round is the end of the run. End it with its own
+      // reason so the game-over card shows the completion; the recap card
+      // and its Next round button have nothing to offer there.
+      if (round >= TOTAL_ROUNDS) {
+        this.endRun(ENDED_COMPLETE);
+        return { outcome: 'passed', round };
+      }
       this.saveLocal();
       // A passed round is over; resuming into it would show a board with
       // nothing left to tap. The next visit starts the round fresh,
@@ -825,7 +908,7 @@ export class StateStore {
       this.clearMidRound();
       this.flush();
       this.onChange(this.state);
-      return { outcome: 'passed', round: this.state.round };
+      return { outcome: 'passed', round };
     }
     if (forgiving(this.state)) {
       const awake = [];
@@ -932,6 +1015,16 @@ export class StateStore {
   // real player, and it stays whatever the device last chose.
   setNamesOn(on) {
     this.state = { ...this.state, namesOn: !!on };
+    this.saveLocal();
+    this.onChange(this.state);
+  }
+
+  // Big Tap is a device-local accessibility choice like the name labels:
+  // bigger hit targets, a slower flock and lighter pop bursts for whoever
+  // is holding this device, never synced to the server. It applies from
+  // the next flock build (the next round), not retroactively mid-round.
+  setBigTapOn(on) {
+    this.state = { ...this.state, bigTap: normalizeBigTap(on) };
     this.saveLocal();
     this.onChange(this.state);
   }
