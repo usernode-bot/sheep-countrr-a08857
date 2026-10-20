@@ -51,13 +51,16 @@ export const ENDED_TIME_UP = 'timeUp';
 export const ENDED_COMPLETE = 'complete';
 
 // One best round per difficulty, kept in a map so a best on Easy can never
-// masquerade as one on Hard.
-export const DIFFICULTY_KEYS = ['calm', 'easy', 'normal', 'hard', 'expert'];
+// masquerade as one on Hard. normalizeBestRounds derives its default map
+// from this list, so a new level only needs adding here.
+export const DIFFICULTY_KEYS = ['calm', 'easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend'];
 
 // Calm never hides a wolf: the impostor is a challenge mechanic, and
-// counting it would end the run, which Calm never does.
+// counting it would end the run, which Calm never does. Every other level
+// passes its own difficulty down, so the wolf bites in proportion to the
+// level (see rounds.js wolfModeFactors).
 function wolfFor(round, seed, sheepCount, difficulty) {
-  return isCalmLevel(difficulty) ? null : wolfIndexForRound(round, seed, sheepCount);
+  return isCalmLevel(difficulty) ? null : wolfIndexForRound(round, seed, sheepCount, difficulty);
 }
 
 // Calm's forgiving rules apply to a solo run. A pass-and-play duel keeps
@@ -92,7 +95,8 @@ function restoredSound(saved) {
 }
 
 function normalizeBestRounds(raw, fallback) {
-  const out = { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1 };
+  const out = {};
+  for (const key of DIFFICULTY_KEYS) out[key] = 1;
   const source = raw && typeof raw === 'object' ? raw : {};
   for (const key of DIFFICULTY_KEYS) {
     out[key] = normalizeRound(source[key] || 1);
