@@ -127,8 +127,9 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   copy/curve helpers and is asserted in `tests/game.test.mjs`.
 - **The round recap card is stamped at the pass, never persisted.** When
   `submitCount()` passes a round, the store fills `state.recap`
-  (`{ round, counted, seconds, bestSeconds, newBest }`) and the card
-  waits for the player (Next round button, tap anywhere, Enter/Space);
+  (`{ round, counted, seconds, bestSeconds, newBest, todayCounted }`) and
+  the card waits for the player (Next round button, tap anywhere,
+  Enter/Space);
   the old auto-advance timer is gone. `startRound` clears `recap`, and
   it is deliberately left out of saves and snapshots, so a resumed
   board never shows a stale card. Passing the ladder's final round
@@ -137,10 +138,15 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   no card. **Per-round best times (`state.bestTimes[difficulty][round]`)
   are device-local, never a server column**, same precedent as the
   streak: saved in the per-user localStorage payload, normalized by
-  `normalizeBestTimes` on restore, per difficulty. The recap copy
-  helpers (`formatRoundSeconds`, `recapSheepLine`, `recapTimeLine`,
-  `recapBestLine`) live in `rounds.js` and are asserted in
-  `tests/game.test.mjs`.
+  `normalizeBestTimes` on restore, per difficulty. **The daily tally
+  (`state.todayCounted` / `state.todayCountedDay`) is device-local too,
+  never a server column**, with the same local-day rule as the streak:
+  every counted tap increments it, the wolf's bonus sheep do not, and
+  `todayTally` reads a save from another day as zero. It is left out of
+  snapshots and `/api/state`, and the recap copy helpers
+  (`formatRoundSeconds`, `recapSheepLine`, `recapTimeLine`,
+  `recapBestLine`, `recapTodayLine`) live in `rounds.js` and are asserted
+  in `tests/game.test.mjs`.
 - **`?round=N&autoplay=button|tap|1` is a side-effect-free playable
   harness** for the load-only dapp.json checks: it rides the existing
   `?round=` auth exemption, forces the store ephemeral (unlike a plain

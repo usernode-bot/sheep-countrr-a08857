@@ -24,6 +24,7 @@ import {
   recapBestLine,
   recapSheepLine,
   recapTimeLine,
+  recapTodayLine,
   roundCompleteTitle,
   roundIntroText,
   roundSeed,
@@ -221,6 +222,7 @@ const els = {
   recapSheep: document.getElementById('recap-sheep'),
   recapTime: document.getElementById('recap-time'),
   recapBest: document.getElementById('recap-best'),
+  recapToday: document.getElementById('recap-today'),
   roundCompleteNext: document.getElementById('round-complete-next'),
   nextRoundBtn: document.getElementById('next-round-btn'),
   gameOver: document.getElementById('game-over'),
@@ -434,7 +436,7 @@ function buildStaticState() {
       phase: ROUND_PASSED,
       // The recap card's frozen facts, hardcoded like every other fixture:
       // the whole flock counted in 41 seconds, against a 34 second best.
-      recap: { round: 4, counted: n, seconds: 41, bestSeconds: 34, newBest: false },
+      recap: { round: 4, counted: n, seconds: 41, bestSeconds: 34, newBest: false, todayCounted: 23 },
       bestTimes: { [difficultyParam]: { 4: 34 } },
     });
   }
@@ -1575,17 +1577,20 @@ function syncPanels(state) {
     els.roundCompleteTitle.textContent = roundCompleteTitle(state.round, state.speedOn);
     els.roundCompleteNext.textContent =
       `Next up: ${sheepPhrase(sheepForRound(state.round + 1, state.difficulty))}. ${paceLine(state.round + 1, state.difficulty)}`;
-    // The recap lines: what was counted, how long it took, and the best
-    // time for the round. A state without a recap (older fixtures, duel
-    // turns) hides them rather than showing a stale one.
+    // The recap lines: what was counted, how long it took, the best time
+    // for the round, and how many sheep were counted today. A state
+    // without a recap (older fixtures, duel turns) hides them rather than
+    // showing a stale one.
     const recap = state.recap || null;
     els.recapSheep.hidden = !recap;
     els.recapTime.hidden = !recap;
     els.recapBest.hidden = !recap;
+    els.recapToday.hidden = !recap || recap.todayCounted == null;
     if (recap) {
       els.recapSheep.textContent = recapSheepLine(recap.counted);
       els.recapTime.textContent = recapTimeLine(recap.seconds);
       els.recapBest.textContent = recapBestLine(recap.round, recap.bestSeconds, recap.newBest);
+      if (recap.todayCounted != null) els.recapToday.textContent = recapTodayLine(recap.todayCounted);
     }
   }
   if (over) {
