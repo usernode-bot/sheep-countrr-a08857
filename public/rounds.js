@@ -120,11 +120,12 @@ export function isCalmLevel(difficulty) {
 
 // The Get ready card's rule line. A counted sheep pops into confetti and
 // candy, so it cannot be tapped again; the challenge levels keep the
-// warning that saying done too early ends the run.
+// warning that saying done too early ends the run, and carry the wolf
+// warning that used to be a line of its own (Calm has no wolf).
 export function introRuleText(difficulty = DEFAULT_DIFFICULTY) {
   return isCalmLevel(difficulty)
     ? 'Tap each sheep once to pop it, then tap Done counting.'
-    : 'Tap each sheep once to pop it, then tap Done counting. Saying done too early ends the run.';
+    : 'Tap each sheep once to pop it, then tap Done counting. Saying done too early ends the run. Watch out for the wolf.';
 }
 
 // Anything unrecognised (a hostile /api/state body, a mangled deep link,
@@ -410,12 +411,14 @@ export function sheepPhrase(n) {
 }
 
 // The counting screen's hint, by where the round is: how to start, then
-// how many sheep are left, then the hand-in. Pure so tests can pin the
-// words, like the other copy helpers here.
+// the hand-in. Mid-count it is empty: the count plate and its dots already
+// say how far along the round is, so a third copy of that number would
+// only be noise. Pure so tests can pin the words, like the other copy
+// helpers here.
 export function playHintText(count, realSheep, sheepCount) {
   if (count === 0) return sheepCount === 1 ? 'Tap the sheep.' : 'Tap every sheep.';
   if (count >= realSheep) return 'That is all of them. Tap Done counting.';
-  return `${realSheep - count} left!`;
+  return '';
 }
 
 // A short, honest warning about what the flock will do.
@@ -458,21 +461,19 @@ export function formatRoundSeconds(seconds) {
   return s === 1 ? '1 second' : `${s} seconds`;
 }
 
-// The recap card's three fact lines, added under the round line in the
-// facts box: what was counted, how long it took, and the best time the
-// round now carries. Pure so tests/game.test.mjs can pin the words, like
+// The recap card's fact lines, added under the round line in the facts
+// box: what was counted (the big number's spoken name) and how long it
+// took. Pure so tests/game.test.mjs can pin the words, like
 // the other copy helpers here.
 export function recapSheepLine(count) {
   const n = Math.max(0, Math.floor(Number(count) || 0));
   return `You counted ${sheepPhrase(n)}.`;
 }
 
-export function recapTimeLine(seconds) {
-  return `That took ${formatRoundSeconds(seconds)}.`;
-}
-
-export function recapBestLine(round, seconds, newBest = false) {
-  const base = `Best time for round ${normalizeRound(round)}: ${formatRoundSeconds(seconds)}.`;
+// The card's one time line: the best time is named only when this round
+// just set it, so a plain round reads as a single quiet fact.
+export function recapTimeLine(seconds, newBest = false) {
+  const base = `That took ${formatRoundSeconds(seconds)}.`;
   return newBest ? `${base} A new best!` : base;
 }
 
