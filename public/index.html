@@ -1066,8 +1066,9 @@
 
     <!-- Round passed: the success state. Praise first, then the recap card's
          facts (what was counted, how long it took, the best time for the
-         round), then a preview of the next, bigger flock. The polite live
-         region announces the whole card when it opens. -->
+         round, the sheep counted today), then a preview of the next,
+         bigger flock. The polite live region announces the whole card when
+         it opens. -->
     <div id="round-complete" hidden role="status" aria-live="polite" class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
         <div class="confetti-strip w-full" aria-hidden="true"></div>
@@ -1078,6 +1079,7 @@
           <p id="recap-sheep" class="recap-line" hidden>You counted 1 sheep.</p>
           <p id="recap-time" class="recap-line" hidden>That took 10 seconds.</p>
           <p id="recap-best" class="recap-line" hidden>Best time for round 1: 10 seconds.</p>
+          <p id="recap-today" class="recap-line" hidden>You have counted 1 sheep today.</p>
           <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
         </div>
         <button id="next-round-btn" type="button" class="big-btn">

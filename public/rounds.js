@@ -410,10 +410,10 @@ export function formatRoundSeconds(seconds) {
   return s === 1 ? '1 second' : `${s} seconds`;
 }
 
-// The recap card's three fact lines, added under the round line in the
-// facts box: what was counted, how long it took, and the best time the
-// round now carries. Pure so tests/game.test.mjs can pin the words, like
-// the other copy helpers here.
+// The recap card's four fact lines, added under the round line in the
+// facts box: what was counted, how long it took, the best time the
+// round now carries, and how many sheep today has brought so far. Pure
+// so tests/game.test.mjs can pin the words, like the other copy helpers here.
 export function recapSheepLine(count) {
   const n = Math.max(0, Math.floor(Number(count) || 0));
   return `You counted ${sheepPhrase(n)}.`;
@@ -426,6 +426,14 @@ export function recapTimeLine(seconds) {
 export function recapBestLine(round, seconds, newBest = false) {
   const base = `Best time for round ${normalizeRound(round)}: ${formatRoundSeconds(seconds)}.`;
   return newBest ? `${base} A new best!` : base;
+}
+
+// The recap card's fourth fact line: how many sheep this device has
+// counted so far today, the round just finished included. Same clamping
+// and same "sheep for one and many" rule as recapSheepLine.
+export function recapTodayLine(count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  return `You have counted ${sheepPhrase(n)} today.`;
 }
 
 // The weekly leaderboard's score text: a Speed Round keeps its own tag so
@@ -481,4 +489,13 @@ export function advanceStreak(prevDays, bestDays, lastDayKey, todayKey) {
   const grew = !!lastDayKey && dayDistance(lastDayKey, todayKey) === 1;
   const days = grew ? prev + 1 : 1;
   return { days, best: Math.max(best, days), changed: true };
+}
+
+// The daily tally's rollover rule, shared by the tap increment and the
+// recap stamp: a tally saved on todayKey stands, and anything else (no
+// day, a mangled key, yesterday's tally) reads as zero so the new day
+// starts fresh. Pure, like advanceStreak, so tests can pin it.
+export function todayTally(count, dayKey, todayKey) {
+  if (dayKey !== todayKey) return 0;
+  return Math.max(0, Math.floor(Number(count) || 0));
 }

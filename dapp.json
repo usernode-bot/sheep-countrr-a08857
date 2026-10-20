@@ -313,6 +313,11 @@
       "expectText": "Best time for round 4: 34 seconds."
     },
     {
+      "name": "The recap card shows the sheep counted today",
+      "path": "/?scene=roundcomplete",
+      "expectText": "You have counted 23 sheep today."
+    },
+    {
       "name": "Next round starts the next round from the recap card",
       "path": "/?round=1&autoplay=button&renderer=dom",
       "expectText": "Round 2 of 9"

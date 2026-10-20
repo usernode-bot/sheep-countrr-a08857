@@ -42,7 +42,9 @@ keeping track of who you already counted does not.
   but never count toward the Global, Friends or weekly leaderboards.
 - **Finishing a round.** Tapping the last sheep only marks it; the round
   waits for the "Done counting" tap. Saying done with every sheep counted
-  shows a short round-complete message and moves on.
+  shows a short round-complete message and moves on. The recap card also
+  says how many sheep the player has counted so far today, on this
+  device, restarting each local day.
 - **Ending a run.** Saying you are done while sheep are still uncounted
   ends the run; a popped sheep's spot ignores taps, so it can never end
   one. The game-over screen names the round you reached and offers

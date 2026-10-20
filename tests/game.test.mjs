@@ -39,6 +39,8 @@ import {
   recapBestLine,
   recapSheepLine,
   recapTimeLine,
+  recapTodayLine,
+  todayTally,
   roamRadius,
   roundCompleteTitle,
   roundIntroText,
@@ -1596,9 +1598,27 @@ test('the recap lines read plainly and name their numbers', () => {
   assert.equal(recapBestLine(4, 34, false), 'Best time for round 4: 34 seconds.');
   assert.equal(recapBestLine(4, 34, true), 'Best time for round 4: 34 seconds. A new best!');
   assert.equal(recapBestLine('3', '12'), 'Best time for round 3: 12 seconds.');
-  for (const line of [recapSheepLine(7), recapTimeLine(41), recapBestLine(4, 34, true)]) {
+  assert.equal(recapTodayLine(12), 'You have counted 12 sheep today.');
+  assert.equal(recapTodayLine(1), 'You have counted 1 sheep today.');
+  assert.equal(recapTodayLine(0), 'You have counted 0 sheep today.');
+  assert.equal(recapTodayLine(-3), 'You have counted 0 sheep today.');
+  assert.equal(recapTodayLine('junk'), 'You have counted 0 sheep today.');
+  for (const line of [recapSheepLine(7), recapTimeLine(41), recapBestLine(4, 34, true), recapTodayLine(23)]) {
     assert.doesNotMatch(line, /—/, 'user-facing copy carries no em dashes');
   }
+});
+
+// The daily tally's rollover rule: a count saved today stands, anything
+// else (no day, a mangled key, yesterday's tally) reads as zero, and bad
+// numbers clamp the same way the copy helpers do.
+test('todayTally keeps today count and resets any other day', () => {
+  assert.equal(todayTally(12, '2026-10-20', '2026-10-20'), 12);
+  assert.equal(todayTally(12, '2026-10-19', '2026-10-20'), 0);
+  assert.equal(todayTally(12, null, '2026-10-20'), 0);
+  assert.equal(todayTally(12, 'not-a-day', '2026-10-20'), 0);
+  assert.equal(todayTally(null, '2026-10-20', '2026-10-20'), 0);
+  assert.equal(todayTally(-5, '2026-10-20', '2026-10-20'), 0);
+  assert.equal(todayTally(2.7, '2026-10-20', '2026-10-20'), 2);
 });
 
 // Passing a round stamps the recap facts at the moment of the pass and
@@ -1615,6 +1635,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   assert.equal(store.state.phase, ROUND_PASSED);
   assert.deepEqual(store.state.recap, {
     round: 3, counted: n, seconds: 41, bestSeconds: 41, newBest: true,
+    todayCounted: n,
   });
   assert.equal(store.state.bestTimes.normal[3], 41);
   // A fresh round carries no recap, so an old card can never bleed in.
@@ -1631,6 +1652,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   store.submitCount();
   assert.deepEqual(store.state.recap, {
     round: 4, counted: m, seconds: 55, bestSeconds: 55, newBest: true,
+    todayCounted: n + m,
   });
   store.startRound(4, { silent: true });
   store.state = { ...store.state, wolfIndex: null };
@@ -1640,6 +1662,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   store.submitCount();
   assert.deepEqual(store.state.recap, {
     round: 4, counted: p, seconds: 30, bestSeconds: 30, newBest: true,
+    todayCounted: n + m + p,
   });
   store.startRound(4, { silent: true });
   store.state = { ...store.state, wolfIndex: null };
@@ -1649,8 +1672,87 @@ test('a passed round stamps its recap facts and its best time', () => {
   store.submitCount();
   assert.deepEqual(store.state.recap, {
     round: 4, counted: q, seconds: 70, bestSeconds: 30, newBest: false,
+    todayCounted: n + m + p + q,
   });
   assert.equal(store.state.bestTimes.normal[4], 30);
+});
+
+// The daily tally is device-local like the streak: every counted tap adds
+// one, nothing else does (the wolf tap, a double tap, the dodge bonus),
+// a tally from yesterday reads as zero on the next tap, an old save reads
+// as 0/null, and an ephemeral store never writes it to localStorage.
+test('the daily tally counts counted taps and rolls over at the day boundary', () => {
+  const { store } = newStore();
+  assert.equal(store.state.todayCounted, 0);
+  assert.equal(store.state.todayCountedDay, null);
+  // Round 1 is a single still sheep with no wolf.
+  store.tapSheep(0);
+  assert.equal(store.state.todayCounted, 1);
+  assert.equal(store.state.todayCountedDay, localDayKey());
+  // A wolf tap ends the run and counts nothing.
+  store.startRound(2, { silent: true });
+  const wolf = store.state.wolfIndex;
+  if (wolf != null) {
+    const before = store.state.todayCounted;
+    store.tapSheep(wolf);
+    assert.equal(store.state.endedBy, ENDED_WOLF);
+    assert.equal(store.state.todayCounted, before, 'the wolf tap adds nothing');
+  }
+  // A double tap also adds nothing (and ends the run off Calm).
+  store.startRound(2, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  store.tapSheep(0);
+  const midTally = store.state.todayCounted;
+  store.tapSheep(0);
+  assert.equal(store.state.todayCounted, midTally, 'a double tap adds nothing');
+  // A wolf dodge pays its two bonus sheep to the lifetime count only.
+  store.startRound(2, { silent: true });
+  if (store.state.wolfIndex == null) {
+    store.state = { ...store.state, wolfIndex: 1 };
+  }
+  const dodgeStart = store.state.todayCounted;
+  const real = store.state.sheepCount - 1;
+  for (let i = 0; i < store.state.sheepCount; i += 1) {
+    if (i !== store.state.wolfIndex) store.tapSheep(i);
+  }
+  store.submitCount();
+  assert.equal(store.state.bonusCounted >= 2, true, 'the dodge bonus was paid');
+  assert.equal(store.state.todayCounted, dodgeStart + real, 'the dodge bonus is not in the daily tally');
+  // Midnight between the last tap and the next one: the tally restarts.
+  const yesterday = localDayKey(new Date(Date.now() - 86400000));
+  store.state = { ...store.state, todayCounted: 40, todayCountedDay: yesterday };
+  store.startRound(2, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  store.tapSheep(0);
+  assert.equal(store.state.todayCounted, 1, 'a new day restarts the tally');
+  // Old saves without the fields read as 0 / null, mangled ones clamp.
+  const { store: restored } = newStore();
+  restored.loadLocalFrom({
+    round: 2,
+    todayCounted: 7,
+    todayCountedDay: localDayKey(),
+  });
+  assert.equal(restored.state.todayCounted, 7);
+  assert.equal(restored.state.todayCountedDay, localDayKey());
+  const { store: fresh } = newStore();
+  fresh.loadLocalFrom({ round: 2 });
+  assert.equal(fresh.state.todayCounted, 0);
+  assert.equal(fresh.state.todayCountedDay, null);
+  // An ephemeral store counts in memory but never writes localStorage.
+  let wrote = 0;
+  const savedSetItem = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem: () => null,
+    setItem: () => { wrote += 1; },
+    removeItem: () => {},
+  };
+  try {
+    store.saveLocal();
+    assert.equal(wrote, 0, 'an ephemeral store writes nothing');
+  } finally {
+    if (savedSetItem === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = savedSetItem;
+  }
 });
 
 // Best times are device-local, like the streak and the scenery pick: they

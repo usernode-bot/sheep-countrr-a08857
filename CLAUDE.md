@@ -139,8 +139,12 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   streak: saved in the per-user localStorage payload, normalized by
   `normalizeBestTimes` on restore, per difficulty. The recap copy
   helpers (`formatRoundSeconds`, `recapSheepLine`, `recapTimeLine`,
-  `recapBestLine`) live in `rounds.js` and are asserted in
-  `tests/game.test.mjs`.
+  `recapBestLine`, `recapTodayLine`) live in `rounds.js` and are
+  asserted in `tests/game.test.mjs`. The card's daily line is fed by
+  `todayCounted` / `todayCountedDay`, device-local like the streak and
+  never a server column: incremented on every counted tap (not the wolf
+  tap or the dodge bonus), rolled over by `todayTally` at the local day
+  boundary, and stamped into `state.recap` at the pass.
 - **`?round=N&autoplay=button|tap|1` is a side-effect-free playable
   harness** for the load-only dapp.json checks: it rides the existing
   `?round=` auth exemption, forces the store ephemeral (unlike a plain
