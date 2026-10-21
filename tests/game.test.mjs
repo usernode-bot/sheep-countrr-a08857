@@ -1403,48 +1403,55 @@ function withMemoryStorage(fn) {
     .finally(restore);
 }
 
-const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+test('a counting tap updates the board first and saves right after', (t) => withMemoryStorage(async (read) => {
+  // The deferred save races a real timer, so run the store's setTimeout on a
+  // mocked clock: tick(0) fires the pending save deterministically.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    // deterministic: the round's fixed seed, so the wolf draw is fixed too
+    // and no tap can end the run. (Round 3's fixed seed hides no wolf.)
+    const store = new StateStore({ userId: 'tap-save', deterministic: true });
+    store.startRound(3, { silent: true });
+    const countedOnDisk = () => read(store.storageKey).midCountdown?.counted ?? [];
 
-test('a counting tap updates the board first and saves right after', () => withMemoryStorage(async (read) => {
-  const store = new StateStore({ userId: 'tap-save' });
-  store.startRound(3, { silent: true });
-  // This test pins the tap-path save ordering, not the wolf draw. A
-  // persistent store seeds randomly, so round 3's 20% wolf chance can
-  // land on sheep 0 and turn the first tap into a wolfTap; take the
-  // wolf out of the round like a no-wolf draw would.
-  store.state = { ...store.state, wolfIndex: null };
-  const countedOnDisk = () => read(store.storageKey).midCountdown?.counted ?? [];
+    assert.equal(store.tapSheep(0).outcome, 'counted');
+    assert.deepEqual(store.state.counted, [0], 'the board updates synchronously');
+    assert.deepEqual(countedOnDisk(), [], 'the write is off the tap path');
 
-  assert.equal(store.tapSheep(0).outcome, 'counted');
-  assert.deepEqual(store.state.counted, [0], 'the board updates synchronously');
-  assert.deepEqual(countedOnDisk(), [], 'the write is off the tap path');
+    // Back-to-back taps coalesce into one write that carries both.
+    store.tapSheep(1);
+    t.mock.timers.tick(0);
+    assert.deepEqual(countedOnDisk(), [0, 1]);
+    assert.equal(read(store.storageKey).totalCounted, 2);
 
-  // Back-to-back taps coalesce into one write that carries both.
-  store.tapSheep(1);
-  await tick();
-  assert.deepEqual(countedOnDisk(), [0, 1]);
-  assert.equal(read(store.storageKey).totalCounted, 2);
-
-  // pagehide / tab hide flush it at once.
-  store.tapSheep(2);
-  store.flushPendingSave();
-  assert.deepEqual(countedOnDisk(), [0, 1, 2]);
+    // pagehide / tab hide flush it at once.
+    store.tapSheep(2);
+    store.flushPendingSave();
+    assert.deepEqual(countedOnDisk(), [0, 1, 2]);
+  } finally {
+    t.mock.timers.reset();
+  }
 }));
 
-test('a run that ends before the deferred save never resurrects the board', () => withMemoryStorage(async (read) => {
-  const store = new StateStore({ userId: 'tap-end' });
-  store.startRound(3, { silent: true });
-  // Same wolf pin as its sibling test: the random seed could put the
-  // wolf on sheep 0 and end the run on the first tap instead.
-  store.state = { ...store.state, wolfIndex: null };
-  store.tapSheep(0);
-  // Double tap in the same task: the run ends and the snapshot is cleared.
-  store.tapSheep(0);
-  assert.equal(store.state.phase, RUN_OVER);
-  await tick();
-  const saved = read(store.storageKey);
-  assert.equal(saved.midCountdown, undefined, 'the late tap save must not rewrite the snapshot');
-  assert.equal(saved.totalCounted, 1, 'the tap itself still counted');
+test('a run that ends before the deferred save never resurrects the board', (t) => withMemoryStorage(async (read) => {
+  // Same mocked clock as the tap-save test above.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    // deterministic: the round's fixed seed, so the wolf draw is fixed too
+    // and the first tap counts. (Round 3's fixed seed hides no wolf.)
+    const store = new StateStore({ userId: 'tap-end', deterministic: true });
+    store.startRound(3, { silent: true });
+    store.tapSheep(0);
+    // Double tap in the same task: the run ends and the snapshot is cleared.
+    store.tapSheep(0);
+    assert.equal(store.state.phase, RUN_OVER);
+    t.mock.timers.tick(0);
+    const saved = read(store.storageKey);
+    assert.equal(saved.midCountdown, undefined, 'the late tap save must not rewrite the snapshot');
+    assert.equal(saved.totalCounted, 1, 'the tap itself still counted');
+  } finally {
+    t.mock.timers.reset();
+  }
 }));
 
 test('a slow progress load gives up and keeps the device progress', { timeout: LOAD_REMOTE_TIMEOUT_MS + 3000 }, async () => {
