@@ -39,6 +39,8 @@ import {
   recapBestLine,
   recapSheepLine,
   recapTimeLine,
+  recapTodayLine,
+  todayTally,
   roamRadius,
   roundCompleteTitle,
   roundIntroText,
@@ -1702,14 +1704,89 @@ test('the recap lines read plainly and name their numbers', () => {
   assert.equal(recapBestLine(4, 34, false), 'Best time for round 4: 34 seconds.');
   assert.equal(recapBestLine(4, 34, true), 'Best time for round 4: 34 seconds. A new best!');
   assert.equal(recapBestLine('3', '12'), 'Best time for round 3: 12 seconds.');
-  for (const line of [recapSheepLine(7), recapTimeLine(41), recapBestLine(4, 34, true)]) {
+  assert.equal(recapTodayLine(12), 'You have counted 12 sheep today.');
+  assert.equal(recapTodayLine(1), 'You have counted 1 sheep today.');
+  assert.equal(recapTodayLine('lots'), 'You have counted 0 sheep today.');
+  for (const line of [
+    recapSheepLine(7),
+    recapTimeLine(41),
+    recapBestLine(4, 34, true),
+    recapTodayLine(12),
+  ]) {
     assert.doesNotMatch(line, /—/, 'user-facing copy carries no em dashes');
   }
 });
 
+// The daily tally only stands for the day it was recorded on, so a new
+// local day starts again from the first tap, like the play streak.
+test('todayTally keeps today and drops any other day', () => {
+  assert.equal(todayTally(12, '2026-10-20', '2026-10-20'), 12);
+  assert.equal(todayTally(12, '2026-10-19', '2026-10-20'), 0);
+  assert.equal(todayTally(12, null, '2026-10-20'), 0);
+  assert.equal(todayTally(12, '2026-10-20', null), 0);
+  assert.equal(todayTally('lots', '2026-10-20', '2026-10-20'), 0);
+  assert.equal(todayTally(-3, '2026-10-20', '2026-10-20'), 0);
+  assert.equal(todayTally(4.9, '2026-10-20', '2026-10-20'), 4);
+});
+
+// Request #88: the recap card's daily line counts every sheep tapped on
+// this device since local midnight. It is device-local, like the streak:
+// it survives a local save and restore, and a new day starts it again.
+test('the daily tally counts counted taps and starts again on a new day', () => withMemoryStorage(async (read) => {
+  const store = new StateStore({ userId: 'today-tally' });
+  store.startRound(3, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  const n = store.state.sheepCount;
+  store.tapSheep(0);
+  store.flushPendingSave();
+  assert.equal(read(store.storageKey).todayCounted, 1, 'a counted tap saves the tally');
+  assert.equal(read(store.storageKey).todayCountedDay, localDayKey());
+  for (let i = 1; i < n; i += 1) store.tapSheep(i);
+  assert.equal(store.state.todayCounted, n, 'every counted tap adds one');
+  // A double tap ends the run and adds nothing.
+  store.tapSheep(0);
+  assert.equal(store.state.phase, RUN_OVER);
+  assert.equal(store.state.todayCounted, n);
+
+  // A wolf dodge's bonus sheep are not tapped sheep, so they add nothing.
+  const wolfStore = new StateStore({ userId: 'today-tally-wolf' });
+  wolfStore.roundClock = () => 12;
+  wolfStore.startRound(3, { silent: true });
+  const m = wolfStore.state.sheepCount;
+  wolfStore.state = { ...wolfStore.state, wolfIndex: 0 };
+  for (let i = 1; i < m; i += 1) wolfStore.tapSheep(i);
+  wolfStore.submitCount();
+  assert.equal(wolfStore.state.bonusCounted, WOLF_BONUS);
+  assert.equal(wolfStore.state.todayCounted, m - 1);
+  assert.equal(wolfStore.state.recap.todayCounted, m - 1);
+
+  // A save from yesterday starts the tally again on the next tap.
+  const rolled = new StateStore({ userId: 'today-tally' });
+  rolled.state = { ...rolled.state, todayCounted: 9, todayCountedDay: '2000-01-01' };
+  rolled.startRound(3, { silent: true });
+  rolled.state = { ...rolled.state, wolfIndex: null };
+  rolled.tapSheep(0);
+  assert.equal(rolled.state.todayCounted, 1);
+  assert.equal(rolled.state.todayCountedDay, localDayKey());
+
+  // An old save with no tally reads as zero and no day.
+  const { store: old } = newStore();
+  old.loadLocalFrom({ round: 2 });
+  assert.equal(old.state.todayCounted, 0);
+  assert.equal(old.state.todayCountedDay, null);
+
+  // An ephemeral store holds the tally in memory and never writes it.
+  const { store: held } = newStore();
+  held.startRound(1, { silent: true });
+  held.tapSheep(0);
+  held.saveLocal();
+  assert.equal(held.state.todayCounted, 1);
+}));
+
 // Passing a round stamps the recap facts at the moment of the pass and
 // folds the elapsed time into the per-round best. A first time is always a
 // new best; a slower replay keeps the old one.
+
 test('a passed round stamps its recap facts and its best time', () => {
   const { store } = newStore();
   store.roundClock = () => 41;
@@ -1720,7 +1797,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   assert.deepEqual(store.submitCount(), { outcome: 'passed', round: 3 });
   assert.equal(store.state.phase, ROUND_PASSED);
   assert.deepEqual(store.state.recap, {
-    round: 3, counted: n, seconds: 41, bestSeconds: 41, newBest: true,
+    round: 3, counted: n, seconds: 41, bestSeconds: 41, newBest: true, todayCounted: n,
   });
   assert.equal(store.state.bestTimes.normal[3], 41);
   // A fresh round carries no recap, so an old card can never bleed in.
@@ -1736,7 +1813,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   for (let i = 0; i < m; i += 1) store.tapSheep(i);
   store.submitCount();
   assert.deepEqual(store.state.recap, {
-    round: 4, counted: m, seconds: 55, bestSeconds: 55, newBest: true,
+    round: 4, counted: m, seconds: 55, bestSeconds: 55, newBest: true, todayCounted: n + m,
   });
   store.startRound(4, { silent: true });
   store.state = { ...store.state, wolfIndex: null };
@@ -1745,7 +1822,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   for (let i = 0; i < p; i += 1) store.tapSheep(i);
   store.submitCount();
   assert.deepEqual(store.state.recap, {
-    round: 4, counted: p, seconds: 30, bestSeconds: 30, newBest: true,
+    round: 4, counted: p, seconds: 30, bestSeconds: 30, newBest: true, todayCounted: n + m + p,
   });
   store.startRound(4, { silent: true });
   store.state = { ...store.state, wolfIndex: null };
@@ -1754,7 +1831,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   for (let i = 0; i < q; i += 1) store.tapSheep(i);
   store.submitCount();
   assert.deepEqual(store.state.recap, {
-    round: 4, counted: q, seconds: 70, bestSeconds: 30, newBest: false,
+    round: 4, counted: q, seconds: 70, bestSeconds: 30, newBest: false, todayCounted: n + m + p + q,
   });
   assert.equal(store.state.bestTimes.normal[4], 30);
 });

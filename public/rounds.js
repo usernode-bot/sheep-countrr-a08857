@@ -458,10 +458,10 @@ export function formatRoundSeconds(seconds) {
   return s === 1 ? '1 second' : `${s} seconds`;
 }
 
-// The recap card's three fact lines, added under the round line in the
-// facts box: what was counted, how long it took, and the best time the
-// round now carries. Pure so tests/game.test.mjs can pin the words, like
-// the other copy helpers here.
+// The recap card's four fact lines, added under the round line in the
+// facts box: what was counted, how long it took, the best time the round
+// now carries, and how many sheep the player has counted today. Pure so
+// tests/game.test.mjs can pin the words, like the other copy helpers here.
 export function recapSheepLine(count) {
   const n = Math.max(0, Math.floor(Number(count) || 0));
   return `You counted ${sheepPhrase(n)}.`;
@@ -474,6 +474,13 @@ export function recapTimeLine(seconds) {
 export function recapBestLine(round, seconds, newBest = false) {
   const base = `Best time for round ${normalizeRound(round)}: ${formatRoundSeconds(seconds)}.`;
   return newBest ? `${base} A new best!` : base;
+}
+
+// The recap card's daily line: every sheep tapped on this device since
+// midnight, named in the same plain sentence style as the lines above.
+export function recapTodayLine(count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  return `You have counted ${sheepPhrase(n)} today.`;
 }
 
 // The weekly leaderboard's score text: a Speed Round keeps its own tag so
@@ -529,4 +536,14 @@ export function advanceStreak(prevDays, bestDays, lastDayKey, todayKey) {
   const grew = !!lastDayKey && dayDistance(lastDayKey, todayKey) === 1;
   const days = grew ? prev + 1 : 1;
   return { days, best: Math.max(best, days), changed: true };
+}
+
+// The daily sheep tally's day rule: a count only stands for the day it was
+// recorded on. A missing, mangled or older day reads as zero, so the tally
+// starts again from the first tap after midnight, the same local day rule
+// the streak uses.
+export function todayTally(count, dayKey, todayKey) {
+  if (!dayKey || !todayKey || dayKey !== todayKey) return 0;
+  const n = Math.floor(Number(count));
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
