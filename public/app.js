@@ -22,6 +22,7 @@ import {
   playHintText,
   recapSheepLine,
   recapTimeLine,
+  recapTodayLine,
   roundCompleteTitle,
   roundIntroText,
   roundSeed,
@@ -432,7 +433,7 @@ function buildStaticState() {
       phase: ROUND_PASSED,
       // The recap card's frozen facts, hardcoded like every other fixture:
       // the whole flock counted in 41 seconds, against a 34 second best.
-      recap: { round: 4, counted: n, seconds: 41, bestSeconds: 34, newBest: false },
+      recap: { round: 4, counted: n, seconds: 41, bestSeconds: 34, newBest: false, todayCounted: 23 },
       bestTimes: { [difficultyParam]: { 4: 34 } },
     });
   }
@@ -1602,15 +1603,14 @@ function syncPanels(state) {
     const recap = state.recap || null;
     els.recapSheep.hidden = !recap;
     els.recapTime.hidden = !recap;
+    els.recapToday.hidden = !recap || recap.todayCounted == null;
     if (recap) {
       const n = Math.max(0, Math.floor(Number(recap.counted) || 0));
       els.recapSheepValue.textContent = String(n);
       els.recapSheep.setAttribute('aria-label', recapSheepLine(n));
       els.recapTime.textContent = recapTimeLine(recap.seconds, recap.newBest);
+      if (recap.todayCounted != null) els.recapToday.textContent = recapTodayLine(recap.todayCounted);
     }
-    // The day's sheep total (#88) has its small line reserved under the
-    // time; it stays hidden until that count exists.
-    if (els.recapToday) els.recapToday.hidden = true;
   }
   if (over) {
     els.gameOverRound.textContent = String(state.round);

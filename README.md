@@ -58,7 +58,8 @@ keeping track of who you already counted does not.
   waits for the "Done counting" tap. Saying done with every sheep counted
   shows the recap card: "Great job! You found all the sheep.", the round
   counted, the sheep counted as one big number, and one small line with
-  the time ("That took 41 seconds.", plus "A new best!" when it is one).
+  the time ("That took 41 seconds.", plus "A new best!" when it is one),
+  and every sheep counted on the device so far today.
   The Next round button, a tap anywhere or Enter moves on.
 - **Ending a run.** Saying you are done while sheep are still uncounted
   ends the run; a popped sheep's spot ignores taps, so it can never end

@@ -25,6 +25,7 @@ import {
   TOTAL_ROUNDS,
   sceneryFromServer,
   sheepForRound,
+  todayTally,
   WOLF_BONUS,
   wolfIndexForRound,
 } from './rounds.js';
@@ -188,6 +189,11 @@ export function createDefaultState() {
     streakDays: 0,
     bestStreakDays: 0,
     lastPlayedDay: null,
+    // Every sheep tapped on this device on todayCountedDay (a local day
+    // key). Device-local like the streak, never a server column: the recap
+    // card reads it, and a day that is not today reads as zero.
+    todayCounted: 0,
+    todayCountedDay: null,
     // The renderer clock this round had reached when it was last
     // persisted, and when each sheep was counted. Restored on resume so
     // the flock is standing exactly where the player left it.
@@ -319,6 +325,8 @@ export class StateStore {
         streakDays: normalizeStreakCount(saved.streakDays),
         bestStreakDays: normalizeStreakCount(saved.bestStreakDays),
         lastPlayedDay: normalizeDayKey(saved.lastPlayedDay),
+        todayCounted: normalizeStreakCount(saved.todayCounted),
+        todayCountedDay: normalizeDayKey(saved.todayCountedDay),
       };
       // A mid-round snapshot resumes the exact board: same seed, same
       // counted sheep, same clock. Saves from before this feature (or a
@@ -365,6 +373,8 @@ export class StateStore {
         streakDays: this.state.streakDays,
         bestStreakDays: this.state.bestStreakDays,
         lastPlayedDay: this.state.lastPlayedDay,
+        todayCounted: this.state.todayCounted,
+        todayCountedDay: this.state.todayCountedDay,
       };
       localStorage.setItem(this.storageKey, JSON.stringify({ ...meta, ...runValues }));
     } catch {
@@ -563,6 +573,8 @@ export class StateStore {
           streakDays: normalizeStreakCount(saved.streakDays),
           bestStreakDays: normalizeStreakCount(saved.bestStreakDays),
           lastPlayedDay: normalizeDayKey(saved.lastPlayedDay),
+          todayCounted: normalizeStreakCount(saved.todayCounted),
+          todayCountedDay: normalizeDayKey(saved.todayCountedDay),
     };
     if (
       saved.midCountdown
@@ -826,6 +838,10 @@ export class StateStore {
     // can show the counted ribbon exactly where the tap left it.
     const elapsed = this.currentElapsed();
     const countedAt = [...this.state.countedAt, { index, elapsed }];
+    // The daily tally counts sheep the player actually tapped. A rollover
+    // at local midnight starts it again from this tap, the same day rule
+    // the streak uses.
+    const today = localDayKey();
     this.state = {
       ...this.state,
       counted,
@@ -833,6 +849,8 @@ export class StateStore {
       countedAt,
       roundElapsed: elapsed,
       totalCounted: this.state.totalCounted + 1,
+      todayCounted: todayTally(this.state.todayCounted, this.state.todayCountedDay, today) + 1,
+      todayCountedDay: today,
     };
     // The ribbon and count update first; the two localStorage writes
     // follow right after, coalesced across back-to-back taps.
@@ -895,7 +913,16 @@ export class StateStore {
         // The final round has no next flock to preview, so it never shows
         // a recap: the run completes and the game-over card takes over.
         recap: round < TOTAL_ROUNDS
-          ? { round, counted: this.state.count, seconds, bestSeconds, newBest }
+          ? {
+            round,
+            counted: this.state.count,
+            seconds,
+            bestSeconds,
+            newBest,
+            // Every tapped sheep since local midnight, this round's
+            // included. The wolf bonus above is not a tapped sheep.
+            todayCounted: todayTally(this.state.todayCounted, this.state.todayCountedDay, localDayKey()),
+          }
           : null,
       };
       // The ladder's top round is the end of the run. End it with its own

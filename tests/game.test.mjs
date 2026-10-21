@@ -38,6 +38,8 @@ import {
   playHintText,
   recapSheepLine,
   recapTimeLine,
+  recapTodayLine,
+  todayTally,
   roamRadius,
   roundCompleteTitle,
   roundIntroText,
@@ -1403,48 +1405,55 @@ function withMemoryStorage(fn) {
     .finally(restore);
 }
 
-const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+test('a counting tap updates the board first and saves right after', (t) => withMemoryStorage(async (read) => {
+  // The deferred save races a real timer, so run the store's setTimeout on a
+  // mocked clock: tick(0) fires the pending save deterministically.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    // deterministic: the round's fixed seed, so the wolf draw is fixed too
+    // and no tap can end the run. (Round 3's fixed seed hides no wolf.)
+    const store = new StateStore({ userId: 'tap-save', deterministic: true });
+    store.startRound(3, { silent: true });
+    const countedOnDisk = () => read(store.storageKey).midCountdown?.counted ?? [];
 
-test('a counting tap updates the board first and saves right after', () => withMemoryStorage(async (read) => {
-  const store = new StateStore({ userId: 'tap-save' });
-  store.startRound(3, { silent: true });
-  // This test pins the tap-path save ordering, not the wolf draw. A
-  // persistent store seeds randomly, so round 3's 20% wolf chance can
-  // land on sheep 0 and turn the first tap into a wolfTap; take the
-  // wolf out of the round like a no-wolf draw would.
-  store.state = { ...store.state, wolfIndex: null };
-  const countedOnDisk = () => read(store.storageKey).midCountdown?.counted ?? [];
+    assert.equal(store.tapSheep(0).outcome, 'counted');
+    assert.deepEqual(store.state.counted, [0], 'the board updates synchronously');
+    assert.deepEqual(countedOnDisk(), [], 'the write is off the tap path');
 
-  assert.equal(store.tapSheep(0).outcome, 'counted');
-  assert.deepEqual(store.state.counted, [0], 'the board updates synchronously');
-  assert.deepEqual(countedOnDisk(), [], 'the write is off the tap path');
+    // Back-to-back taps coalesce into one write that carries both.
+    store.tapSheep(1);
+    t.mock.timers.tick(0);
+    assert.deepEqual(countedOnDisk(), [0, 1]);
+    assert.equal(read(store.storageKey).totalCounted, 2);
 
-  // Back-to-back taps coalesce into one write that carries both.
-  store.tapSheep(1);
-  await tick();
-  assert.deepEqual(countedOnDisk(), [0, 1]);
-  assert.equal(read(store.storageKey).totalCounted, 2);
-
-  // pagehide / tab hide flush it at once.
-  store.tapSheep(2);
-  store.flushPendingSave();
-  assert.deepEqual(countedOnDisk(), [0, 1, 2]);
+    // pagehide / tab hide flush it at once.
+    store.tapSheep(2);
+    store.flushPendingSave();
+    assert.deepEqual(countedOnDisk(), [0, 1, 2]);
+  } finally {
+    t.mock.timers.reset();
+  }
 }));
 
-test('a run that ends before the deferred save never resurrects the board', () => withMemoryStorage(async (read) => {
-  const store = new StateStore({ userId: 'tap-end' });
-  store.startRound(3, { silent: true });
-  // Same wolf pin as its sibling test: the random seed could put the
-  // wolf on sheep 0 and end the run on the first tap instead.
-  store.state = { ...store.state, wolfIndex: null };
-  store.tapSheep(0);
-  // Double tap in the same task: the run ends and the snapshot is cleared.
-  store.tapSheep(0);
-  assert.equal(store.state.phase, RUN_OVER);
-  await tick();
-  const saved = read(store.storageKey);
-  assert.equal(saved.midCountdown, undefined, 'the late tap save must not rewrite the snapshot');
-  assert.equal(saved.totalCounted, 1, 'the tap itself still counted');
+test('a run that ends before the deferred save never resurrects the board', (t) => withMemoryStorage(async (read) => {
+  // Same mocked clock as the tap-save test above.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    // deterministic: the round's fixed seed, so the wolf draw is fixed too
+    // and the first tap counts. (Round 3's fixed seed hides no wolf.)
+    const store = new StateStore({ userId: 'tap-end', deterministic: true });
+    store.startRound(3, { silent: true });
+    store.tapSheep(0);
+    // Double tap in the same task: the run ends and the snapshot is cleared.
+    store.tapSheep(0);
+    assert.equal(store.state.phase, RUN_OVER);
+    t.mock.timers.tick(0);
+    const saved = read(store.storageKey);
+    assert.equal(saved.midCountdown, undefined, 'the late tap save must not rewrite the snapshot');
+    assert.equal(saved.totalCounted, 1, 'the tap itself still counted');
+  } finally {
+    t.mock.timers.reset();
+  }
 }));
 
 test('a slow progress load gives up and keeps the device progress', { timeout: LOAD_REMOTE_TIMEOUT_MS + 3000 }, async () => {
@@ -1698,14 +1707,84 @@ test('the recap lines read plainly and name their numbers', () => {
   // The best time shares the time line, and only when it is a new best.
   assert.equal(recapTimeLine(29, true), 'That took 29 seconds. A new best!');
   assert.equal(recapTimeLine(41, false), 'That took 41 seconds.');
-  for (const line of [recapSheepLine(7), recapTimeLine(41), recapTimeLine(29, true)]) {
+  assert.equal(recapTodayLine(12), 'You have counted 12 sheep today.');
+  assert.equal(recapTodayLine(1), 'You have counted 1 sheep today.');
+  assert.equal(recapTodayLine('lots'), 'You have counted 0 sheep today.');
+  for (const line of [recapSheepLine(7), recapTimeLine(41), recapTimeLine(29, true), recapTodayLine(12)]) {
     assert.doesNotMatch(line, /—/, 'user-facing copy carries no em dashes');
   }
 });
 
+// The daily tally only stands for the day it was recorded on, so a new
+// local day starts again from the first tap, like the play streak.
+test('todayTally keeps today and drops any other day', () => {
+  assert.equal(todayTally(12, '2026-10-20', '2026-10-20'), 12);
+  assert.equal(todayTally(12, '2026-10-19', '2026-10-20'), 0);
+  assert.equal(todayTally(12, null, '2026-10-20'), 0);
+  assert.equal(todayTally(12, '2026-10-20', null), 0);
+  assert.equal(todayTally('lots', '2026-10-20', '2026-10-20'), 0);
+  assert.equal(todayTally(-3, '2026-10-20', '2026-10-20'), 0);
+  assert.equal(todayTally(4.9, '2026-10-20', '2026-10-20'), 4);
+});
+
+// Request #88: the recap card's daily line counts every sheep tapped on
+// this device since local midnight. It is device-local, like the streak:
+// it survives a local save and restore, and a new day starts it again.
+test('the daily tally counts counted taps and starts again on a new day', () => withMemoryStorage(async (read) => {
+  const store = new StateStore({ userId: 'today-tally' });
+  store.startRound(3, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  const n = store.state.sheepCount;
+  store.tapSheep(0);
+  store.flushPendingSave();
+  assert.equal(read(store.storageKey).todayCounted, 1, 'a counted tap saves the tally');
+  assert.equal(read(store.storageKey).todayCountedDay, localDayKey());
+  for (let i = 1; i < n; i += 1) store.tapSheep(i);
+  assert.equal(store.state.todayCounted, n, 'every counted tap adds one');
+  // A double tap ends the run and adds nothing.
+  store.tapSheep(0);
+  assert.equal(store.state.phase, RUN_OVER);
+  assert.equal(store.state.todayCounted, n);
+
+  // A wolf dodge's bonus sheep are not tapped sheep, so they add nothing.
+  const wolfStore = new StateStore({ userId: 'today-tally-wolf' });
+  wolfStore.roundClock = () => 12;
+  wolfStore.startRound(3, { silent: true });
+  const m = wolfStore.state.sheepCount;
+  wolfStore.state = { ...wolfStore.state, wolfIndex: 0 };
+  for (let i = 1; i < m; i += 1) wolfStore.tapSheep(i);
+  wolfStore.submitCount();
+  assert.equal(wolfStore.state.bonusCounted, WOLF_BONUS);
+  assert.equal(wolfStore.state.todayCounted, m - 1);
+  assert.equal(wolfStore.state.recap.todayCounted, m - 1);
+
+  // A save from yesterday starts the tally again on the next tap.
+  const rolled = new StateStore({ userId: 'today-tally' });
+  rolled.state = { ...rolled.state, todayCounted: 9, todayCountedDay: '2000-01-01' };
+  rolled.startRound(3, { silent: true });
+  rolled.state = { ...rolled.state, wolfIndex: null };
+  rolled.tapSheep(0);
+  assert.equal(rolled.state.todayCounted, 1);
+  assert.equal(rolled.state.todayCountedDay, localDayKey());
+
+  // An old save with no tally reads as zero and no day.
+  const { store: old } = newStore();
+  old.loadLocalFrom({ round: 2 });
+  assert.equal(old.state.todayCounted, 0);
+  assert.equal(old.state.todayCountedDay, null);
+
+  // An ephemeral store holds the tally in memory and never writes it.
+  const { store: held } = newStore();
+  held.startRound(1, { silent: true });
+  held.tapSheep(0);
+  held.saveLocal();
+  assert.equal(held.state.todayCounted, 1);
+}));
+
 // Passing a round stamps the recap facts at the moment of the pass and
 // folds the elapsed time into the per-round best. A first time is always a
 // new best; a slower replay keeps the old one.
+
 test('a passed round stamps its recap facts and its best time', () => {
   const { store } = newStore();
   store.roundClock = () => 41;
@@ -1716,7 +1795,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   assert.deepEqual(store.submitCount(), { outcome: 'passed', round: 3 });
   assert.equal(store.state.phase, ROUND_PASSED);
   assert.deepEqual(store.state.recap, {
-    round: 3, counted: n, seconds: 41, bestSeconds: 41, newBest: true,
+    round: 3, counted: n, seconds: 41, bestSeconds: 41, newBest: true, todayCounted: n,
   });
   assert.equal(store.state.bestTimes.normal[3], 41);
   // A fresh round carries no recap, so an old card can never bleed in.
@@ -1732,7 +1811,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   for (let i = 0; i < m; i += 1) store.tapSheep(i);
   store.submitCount();
   assert.deepEqual(store.state.recap, {
-    round: 4, counted: m, seconds: 55, bestSeconds: 55, newBest: true,
+    round: 4, counted: m, seconds: 55, bestSeconds: 55, newBest: true, todayCounted: n + m,
   });
   store.startRound(4, { silent: true });
   store.state = { ...store.state, wolfIndex: null };
@@ -1741,7 +1820,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   for (let i = 0; i < p; i += 1) store.tapSheep(i);
   store.submitCount();
   assert.deepEqual(store.state.recap, {
-    round: 4, counted: p, seconds: 30, bestSeconds: 30, newBest: true,
+    round: 4, counted: p, seconds: 30, bestSeconds: 30, newBest: true, todayCounted: n + m + p,
   });
   store.startRound(4, { silent: true });
   store.state = { ...store.state, wolfIndex: null };
@@ -1750,7 +1829,7 @@ test('a passed round stamps its recap facts and its best time', () => {
   for (let i = 0; i < q; i += 1) store.tapSheep(i);
   store.submitCount();
   assert.deepEqual(store.state.recap, {
-    round: 4, counted: q, seconds: 70, bestSeconds: 30, newBest: false,
+    round: 4, counted: q, seconds: 70, bestSeconds: 30, newBest: false, todayCounted: n + m + p + q,
   });
   assert.equal(store.state.bestTimes.normal[4], 30);
 });
