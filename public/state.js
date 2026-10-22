@@ -3,26 +3,30 @@
 // alive. Both renderers read this same shape, so the 3D scene and the DOM
 // fallback can never drift apart.
 //
-// A run is a sequence of rounds. Tap every sheep in the round and the
-// round is passed; miss one and submit, or tap a sheep you already
-// counted, and the run ends.
+// A run is a sequence of rounds. Pop every sheep in the round and the
+// round passes on its own, straight into the next flock; run out of clock
+// or tap the wolf, and the run ends.
 
 import {
+  CALM_LEVEL,
   DEFAULT_DIFFICULTY,
+  FLOW_LEVEL,
   MAX_SHEEP,
   NEW_PLAYER_DIFFICULTY,
-  SPEED_ROUND_SECONDS,
   advanceStreak,
   isCalmLevel,
+  isLevelUp,
+  isRetiredDifficulty,
+  levelForRound,
   normalizeBigTap,
   localDayKey,
   normalizeCalm,
   normalizeDifficulty,
   normalizeRound,
   normalizeScenery,
-  normalizeSpeedRound,
   roundSeed,
-  TOTAL_ROUNDS,
+  secondsForRound,
+  startRoundForLevel,
   sceneryFromServer,
   sheepForRound,
   todayTally,
@@ -41,20 +45,23 @@ export const COUNTING = 'counting';
 export const ROUND_PASSED = 'roundPassed';
 export const RUN_OVER = 'runOver';
 
-// Why a run ended, for the game-over copy. A Speed Round can also end on
-// its own clock; the reason is stored with the run so a shared card shows
-// the same line the player saw. A run that passes the ladder's final
-// round ends complete: there is no next flock, so no recap card shows.
+// Why a run ended, for the game-over copy. A timed round can end on its
+// own clock; the reason is stored with the run so a shared card shows the
+// same line the player saw. The ladder never runs out now, so 'complete'
+// only survives to read runs recorded before the flow ladder (and in the
+// server's end-reason allowlist).
 export const ENDED_DOUBLE_TAP = 'doubleTap';
 export const ENDED_MISSED = 'missed';
 export const ENDED_WOLF = 'wolf';
 export const ENDED_TIME_UP = 'timeUp';
 export const ENDED_COMPLETE = 'complete';
 
-// One best round per difficulty, kept in a map so a best on Easy can never
-// masquerade as one on Hard. normalizeBestRounds derives its default map
-// from this list, so a new level only needs adding here.
-export const DIFFICULTY_KEYS = ['calm', 'easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend'];
+// One best round per difficulty, kept in a map so a best on one curve can
+// never masquerade as one on another. normalizeBestRounds derives its
+// default map from this list. The retired levels stay listed so a player's
+// old bests survive a save and a sync untouched; only 'flow' and 'calm' are
+// still played.
+export const DIFFICULTY_KEYS = ['calm', 'flow', 'easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend'];
 
 // Calm never hides a wolf: the impostor is a challenge mechanic, and
 // counting it would end the run, which Calm never does. Every other level
@@ -153,17 +160,16 @@ export function createDefaultState() {
     safeStreak: 0,
     bestSafeStreak: 0,
     bonusCounted: 0,
-    bestRounds: { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1 },
+    bestRounds: { calm: 1, flow: 1 },
     // Best whole-second time per round per difficulty (see
-    // normalizeBestTimes). Set on every passed round; shown by the recap
-    // card and kept across sessions like bestRounds.
+    // normalizeBestTimes). Recorded on every passed round and kept across
+    // sessions like bestRounds; nothing shows it between rounds any more.
     bestTimes: {},
-    // The recap card's facts for the round just passed: { round, counted,
-    // seconds, bestSeconds, newBest }, or null when there is nothing to
-    // recap (a fresh board, or the final round, which ends the run
-    // instead). Never persisted: it is filled at the pass and read by the
-    // card, so a reload never resurrects a stale recap.
-    recap: null,
+    // The pass banner's facts for the round just passed: { round, counted,
+    // levelUp }, or null on a live board. Never persisted or snapshotted:
+    // it is stamped at the pass and read by the in-play banner, so a reload
+    // never resurrects a stale one.
+    lastPass: null,
     totalCounted: 0,
     communityTotal: 0,
     soundOn: true,
@@ -179,7 +185,8 @@ export function createDefaultState() {
     // confetti. Device-local like namesOn, never sent to the server.
     bigTap: false,
     difficulty: DEFAULT_DIFFICULTY,
-    speedOn: false,
+    // The round clock in whole seconds, or null for an untimed round
+    // (Calm, levels 1 and 2, duel turns). See secondsForRound.
     secondsLeft: null,
     // Play streak: consecutive local days with at least one round started,
     // the best streak ever reached, and the day key that earned the current
@@ -270,11 +277,25 @@ export class StateStore {
     return this.state.bestRounds[this.state.difficulty] || 1;
   }
 
+  // The best ladder level reached, for the game-over card's Best level chip
+  // and its "Start at level" shortcuts. Always the flow ladder's, so a Calm
+  // stretch never hides it.
+  get bestLevel() {
+    return levelForRound(this.state.bestRounds[FLOW_LEVEL] || 1);
+  }
+
   // True while a resumable board is on screen: a snapshot was restored
   // (or a round started) and the round is still being counted. Drives the
   // "snapshot beats server sync" rule in loadRemote.
   get hasMidRoundSnapshot() {
     return this._hasMidRoundSnapshot === true;
+  }
+
+  // The round a reload (or another device) should start on: the live round,
+  // or the next one while the pass banner is up, since the passed board is
+  // over and must never be replayed.
+  roundToStart() {
+    return this.state.phase === ROUND_PASSED ? this.state.round + 1 : this.state.round;
   }
 
   seedFor(round) {
@@ -286,8 +307,8 @@ export class StateStore {
     try {
       const raw = localStorage.getItem(this.storageKey);
       if (!raw) {
-        // Nothing saved on this device: a new player opens on Calm. A
-        // level saved on the server still wins in loadRemote.
+        // Nothing saved on this device: a new player opens on the ladder's
+        // level 1. A level saved on the server still wins in loadRemote.
         this.state = { ...this.state, difficulty: NEW_PLAYER_DIFFICULTY };
         this._soundChosen = true;
         this.startRound(1, { silent: true });
@@ -303,12 +324,15 @@ export class StateStore {
       // The scenery pick migrates from the old Night Meadow checkbox: a
       // save without a scenery key reads the legacy nightOn flag.
       const scenery = normalizeScenery(saved.scenery, saved.nightOn);
+      // A save on one of the retired levels plays the ladder from level 1:
+      // its round number belonged to another curve, and its board too.
+      const retired = isRetiredDifficulty(saved.difficulty);
       // Only the run-spanning values are restored. A half-counted round
       // is never resumed: coming back mid-round and finding taps you do
       // not remember making is a run-ending trap.
       this.state = {
         ...this.state,
-        round: normalizeRound(saved.round),
+        round: retired ? 1 : normalizeRound(saved.round),
         bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
         bestTimes: normalizeBestTimes(saved.bestTimes),
         bestSafeStreak: Math.max(0, Number(saved.bestSafeStreak) || 0),
@@ -321,7 +345,6 @@ export class StateStore {
         namesOn: !!saved.namesOn,
         bigTap: normalizeBigTap(saved.bigTap),
         difficulty: normalizeDifficulty(saved.difficulty),
-        speedOn: normalizeSpeedRound(saved.speedOn),
         streakDays: normalizeStreakCount(saved.streakDays),
         bestStreakDays: normalizeStreakCount(saved.bestStreakDays),
         lastPlayedDay: normalizeDayKey(saved.lastPlayedDay),
@@ -332,7 +355,8 @@ export class StateStore {
       // counted sheep, same clock. Saves from before this feature (or a
       // save taken between rounds) fall back to a fresh flock, as before.
       if (
-        saved.midCountdown
+        !retired
+        && saved.midCountdown
         && saved.midCountdown.phase === COUNTING
         && Array.isArray(saved.midCountdown.counted)
       ) {
@@ -355,7 +379,7 @@ export class StateStore {
       const raw = localStorage.getItem(this.storageKey);
       const meta = raw ? JSON.parse(raw) : {};
       const runValues = {
-        round: this.state.round,
+        round: this.roundToStart(),
         difficulty: this.state.difficulty,
         bestRounds: this.state.bestRounds,
         bestTimes: this.state.bestTimes,
@@ -369,7 +393,6 @@ export class StateStore {
         calmOn: this.state.calmOn,
         namesOn: this.state.namesOn,
         bigTap: this.state.bigTap,
-        speedOn: this.state.speedOn,
         streakDays: this.state.streakDays,
         bestStreakDays: this.state.bestStreakDays,
         lastPlayedDay: this.state.lastPlayedDay,
@@ -400,9 +423,12 @@ export class StateStore {
       // the community total is allowed to move. Without a snapshot the
       // round starts fresh as before.
       const resuming = this.hasMidRoundSnapshot;
+      // A server row still on a retired level restarts the ladder at 1,
+      // the same migration loadLocal applies.
+      const retired = !resuming && isRetiredDifficulty(data.difficulty);
       this.state = {
         ...this.state,
-        round: resuming ? this.state.round : normalizeRound(data.round),
+        round: resuming ? this.state.round : (retired ? 1 : normalizeRound(data.round)),
         bestRounds: normalizeBestRounds(data.bestRounds, data.bestRound),
         bestSafeStreak: Math.max(0, Number(data.bestSafeStreak) || 0),
         bonusCounted: Math.max(0, Number(data.bonusCounted) || 0),
@@ -421,8 +447,8 @@ export class StateStore {
         nightOn: sceneryFromServer(this.state.scenery, data.nightOn) === 'night',
         calmOn: normalizeCalm(data.calmOn),
         // A null difficulty means the server has no saved pick (its row
-        // was created by this very read), so the local one stands: Calm
-        // for a new player, or whatever this device last chose.
+        // was created by this very read), so the local one stands: the
+        // ladder for a new player, or whatever this device last chose.
         difficulty: resuming || data.difficulty == null
           ? this.state.difficulty
           : normalizeDifficulty(data.difficulty),
@@ -460,7 +486,7 @@ export class StateStore {
         headers: { 'Content-Type': 'application/json', 'x-usernode-token': this.token },
         keepalive: true,
         body: JSON.stringify({
-          round: this.state.round,
+          round: this.roundToStart(),
           difficulty: this.state.difficulty,
           bestRound: this.bestRound,
           bestSafeStreak: this.state.bestSafeStreak,
@@ -505,22 +531,20 @@ export class StateStore {
       roundElapsed: keepBoard ? this.state.roundElapsed : 0,
       phase: COUNTING,
       endedBy: null,
-      // A new board never carries the previous round's recap: the card is
-      // filled fresh at the next pass, so a stale one cannot linger.
-      recap: null,
+      // A new board never carries the previous round's pass banner: it is
+      // stamped fresh at the next pass, so a stale one cannot linger.
+      lastPass: null,
       wolfIndex: keepBoard ? this.state.wolfIndex : wolfFor(next, seed, sheepCount, this.state.difficulty),
       // A restart to round 1 is a new run, so the current streak resets.
       // bestSafeStreak survives, like bestRounds.
       safeStreak: next === 1 ? 0 : this.state.safeStreak,
-      // Speed Round is a run-level mode set on the briefing card: every
-      // round of the run plays the same flock under its own fresh 30
-      // second clock. The clock state is reset with the round so a
-      // resumed round can never read a stale countdown.
-      // Calm has no clock: a Speed Round can end a run, Calm never does.
-      speedOn: normalizeSpeedRound(this.state.speedOn) && !isCalmLevel(this.state.difficulty),
+      // Every ladder round from level 3 runs its own fresh clock, shorter
+      // per sheep as the levels climb (secondsForRound). It is reset with
+      // the round so a resumed round can never read a stale countdown.
+      // Calm and a duel turn have no clock.
       secondsLeft: keepBoard
         ? this.state.secondsLeft
-        : (normalizeSpeedRound(this.state.speedOn) && !isCalmLevel(this.state.difficulty) ? SPEED_ROUND_SECONDS : null),
+        : this.clockFor(next),
       bestRounds: {
         ...this.state.bestRounds,
         [this.state.difficulty]: bestRound,
@@ -548,6 +572,13 @@ export class StateStore {
     return this.state;
   }
 
+  // The fresh clock for a round on this store's curve and settings, or
+  // null for an untimed one. A duel turn keeps its own advisory clock.
+  clockFor(round) {
+    if (this.state.duel) return null;
+    return secondsForRound(round, this.state.difficulty, { bigTapOn: !!this.state.bigTap });
+  }
+
   // A pure save/restore shape used by the tests to exercise the same
   // normalization loadLocal applies, without touching localStorage.
   loadLocalFrom(saved) {
@@ -556,9 +587,10 @@ export class StateStore {
     this._preBaaSave = sound.preBaaSave;
     // Same scenery migration loadLocal applies, kept pure for the tests.
     const scenery = normalizeScenery(saved.scenery, saved.nightOn);
+    const retired = isRetiredDifficulty(saved.difficulty);
     this.state = {
       ...this.state,
-      round: normalizeRound(saved.round),
+      round: retired ? 1 : normalizeRound(saved.round),
       bestRounds: normalizeBestRounds(saved.bestRounds, saved.bestRound || saved.round),
       bestTimes: normalizeBestTimes(saved.bestTimes),
           totalCounted: Math.max(0, Number(saved.totalCounted) || 0),
@@ -569,7 +601,6 @@ export class StateStore {
           namesOn: !!saved.namesOn,
           bigTap: normalizeBigTap(saved.bigTap),
           difficulty: normalizeDifficulty(saved.difficulty),
-          speedOn: normalizeSpeedRound(saved.speedOn),
           streakDays: normalizeStreakCount(saved.streakDays),
           bestStreakDays: normalizeStreakCount(saved.bestStreakDays),
           lastPlayedDay: normalizeDayKey(saved.lastPlayedDay),
@@ -577,7 +608,8 @@ export class StateStore {
           todayCountedDay: normalizeDayKey(saved.todayCountedDay),
     };
     if (
-      saved.midCountdown
+      !retired
+      && saved.midCountdown
       && saved.midCountdown.phase === COUNTING
       && Array.isArray(saved.midCountdown.counted)
     ) {
@@ -591,7 +623,7 @@ export class StateStore {
   // Restore an exact mid-round board from a snapshot. Everything that
   // defines the board travels together: the round's seed, the counted
   // list in tap order, when each tap happened on the renderer clock, the
-  // clock position itself, and the Speed Round countdown. A snapshot that
+  // clock position itself, and the round's countdown. A snapshot that
   // disagrees with the round it claims (a mangled save) is dropped.
   resumeMidRound(snapshot, { silent } = {}) {
     if (!snapshot || snapshot.phase !== COUNTING) return this.state;
@@ -615,13 +647,17 @@ export class StateStore {
           : 0,
       };
     });
-    const secondsLeft = snapshot.speedOn
-      ? Math.max(0, Math.min(SPEED_ROUND_SECONDS, Math.floor(Number(snapshot.secondsLeft))))
-      : null;
+    // The round's own clock bounds whatever the snapshot claims; an
+    // untimed round reads no clock at all, and a missing value reads full.
+    this.state = { ...this.state, difficulty };
+    const fullClock = this.clockFor(round);
+    const savedLeft = snapshot.secondsLeft == null ? NaN : Math.floor(Number(snapshot.secondsLeft));
+    const secondsLeft = fullClock == null
+      ? null
+      : Math.max(0, Math.min(fullClock, Number.isFinite(savedLeft) ? savedLeft : fullClock));
     if (secondsLeft === 0) {
       // The clock had already run out: the snapshot is a finished round.
-      // The run keeps its mode and level; the round itself starts fresh.
-      this.state = { ...this.state, difficulty, speedOn: !!snapshot.speedOn };
+      // The run keeps its level; the round itself starts fresh.
       return this.startRound(round, { silent });
     }
     const seed = Number.isFinite(Number(snapshot.seed)) && Number(snapshot.seed) >= 0
@@ -637,6 +673,11 @@ export class StateStore {
     // reload. That animal is the wolf now: drop it from the counted list.
     const keptCounted = uniqueCounted.filter((i) => i !== wolfIndex);
     const keptAt = countedAt.filter((at) => at.index !== wolfIndex);
+    if (keptCounted.length >= sheepCount - (wolfIndex != null ? 1 : 0)) {
+      // Every real sheep was already popped: the round passes on its last
+      // pop now, so this board was really over. The next flock starts.
+      return this.startRound(round + 1, { silent });
+    }
     this.state = {
       ...this.state,
       round,
@@ -652,7 +693,7 @@ export class StateStore {
         : 0,
       phase: COUNTING,
       endedBy: null,
-      speedOn: !!snapshot.speedOn,
+      lastPass: null,
       secondsLeft,
     };
     this._hasMidRoundSnapshot = true;
@@ -688,7 +729,6 @@ export class StateStore {
       countedAt: this.state.countedAt,
       roundElapsed: this.state.roundElapsed,
       phase: this.state.phase,
-      speedOn: this.state.speedOn,
       secondsLeft: this.state.secondsLeft,
     };
   }
@@ -755,12 +795,7 @@ export class StateStore {
     if (difficulty === this.state.difficulty) return this.state;
     // The old level's board must not resurrect under the new one.
     this.clearMidRound();
-    this.state = {
-      ...this.state,
-      difficulty,
-      speedOn: false,
-      secondsLeft: null,
-    };
+    this.state = { ...this.state, difficulty };
     this.state = this.startRound(1, { silent: true });
     this.saveLocal();
     this.flush();
@@ -796,7 +831,9 @@ export class StateStore {
         body: JSON.stringify({
           roundReached: this.state.round,
           endedBy: this.state.endedBy,
-          speedRound: this.state.speedOn,
+          // The Speed Round is retired: the ladder's clock is part of
+          // every run now, so no run carries the old tag.
+          speedRound: false,
           difficulty: this.state.difficulty,
         }),
       }).then((res) => (res.ok ? res.json() : null))
@@ -810,7 +847,10 @@ export class StateStore {
   }
 
   // A tap on a sheep. Returns what it did:
-  //   { outcome: 'counted', number }  a new sheep, numbered in tap order
+  //   { outcome: 'counted', number, passed }
+  //                                   a new sheep, numbered in tap order;
+  //                                   passed is true when it was the last
+  //                                   real sheep and the round passed
   //   { outcome: 'doubleTap' }        already counted, so the run ends
   //   { outcome: 'wiggle' }           already counted on Calm: a sleepy
   //                                   wiggle, and the round carries on
@@ -858,9 +898,15 @@ export class StateStore {
       this._pendingTapSave = true;
       this._pendingTapTimer = setTimeout(() => this.flushPendingSave(), 0);
     }
+    // The last real sheep passes the round on the spot: no Done tap, no
+    // card. A duel turn keeps its Done counting hand-in.
+    if (!this.state.duel && this.isComplete()) {
+      this.passRound();
+      return { outcome: 'counted', number: counted.length, passed: true };
+    }
     this.scheduleSync();
     this.onChange(this.state);
-    return { outcome: 'counted', number: counted.length };
+    return { outcome: 'counted', number: counted.length, passed: false };
   }
 
   isComplete() {
@@ -870,76 +916,14 @@ export class StateStore {
     return this.state.count >= this.state.sheepCount - wolves;
   }
 
-  // The player says that is all of them. Right count passes the round;
-  // anything short ends the run, except on Calm, where it answers
-  // 'notYet' with the sheep still awake and the round carries on.
+  // A duel turn's hand-in (solo rounds pass on their last pop). Right
+  // count passes the round; anything short ends the turn, except on Calm,
+  // where it answers 'notYet' with the sheep still awake.
   submitCount() {
     if (this.state.phase !== COUNTING) return { outcome: 'ignored' };
     if (this.isComplete()) {
-      let { safeStreak, bestSafeStreak } = this.state;
-      if (this.state.wolfIndex != null) {
-        // Dodged: the streak grows, the best streak is kept forever, and
-        // two bonus sheep join the lifetime count.
-        safeStreak += 1;
-        bestSafeStreak = Math.max(bestSafeStreak, safeStreak);
-        this.unsyncedBonus += WOLF_BONUS;
-      }
-      // The recap card's facts, stamped at the moment of the pass: this
-      // round's own clock in whole seconds (stamped onto the state so the
-      // card can show it after the renderer resets), and the per-round
-      // best time it sets or keeps. Best times live in the same
-      // device-local map family as the streak, so a deep link or a
-      // fixture can never move a real player's best.
-      const round = this.state.round;
-      const difficulty = this.state.difficulty;
-      const elapsed = this.currentElapsed();
-      const seconds = Math.max(0, Math.round(elapsed));
-      const prevBest = this.state.bestTimes[difficulty]?.[round];
-      const newBest = prevBest == null || seconds < prevBest;
-      const bestSeconds = newBest ? seconds : prevBest;
-      const bestTimes = {
-        ...this.state.bestTimes,
-        [difficulty]: { ...this.state.bestTimes[difficulty], [round]: bestSeconds },
-      };
-      this.state = {
-        ...this.state,
-        phase: ROUND_PASSED,
-        roundElapsed: elapsed,
-        safeStreak,
-        bestSafeStreak,
-        bonusCounted: this.state.bonusCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
-        totalCounted: this.state.totalCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
-        bestTimes,
-        // The final round has no next flock to preview, so it never shows
-        // a recap: the run completes and the game-over card takes over.
-        recap: round < TOTAL_ROUNDS
-          ? {
-            round,
-            counted: this.state.count,
-            seconds,
-            bestSeconds,
-            newBest,
-            // Every tapped sheep since local midnight, this round's
-            // included. The wolf bonus above is not a tapped sheep.
-            todayCounted: todayTally(this.state.todayCounted, this.state.todayCountedDay, localDayKey()),
-          }
-          : null,
-      };
-      // The ladder's top round is the end of the run. End it with its own
-      // reason so the game-over card shows the completion; the recap card
-      // and its Next round button have nothing to offer there.
-      if (round >= TOTAL_ROUNDS) {
-        this.endRun(ENDED_COMPLETE);
-        return { outcome: 'passed', round };
-      }
-      this.saveLocal();
-      // A passed round is over; resuming into it would show a board with
-      // nothing left to tap. The next visit starts the round fresh,
-      // exactly like leaving between rounds always has.
-      this.clearMidRound();
-      this.flush();
-      this.onChange(this.state);
-      return { outcome: 'passed', round };
+      this.passRound();
+      return { outcome: 'passed', round: this.state.round };
     }
     if (forgiving(this.state)) {
       const awake = [];
@@ -950,6 +934,61 @@ export class StateStore {
     }
     this.endRun(ENDED_MISSED);
     return { outcome: 'missed', round: this.state.round };
+  }
+
+  // The round is counted. Stamps the pass banner's facts, records the
+  // round's best time silently, and saves the NEXT round as the one to
+  // start on, so a reload during the banner opens the next flock fresh.
+  // app.js runs the short banner and then calls nextRound().
+  passRound() {
+    if (this.state.phase !== COUNTING) return this.state;
+    let { safeStreak, bestSafeStreak } = this.state;
+    if (this.state.wolfIndex != null) {
+      // Dodged: the streak grows, the best streak is kept forever, and
+      // two bonus sheep join the lifetime count.
+      safeStreak += 1;
+      bestSafeStreak = Math.max(bestSafeStreak, safeStreak);
+      this.unsyncedBonus += WOLF_BONUS;
+    }
+    // This round's own clock in whole seconds, and the per-round best time
+    // it sets or keeps. Best times live in the same device-local map family
+    // as the streak, so a deep link or a fixture can never move a real
+    // player's best.
+    const round = this.state.round;
+    const difficulty = this.state.difficulty;
+    const elapsed = this.currentElapsed();
+    const seconds = Math.max(0, Math.round(elapsed));
+    const prevBest = this.state.bestTimes[difficulty]?.[round];
+    const bestSeconds = prevBest == null || seconds < prevBest ? seconds : prevBest;
+    const bestTimes = {
+      ...this.state.bestTimes,
+      [difficulty]: { ...this.state.bestTimes[difficulty], [round]: bestSeconds },
+    };
+    // The best round counts rounds reached, so the next one is reached now.
+    const nextRound = round + 1;
+    this.state = {
+      ...this.state,
+      phase: ROUND_PASSED,
+      roundElapsed: elapsed,
+      safeStreak,
+      bestSafeStreak,
+      bonusCounted: this.state.bonusCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
+      totalCounted: this.state.totalCounted + (this.state.wolfIndex != null ? WOLF_BONUS : 0),
+      bestTimes,
+      bestRounds: this.state.duel ? this.state.bestRounds : {
+        ...this.state.bestRounds,
+        [difficulty]: Math.max(this.state.bestRounds[difficulty] || 1, nextRound),
+      },
+      lastPass: { round, counted: this.state.count, levelUp: isLevelUp(round) },
+    };
+    // A passed round is over; resuming into it would show a board with
+    // nothing left to tap. The save names the next round, and the next
+    // visit starts it fresh.
+    this.clearMidRound();
+    this.saveLocal();
+    this.flush();
+    this.onChange(this.state);
+    return this.state;
   }
 
   endRun(reason) {
@@ -968,38 +1007,33 @@ export class StateStore {
   }
 
   // After a run ends: back to round 1 with a fresh flock. bestRounds are
-  // kept, so the grown-ups panel still shows how far the player got. The
-  // Speed Round mode is a per-run choice, so it resets with the run and
-  // the briefing card asks again.
+  // kept, so the grown-ups panel still shows how far the player got.
   restartRun() {
-    this.state = { ...this.state, speedOn: false, secondsLeft: null };
-    const state = this.startRound(1);
-    return state;
+    return this.startRound(1);
   }
 
-  // One clock step for a Speed Round: every whole second the store's
-  // onChange fires and all surfaces (count pill, DOM fallback, a11y list)
-  // read the same secondsLeft. Returns false on the step that hits zero;
+  // The game-over card's "Start at level N": a fresh run from the first
+  // round of a level the player has already reached on the ladder. It
+  // plays the ladder even when the run just ended was Calm.
+  startAtLevel(level) {
+    const l = Math.max(1, Math.min(this.bestLevel, Math.floor(Number(level)) || 1));
+    if (this.state.difficulty !== FLOW_LEVEL) {
+      this.clearMidRound();
+      this.state = { ...this.state, difficulty: FLOW_LEVEL, calmOn: false };
+    }
+    return this.startRound(startRoundForLevel(l));
+  }
+
+  // One clock step for a timed round: every whole second the store's
+  // onChange fires and all surfaces (the timer pill, the a11y list) read
+  // the same secondsLeft. Returns false on the step that hits zero;
   // app.js owns what that does.
   tickClock() {
-    if (this.state.phase !== COUNTING || !this.state.speedOn) return true;
-    const left = Math.max(0, (this.state.secondsLeft ?? SPEED_ROUND_SECONDS) - 1);
+    if (this.state.phase !== COUNTING || this.state.secondsLeft == null) return true;
+    const left = Math.max(0, this.state.secondsLeft - 1);
     this.state = { ...this.state, secondsLeft: left };
     this.onChange(this.state);
     return left > 0;
-  }
-
-  // Speed Round toggle for the briefing card. Applies to the round that
-  // is about to start; it never flips mid-round (the briefing is modal,
-  // so this runs before Start counting in real play).
-  setSpeedOn(on) {
-    const speedOn = normalizeSpeedRound(on) && !isCalmLevel(this.state.difficulty);
-    this.state = { ...this.state, speedOn, secondsLeft: speedOn ? SPEED_ROUND_SECONDS : null };
-    this.saveLocal();
-    // The briefing's toggle is part of the resumable board too.
-    this.saveMidRound();
-    this.scheduleSync();
-    this.onChange(this.state);
   }
 
   setSoundOn(on) {
@@ -1031,11 +1065,19 @@ export class StateStore {
     this.onChange(this.state);
   }
 
-  // Calm mode is a comfort setting, not a per-run mode: it survives
-  // restarts and rounds, like sound and Night Meadow.
+  // Calm is one switch: the grown-ups "Calm mode" row and the game-over
+  // card's Calm pill both land here. On, it slows the flock and plays the
+  // Calm curve (no clock, no wolf, no game over); off, it returns to the
+  // ladder. Changing curve starts a fresh run at round 1, like any level
+  // switch; it survives restarts and rounds, like sound and Night Meadow.
   setCalmOn(on) {
     const calmOn = normalizeCalm(on);
+    const difficulty = calmOn ? CALM_LEVEL : (isCalmLevel(this.state.difficulty) ? FLOW_LEVEL : this.state.difficulty);
     this.state = { ...this.state, calmOn };
+    if (difficulty !== this.state.difficulty) {
+      this.setDifficulty(difficulty);
+      return;
+    }
     this.saveLocal();
     this.scheduleSync();
     this.onChange(this.state);

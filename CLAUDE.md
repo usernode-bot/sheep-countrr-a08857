@@ -60,14 +60,18 @@ tables you've marked private), etc.
 
 ## About Sheep countrr
 
-A round-based tap-to-count game for young children. Round 1 is one
-stationary sheep; each completed round adds roughly one or two more and
-raises the movement speed and randomness, so remembering which sheep you
-already counted is the difficulty. Tapping an uncounted sheep counts it
-and pops it like a piñata: it puffs up, vanishes, and leaves a pile of
-pastel confetti and candy where it stood for the rest of the round; a
-popped spot ignores taps, so it can never end a run. Submitting a short
-count ends the run and shows the round reached with a restart button. Sound is on by default: a
+A tap-to-count game for young children on one endless level ladder. The
+app opens straight onto the meadow (no Get ready card, no countdown): round
+1 is one still sheep and tapping it is the start. Every three rounds make a
+level that adds a sheep, speeds the flock up and, from level 3, shortens the
+clock per sheep. Tapping an uncounted sheep counts it and pops it like a
+piñata: it puffs up, vanishes, and leaves a pile of pastel confetti and
+candy where it stood for the rest of the round; a popped spot ignores taps,
+so it can never end a run. The round passes on its last pop and the next
+flock walks in by itself after a short in-play banner ("You counted 4
+sheep.", with "Level N!" on a level-up). A run ends when the clock runs out
+or the wolf is tapped; the game-over card is the one place to choose how to
+play next (Start again, Start at level, Calm, Duel, Share). Sound is on by default: a
 soft Web Audio baa plays each time a sheep is tapped, and a grown-up
 mutes it (and reaches settings: progress, start over) only via a ~1.5s
 press-and-hold on the corner gear icon, so a child mashing the screen
@@ -79,8 +83,17 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
 ## App-specific conventions
 
 - **The round difficulty curve lives in `public/rounds.js`** and nowhere
-  else: `sheepForRound`, `motionForRound`, `roundSeed` and `roamRadius`
-  are pure functions of the round number, which is what makes `/?round=N`
+  else: `sheepForRound`, `motionForRound`, `secondsForRound`,
+  `wolfChance`, `roundSeed` and `roamRadius` are pure functions of the
+  round number (levels are derived: `levelForRound`, `ROUNDS_PER_LEVEL` =
+  3), which is what makes `/?round=N` reproducible and lets
+  `tests/game.test.mjs` assert the escalation without a browser. The
+  ladder is the `'flow'` difficulty; `'calm'` is the only other curve, and
+  the retired named levels (`RETIRED_DIFFICULTIES`) normalize to `'flow'`
+  (a save or server row naming one restarts the ladder at round 1). The
+  round number stays the internal unit for seeds, saves and the server's
+  round columns. Levels 1 and 2 must stay untimed and wolf-free, and level
+  4 no harder than the old Normal round 4 (#64; the test pins it). which is what makes `/?round=N`
   reproducible and lets `tests/game.test.mjs` assert the escalation
   without a browser. Tune difficulty there rather than in a renderer.
   `roamRadius(round)` must stay a genuine upper bound on
@@ -93,70 +106,60 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   or writes localStorage or the server. That is what lets it share the
   auth exemption with `?scene=`; keep it side-effect-free.
 - **Frozen screenshot fixtures live behind `?scene=`** (`portrait`,
-  `empty`, `midcount`, `allcounted`, `roundcomplete`, `roundcompletebest`, `gameover`,
-  `grownups`, `flock`, `moon` — see `dapp.json`'s `tests`). `public/app.js`'s
+  `empty`, `midcount`, `roundpass`, `levelup`, `gameover`,
+  `timeupgameover`, `grownups`, `flock`, `moon` — see `dapp.json`'s
+  `tests`). `public/app.js`'s
   `staticMode` branch
   renders these from hardcoded data only (`buildStaticState()`) and never
   touches localStorage or the server — keep it that way, since these
   routes are exempted from the auth gate in `server.js` specifically
   because they carry no real user data. Don't make `staticMode` read from
-  the store or network. `staticMode` also suppresses the round-complete
-  auto-advance timer, so `?scene=roundcomplete` holds still long enough
-  to photograph.
-- **Speed Round fixtures**: `?scene=speed` (board mid-count with the
-  countdown pill), `?scene=speedgameover` (the clock ran out), and
-  `?round=N&speed=1` (a playable timed run). All ride the existing
-  `?scene=` / `?round=` auth exemption and stay side-effect-free. The
-  Speed Round mode is run-level client state (`speedOn` in state.js,
-  saved to localStorage like soundOn); it is deliberately NOT a
-  sheep_progress column, so a deep link or screenshot run cannot flip a
-  real player's next round into a timed one. Only finished runs carry
-  the mode to the server (`sheep_runs.speed_round`), which is what the
-  weekly leaderboard's "Speed N" tag reads.
+  the store or network. `staticMode` also suppresses the pass banner's
+  advance timer and the round clock, so `?scene=roundpass` /
+  `?scene=levelup` hold still long enough to photograph.
+- **The Speed Round is retired into the ladder's clock.** Every ladder
+  round from level 3 carries `state.secondsLeft` (null when untimed, in
+  Calm and in duel turns); `tickClock` and the round clock in `app.js`
+  key off that, not a mode flag. There is no `speedOn` any more: new runs
+  post `speedRound: false`, and `sheep_runs.speed_round` only feeds the
+  weekly leaderboard's "Speed N" tag for old rows.
 - **The play streak is client-side, never a server column.** The
-  streak flame on the Get-ready card counts consecutive LOCAL calendar
+  streak flame on the game-over card counts consecutive LOCAL calendar
   days with at least one round started, plus a best-streak record. It
   lives in localStorage inside the same per-user payload the store
   already saves (`streakDays` / `bestStreakDays` / `lastPlayedDay`),
   recorded by `recordPlayDay()` on every `startRound` (and on resuming a
   mid-round snapshot). Ephemeral stores (all `?scene=` / `?round=` deep
   links) never record a day, so a capture run cannot move a real
-  player's streak; the `?scene=intro` fixture hardcodes its streak in
+  player's streak; the `?scene=gameover` fixture hardcodes its streak in
   `buildStaticState()` instead. The pure arithmetic (`localDayKey`,
   `dayDistance`, `advanceStreak`) lives in `rounds.js` with the other
   copy/curve helpers and is asserted in `tests/game.test.mjs`.
-- **The round recap card is stamped at the pass, never persisted.** When
-  `submitCount()` passes a round, the store fills `state.recap`
-  (`{ round, counted, seconds, bestSeconds, newBest, todayCounted }`) and
-  the card waits for the player (Next round button, tap anywhere,
-  Enter/Space);
-  the old auto-advance timer is gone. `startRound` clears `recap`, and
-  it is deliberately left out of saves and snapshots, so a resumed
-  board never shows a stale card. Passing the ladder's final round
-  (`TOTAL_ROUNDS` = 9) instead ends the run with `endedBy: 'complete'`
-  (`ENDED_COMPLETE`, part of the `/api/runs` end-reason allowlist) and
-  no card. **Per-round best times (`state.bestTimes[difficulty][round]`)
-  are device-local, never a server column**, same precedent as the
-  streak: saved in the per-user localStorage payload, normalized by
-  `normalizeBestTimes` on restore, per difficulty. **The daily tally
-  (`state.todayCounted` / `state.todayCountedDay`) is device-local too,
-  never a server column**, with the same local-day rule as the streak:
-  every counted tap increments it, the wolf's bonus sheep do not, and
-  `todayTally` reads a save from another day as zero. It is left out of
-  snapshots and `/api/state`, and the recap copy helpers
-  (`formatRoundSeconds`, `recapSheepLine`, `recapTimeLine`,
-  `recapTodayLine`; `recapTimeLine` names a new best) live in `rounds.js` and are
-  asserted in `tests/game.test.mjs`.
-- **`?round=N&autoplay=button|tap|1` is a side-effect-free playable
-  harness** for the load-only dapp.json checks: it rides the existing
-  `?round=` auth exemption, forces the store ephemeral (unlike a plain
-  `?round=N`, whose store is persistent today), plays a real round via
-  the same `handleTap`/`submitCount` path a player uses (skipping the
-  wolf index so a drawn wolf cannot end the run), then either clicks
-  Next round (`button`), dispatches a real `pointerdown` on the recap
-  card (`tap`), or stops at the card (`1`), which is what lets the
-  "Next round starts the next round" and "tap anywhere dismisses"
-  checks assert on a real run. Never read `autoplay` outside the
+- **The pass banner is stamped at the pass, never persisted.** When the
+  last real sheep pops, `tapSheep` calls `passRound()`, which fills
+  `state.lastPass` (`{ round, counted, levelUp }`) and sets
+  `ROUND_PASSED`; `app.js` shows `#flow-banner` and calls `nextRound()`
+  after `PASS_MS` (or `LEVEL_UP_MS` on a level-up). `lastPass` is left out
+  of saves and snapshots, and while the banner is up every save names the
+  NEXT round (`roundToStart()`), so a reload never replays a passed
+  board. A duel turn does not auto-pass: it keeps Done counting
+  (`submitCount`), and `#submit-count` is hidden in solo play.
+  **Per-round best times (`state.bestTimes[difficulty][round]`) are
+  device-local, never a server column**, same precedent as the streak:
+  recorded silently at every pass, saved in the per-user localStorage
+  payload, normalized by `normalizeBestTimes` on restore.
+  **The daily tally (`state.todayCounted` / `state.todayCountedDay`) is
+  device-local too, never a server column**, with the same local-day rule
+  as the streak: every counted tap increments it, the wolf's bonus sheep
+  do not, and `todayTally` reads a save from another day as zero. It is
+  left out of snapshots and `/api/state`.
+- **`?round=N&autoplay=1|next` is a side-effect-free playable harness**
+  for the load-only dapp.json checks: it rides the existing `?round=`
+  auth exemption, forces the store ephemeral (unlike a plain `?round=N`,
+  whose store is persistent today), plays a real round via the same
+  `handleTap` path a player uses (skipping the wolf index so a drawn wolf
+  cannot end the run), then either stops on the pass banner (`1`) or lets
+  the next flock walk in (`next`). Never read `autoplay` outside the
   store-construction/harness seam in `app.js`.
 - **`?renderer=dom` forces the DOM/card fallback** (used by the
   "No-WebGL fallback" test) even on a device that supports WebGL. It

@@ -100,12 +100,14 @@ app.use('/usernode-bridge', (req, res) => {
 const MAX_ROUND = 999;
 const MAX_TAPS_PER_SYNC = 12;
 
-// The difficulty levels the client may report. Anything else falls back to
-// 'normal', matching public/rounds.js's normalizeDifficulty. 'calm' is the
+// The difficulty levels the client may report. 'flow' is the endless level
+// ladder every player now plays; the older named levels stay accepted so a
+// stale client's sync still lands. Anything else falls back to 'flow',
+// matching public/rounds.js's normalizeDifficulty. 'calm' is the
 // bedtime level: it keeps its own best round in best_rounds but never
 // raises best_round (the Global and Friends score) and never records a run
 // (the weekly score), so Calm play stays out of the challenge leaderboards.
-const DIFFICULTIES = new Set(['calm', 'easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend']);
+const DIFFICULTIES = new Set(['calm', 'flow', 'easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend']);
 
 // URL-safe code shapes. The client copies full URLs, but the key/code itself
 // never carries anything else, so a strict charset check is all the input
@@ -211,12 +213,12 @@ app.post('/api/runs', async (req, res) => {
   const roundReached = clamp(parseInt((req.body || {}).roundReached, 10) || 1, 1, MAX_ROUND);
   // 'wolf' is the run a wolf tap ended; without it here a shared card for
   // that run fell back to "Some sheep were left uncounted." 'complete' is
-  // the run the ladder's final round passed: no next flock, so the shared
-  // card shows the finish instead of a scatter line.
+  // the end of the old nine-round ladder; the flow ladder never runs out,
+  // but runs recorded with it keep their reason.
   const endReason = ['doubleTap', 'missed', 'timeUp', 'wolf', 'complete'].includes((req.body || {}).endedBy)
     ? (req.body || {}).endedBy : null;
-  // Speed Rounds carry their own tag so the weekly leaderboard can show
-  // them separately from normal rounds.
+  // The retired Speed Round's tag. Current clients always send false (the
+  // ladder's clock is part of every run); old rows keep their "Speed N".
   const speedRound = !!(req.body || {}).speedRound;
   // The client never posts a Calm run (Calm has no game over); this is the
   // server-side half of keeping Calm off the weekly leaderboard.
@@ -505,12 +507,13 @@ app.get('/api/state', async (req, res) => {
 
     let row = rows[0];
     if (!row) {
-      // A brand-new player starts on Calm. The row is stored as Calm so a
-      // later read agrees, but this first answer says "no saved level"
+      // A brand-new player starts on the level ladder ('flow'). The row is
+      // stored that way so a later read agrees, but this first answer says
+      // "no saved level"
       // (null), so a pick this device already holds is never overwritten.
       await pool.query(
         `INSERT INTO sheep_progress (user_id, username, round, best_round, seed, difficulty, sound_on)
-         VALUES ($1, $2, 1, 1, $3, 'calm', true)
+         VALUES ($1, $2, 1, 1, $3, 'flow', true)
          ON CONFLICT (user_id) DO NOTHING`,
         [req.user.id, req.user.username, randomSeed()]
       );
@@ -525,7 +528,7 @@ app.get('/api/state', async (req, res) => {
 
     // bestRounds holds one best round per difficulty; the legacy best_round
     // column stays the all-time best and still folds in for old clients.
-    const bestRounds = { calm: 1, easy: 1, normal: 1, hard: 1, expert: 1, insane: 1, chaos: 1, legend: 1, ...(row.best_rounds || {}) };
+    const bestRounds = { calm: 1, flow: 1, easy: 1, normal: 1, hard: 1, expert: 1, insane: 1, chaos: 1, legend: 1, ...(row.best_rounds || {}) };
 
     res.json({
       round: row.round,
@@ -565,7 +568,7 @@ app.post('/api/state', async (req, res) => {
   const nightOn = !!body.nightOn;
   const calmOn = !!body.calmOn;
   // An unrecognised difficulty is never stored; it reads back as Normal.
-  const difficulty = DIFFICULTIES.has(body.difficulty) ? body.difficulty : 'normal';
+  const difficulty = DIFFICULTIES.has(body.difficulty) ? body.difficulty : 'flow';
 
   try {
     const { rows } = await pool.query(

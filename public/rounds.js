@@ -1,135 +1,130 @@
 import { mulberry32 } from './layout.js';
 
 // Round progression: the single source of truth for how many sheep a round
-// holds and how wildly they move, per difficulty. Everything here is a pure
-// function of the round number and the difficulty, so the
-// /?round=N&difficulty=X deep link reproduces exactly the same round every
-// time it is loaded (screenshots stay comparable run to run). Omitting the
-// difficulty means Normal, which is byte-for-byte the pre-difficulty game.
+// holds, how wildly they move and how long its clock runs. Everything here
+// is a pure function of the round number and the difficulty, so the
+// /?round=N deep link reproduces exactly the same round every time it is
+// loaded (screenshots stay comparable run to run).
+//
+// The main game is one endless ladder ('flow'): rounds are grouped into
+// levels of ROUNDS_PER_LEVEL, and each level adds a sheep, speeds the flock
+// up a little and, from level 3, shortens the clock per sheep. The round
+// number stays the internal unit (seeds, saves, the server's round columns);
+// levels are derived from it. Calm is the one other curve: the bedtime one.
 
-// Upper bound on flock size. Past this round the sheep stop multiplying and
-// only the movement keeps escalating, so taps stay physically landable.
+// Upper bound on flock size. Past this the sheep stop multiplying and only
+// the movement and the clock keep escalating, so taps stay landable.
 export const MAX_SHEEP = 12;
 
-// Round at which the movement ramp reaches full chaos.
-export const DEFAULT_DIFFICULTY = 'normal';
+// The ladder every real player and every deep link plays.
+export const FLOW_LEVEL = 'flow';
+export const DEFAULT_DIFFICULTY = FLOW_LEVEL;
 
-// The ladder's length for the original five levels. The round pill reads
-// "Round 5 of 9" so a player always knows how far the run goes; the flock
-// keeps its shape past the top (see sheepForRound's cap) and the suffix
-// drops off there, so the pill never claims a round the flock does not
-// have. The levels above Expert run a longer ladder — see totalRoundsFor.
-export const TOTAL_ROUNDS = 9;
+// Rounds per level: two small beats, then the level-up moment.
+export const ROUNDS_PER_LEVEL = 3;
 
-// The difficulty dials. Normal is today's curve exactly; Easy stretches the
-// same character arc out and calms it down, Hard and Expert compress it and
-// push it further. growth is the sheep-per-round multiplier, rampRounds how
-// long the movement ramp takes to reach full chaos, speedRamp the extra
-// speed at full ramp, overRate the post-ramp speed creep per round, and
-// jitterScale how nervy the late wobble gets.
+// The curves. Calm is the bedtime level: its flock grows by one sheep every
+// two rounds and stops at five, and its motion never ramps (every round from
+// 2 on keeps a slow drift, no bounce, no jitter). The forgiving rules (a
+// double tap only wiggles, no wolf, no clock, no game over) live in state.js
+// behind isCalmLevel. 'flow' is described by the level functions below
+// rather than by dials.
 export const DIFFICULTIES = {
-  // Calm is the bedtime level, and the default for a brand-new player
-  // (see NEW_PLAYER_DIFFICULTY). Its flock grows by one sheep every two
-  // rounds and stops at five, and its motion never ramps: rampRounds of
-  // Infinity pins the ramp at zero, so every round from 2 on keeps the
-  // slow drift every level opens with (speed 0.4, radius 0.3, no bounce,
-  // no jitter). The forgiving rules (a double tap only wiggles, no wolf,
-  // no game over) live in state.js behind isCalmLevel.
   calm: {
     growth: 0.5,
     maxSheep: 5,
-    rampRounds: Infinity,
-    speedRamp: 0,
-    overRate: 0,
-    jitterScale: 0,
   },
-  easy: {
-    growth: 1.0,
-    maxSheep: 6,
-    rampRounds: 12,
-    speedRamp: 1.1,
-    overRate: 0.03,
-    jitterScale: 0.25,
-  },
-  normal: {
-    growth: 1.5,
-    maxSheep: 12,
-    rampRounds: 8,
-    speedRamp: 1.5,
-    overRate: 0.06,
-    jitterScale: 0.3,
-  },
-  hard: {
-    growth: 2.0,
-    maxSheep: 12,
-    rampRounds: 6,
-    speedRamp: 1.8,
-    overRate: 0.09,
-    jitterScale: 0.35,
-  },
-  expert: {
-    growth: 2.5,
-    maxSheep: 12,
-    rampRounds: 4,
-    speedRamp: 2.2,
-    overRate: 0.12,
-    jitterScale: 0.4,
-  },
-  // The long-term ladder above Expert. The flock already sits at the shared
-  // MAX_SHEEP cap here, so hardness comes from movement and wolves, not
-  // more sheep: shorter ramps, faster full-chaos speed, a steeper post-ramp
-  // creep and a nervier wobble, each level meaningfully worse than the one
-  // before. Their ladders are also longer (see totalRoundsFor) and their
-  // wolves bite sooner and in better disguise (see wolfModeFactors).
-  insane: {
-    growth: 3.0,
-    maxSheep: 12,
-    rampRounds: 3,
-    speedRamp: 2.5,
-    overRate: 0.16,
-    jitterScale: 0.45,
-  },
-  chaos: {
-    growth: 3.0,
-    maxSheep: 12,
-    rampRounds: 2,
-    speedRamp: 2.8,
-    overRate: 0.2,
-    jitterScale: 0.5,
-  },
-  legend: {
-    growth: 3.0,
-    maxSheep: 12,
-    rampRounds: 2,
-    speedRamp: 3.2,
-    overRate: 0.24,
-    jitterScale: 0.55,
-  },
+  flow: {},
 };
 
-// The level a player with no saved pick starts on. Deep links and frozen
-// fixtures keep DEFAULT_DIFFICULTY (Normal) so their flocks never move;
-// only a real player's store, with nothing saved locally or on the
-// server, opens on Calm. A saved pick, any pick, always wins.
+// The levels the old Get ready picker offered. They are retired: a save,
+// a server row or a deep link naming one plays the flow ladder instead,
+// starting again at level 1 (see isRetiredDifficulty).
+export const RETIRED_DIFFICULTIES = ['easy', 'normal', 'hard', 'expert', 'insane', 'chaos', 'legend'];
+
+export function isRetiredDifficulty(difficulty) {
+  return RETIRED_DIFFICULTIES.includes(difficulty);
+}
+
+// Which level a round belongs to, and where in the level it sits (1..3).
+export function levelForRound(round) {
+  return Math.ceil(normalizeRound(round) / ROUNDS_PER_LEVEL);
+}
+
+export function roundInLevel(round) {
+  return ((normalizeRound(round) - 1) % ROUNDS_PER_LEVEL) + 1;
+}
+
+// True when passing this round finishes its level: the next round opens a
+// new level, and the pass gets the bigger "Level N!" moment.
+export function isLevelUp(round) {
+  return roundInLevel(round) === ROUNDS_PER_LEVEL;
+}
+
+// The first round of a level, for "Start at level N".
+export function startRoundForLevel(level) {
+  const l = Math.max(1, Math.floor(Number(level)) || 1);
+  return (l - 1) * ROUNDS_PER_LEVEL + 1;
+}
+
+// The game-over card's "Start at level" shortcuts: 1, 4, 7, 10 ... up to
+// the best level the player has reached.
+export function startLevelChoices(bestLevel) {
+  const best = Math.max(1, Math.floor(Number(bestLevel)) || 1);
+  const out = [];
+  for (let l = 1; l <= best; l += 3) out.push(l);
+  return out;
+}
+
+// The corner tag and the level-up words.
+export function levelTagText(round) {
+  return `Level ${levelForRound(round)}`;
+}
+
+export function levelUpTitle(level) {
+  return `Level ${Math.max(1, Math.floor(Number(level)) || 1)}!`;
+}
+
+// The flow clock: seconds per sheep by level, plus a fixed base. Levels 1
+// and 2 have no clock at all; from level 3 the time per sheep shrinks, then
+// keeps shrinking by a tenth of a second a level down to a floor.
+const CLOCK_BASE_SECONDS = 3;
+const CLOCK_FIRST_LEVEL = 3;
+const CLOCK_PER_SHEEP = { 3: 8, 4: 6, 5: 5, 6: 4.5, 7: 4, 8: 3.5, 9: 3 };
+const CLOCK_FLOOR_PER_SHEEP = 2;
+// Big Tap gives slower hands more time, on top of the slower flock.
+export const BIG_TAP_CLOCK = 1.5;
+
+export function secondsPerSheep(level) {
+  const l = Math.max(1, Math.floor(Number(level)) || 1);
+  if (l < CLOCK_FIRST_LEVEL) return null;
+  if (CLOCK_PER_SHEEP[l] != null) return CLOCK_PER_SHEEP[l];
+  return Math.max(CLOCK_FLOOR_PER_SHEEP, 3 - 0.1 * (l - 9));
+}
+
+// The round's clock in whole seconds, or null for an untimed round (Calm,
+// and levels 1 and 2 of the ladder).
+export function secondsForRound(round, difficulty = DEFAULT_DIFFICULTY, { bigTapOn = false } = {}) {
+  if (normalizeDifficulty(difficulty) !== FLOW_LEVEL) return null;
+  const perSheep = secondsPerSheep(levelForRound(round));
+  if (perSheep == null) return null;
+  const base = Math.ceil(sheepForRound(round, difficulty) * perSheep + CLOCK_BASE_SECONDS);
+  return bigTapOn ? Math.ceil(base * BIG_TAP_CLOCK) : base;
+}
+
+// The level a player with no saved pick starts on: the flow ladder, whose
+// first two levels are as gentle as Calm (no clock, no wolf, a still or
+// drifting flock). A saved pick, Calm included, always wins.
 export const CALM_LEVEL = 'calm';
-export const NEW_PLAYER_DIFFICULTY = CALM_LEVEL;
+export const NEW_PLAYER_DIFFICULTY = FLOW_LEVEL;
 
 export function isCalmLevel(difficulty) {
   return difficulty === CALM_LEVEL;
 }
 
-// The Get ready card's rule line. A counted sheep pops into confetti and
-// candy, so it cannot be tapped again; the challenge levels keep the
-// warning that saying done too early ends the run, and carry the wolf
-// warning that used to be a line of its own (Calm has no wolf).
-export function introRuleText(difficulty = DEFAULT_DIFFICULTY) {
-  return isCalmLevel(difficulty)
-    ? 'Tap each sheep once to pop it, then tap Done counting.'
-    : 'Tap each sheep once to pop it, then tap Done counting. Saying done too early ends the run. Watch out for the wolf.';
-}
-
 // Anything unrecognised (a hostile /api/state body, a mangled deep link,
-// an old localStorage row) falls back to Normal, never to a crash.
+// an old localStorage row, a retired level) falls back to the flow ladder,
+// never to a crash.
 export function normalizeDifficulty(difficulty) {
   return Object.prototype.hasOwnProperty.call(DIFFICULTIES, difficulty)
     ? difficulty
@@ -141,12 +136,8 @@ export function normalizeRound(round) {
   return Number.isFinite(r) && r >= 1 ? r : 1;
 }
 
-// How long a Speed Round lasts, in whole seconds.
-export const SPEED_ROUND_SECONDS = 30;
-
-// A speed flag survives a localStorage save, a server sync and a deep
-// link only when it is exactly true; anything else reads as a normal
-// round.
+// The retired Speed Round's flag, still read from old runs (a shared card,
+// the weekly leaderboard's "Speed N" tag). It is exactly true or nothing.
 export function normalizeSpeedRound(on) {
   return on === true;
 }
@@ -238,13 +229,19 @@ export function speedRoundClock(secondsLeft) {
   return String(Math.max(0, Math.ceil(Number(secondsLeft) || 0)));
 }
 
-// 1, 2, 4, 5, 7, 8, 10, 11, 12 ... on Normal (one or two more sheep each
-// round); slower growth on Easy, faster on Hard and Expert, each capped at
-// its own flock limit so taps stay physically landable.
+// The flow ladder's flock: level L opens with L sheep and its next two
+// rounds hold one more, so level 1 reads 1, 2, 2 and level 4 reads 4, 5, 5,
+// capped at MAX_SHEEP so taps stay physically landable. Calm grows by one
+// sheep every two rounds up to five.
 export function sheepForRound(round, difficulty = DEFAULT_DIFFICULTY) {
   const r = normalizeRound(round);
-  const d = DIFFICULTIES[normalizeDifficulty(difficulty)];
-  return Math.min(d.maxSheep, 1 + Math.floor((r - 1) * d.growth));
+  const d = normalizeDifficulty(difficulty);
+  if (d === FLOW_LEVEL) {
+    const extra = roundInLevel(r) > 1 ? 1 : 0;
+    return Math.min(MAX_SHEEP, levelForRound(r) + extra);
+  }
+  const c = DIFFICULTIES[d];
+  return Math.min(c.maxSheep, 1 + Math.floor((r - 1) * c.growth));
 }
 
 // How the flock moves at a given round. Round 1 is completely still: a
@@ -257,20 +254,32 @@ export function sheepForRound(round, difficulty = DEFAULT_DIFFICULTY) {
 //   jitterAmp  extra high-frequency wobble, as a share of radius
 //   turn       how much a sheep swings its heading while walking
 //   chaos      0 to 1 ramp, for renderers that want one dial
+//
+// On the ladder the motion follows the level: level 1 drifts at 0.3, level
+// 2 at 0.4, and the ramp then climbs to full bounce and jitter by level
+// 10, after which the sheep keep getting quicker, slowly, up to a cap.
+// Calm never ramps: every round from 2 on keeps the opening drift.
+const FLOW_RAMP_LEVELS = 8;
+const FLOW_OVER_RATE = 0.06;
 export function motionForRound(round, difficulty = DEFAULT_DIFFICULTY) {
   const r = normalizeRound(round);
   if (r <= 1) {
     return { speed: 0, radius: 0, bounceMix: 0, jitterAmp: 0, turn: 0, chaos: 0 };
   }
-  const d = DIFFICULTIES[normalizeDifficulty(difficulty)];
-  const ramp = Math.min(1, (r - 2) / d.rampRounds);
-  // Past the ramp the sheep keep getting quicker, slowly and forever.
-  const over = Math.min(1.2, Math.max(0, r - 2 - d.rampRounds) * d.overRate);
+  const level = levelForRound(r);
+  if (normalizeDifficulty(difficulty) !== FLOW_LEVEL) {
+    return { speed: 0.4, radius: 0.3, bounceMix: 0, jitterAmp: 0, turn: 0.15, chaos: 0 };
+  }
+  if (level <= 1) {
+    return { speed: 0.3, radius: 0.3, bounceMix: 0, jitterAmp: 0, turn: 0.15, chaos: 0 };
+  }
+  const ramp = Math.min(1, (level - 2) / FLOW_RAMP_LEVELS);
+  const over = Math.min(1.2, Math.max(0, level - 2 - FLOW_RAMP_LEVELS) * FLOW_OVER_RATE);
   return {
-    speed: 0.4 + ramp * d.speedRamp + over,
-    radius: 0.3 + ramp * 1.0,
-    bounceMix: Math.min(0.85, ramp * 1.1),
-    jitterAmp: ramp * ramp * d.jitterScale + over * 0.05,
+    speed: 0.4 + ramp * 1.45 + over,
+    radius: 0.4 + ramp * 0.9,
+    bounceMix: Math.min(0.85, Math.max(0, ramp * 1.1 - 0.1)),
+    jitterAmp: ramp * ramp * 0.3 + over * 0.05,
     turn: 0.15 + ramp * 0.6,
     chaos: Math.min(1, ramp + over * 0.4),
   };
@@ -315,41 +324,30 @@ export function roundLabel(round) {
 // spawn draw, the round seed), so /?round=N reproduces the same wolf every
 // time it is loaded, exactly like the rest of the difficulty curve.
 //
-// Every function takes an optional trailing `mode` argument naming the
-// difficulty level: the wolf bites harder the higher the level, so Easy's
-// wolf is rarer and later in plainer disguise while the challenge levels
-// above Expert draw sooner and disguise earlier. The existing call sites
-// pass the player's difficulty; the frozen fixtures pass nothing and so
-// keep Normal.
+// On the ladder the wolf follows the level: none before level 4, then a
+// chance that climbs one step per level until it caps, in a disguise that
+// improves at levels 7 and 12. Calm never hides one (state.js skips the
+// draw); the optional `mode` argument is the player's difficulty.
 
+const WOLF_FIRST_LEVEL = 4;
 const WOLF_BASE_CHANCE = 0.15;
 const WOLF_CHANCE_STEP = 0.05;
 const WOLF_MAX_CHANCE = 0.7;
+const WOLF_TIER2_LEVEL = 7;
+const WOLF_TIER3_LEVEL = 12;
 export const WOLF_BONUS = 2;
 
-function wolfModeFactors(mode = 'normal') {
-  if (mode === 'easy') return { chance: 0.5, tier2: 7, tier3: 10 };
-  if (mode === 'hard') return { chance: 1.2, tier2: 5, tier3: 7 };
-  if (mode === 'expert') return { chance: 1.5, tier2: 4, tier3: 6 };
-  if (mode === 'insane') return { chance: 1.8, tier2: 4, tier3: 7 };
-  if (mode === 'chaos') return { chance: 2.2, tier2: 4, tier3: 6 };
-  if (mode === 'legend') return { chance: 2.5, tier2: 3, tier3: 5 };
-  return { chance: 1, tier2: 5, tier3: 8 };
-}
-
-// Round 1 is the gentle tap-to-learn round: it never hides a wolf. After
-// that the chance climbs one step per round until it caps.
-export function wolfChance(round, mode = 'normal') {
-  const r = normalizeRound(round);
-  if (r <= 1) return 0;
-  const { chance } = wolfModeFactors(mode);
-  return Math.min(WOLF_MAX_CHANCE, (WOLF_BASE_CHANCE + (r - 2) * WOLF_CHANCE_STEP) * chance);
+export function wolfChance(round, mode = DEFAULT_DIFFICULTY) {
+  if (isCalmLevel(mode)) return 0;
+  const level = levelForRound(round);
+  if (level < WOLF_FIRST_LEVEL) return 0;
+  return Math.min(WOLF_MAX_CHANCE, WOLF_BASE_CHANCE + (level - WOLF_FIRST_LEVEL) * WOLF_CHANCE_STEP);
 }
 
 // Deterministic per-round draw: one value from a seed twisted away from
 // the layout seed decides whether this round hides a wolf, and a second
 // decides which flock member it is. Returns null on a no-wolf round.
-export function wolfIndexForRound(round, seed, sheepCount, mode = 'normal') {
+export function wolfIndexForRound(round, seed, sheepCount, mode = DEFAULT_DIFFICULTY) {
   if (wolfChance(round, mode) === 0 || sheepCount < 2) return null;
   const rand = mulberry32((seed ^ 0x9e3779b9) >>> 0);
   if (rand() >= wolfChance(round, mode)) return null;
@@ -359,11 +357,10 @@ export function wolfIndexForRound(round, seed, sheepCount, mode = 'normal') {
 // How good the disguise is. Three stages line up with the movement ramp:
 // fair but findable, matching fleece with small grey cues, then near-perfect
 // with only an amber glint in the eyes left to spot.
-export function wolfDisguiseTier(round, mode = 'normal') {
-  const r = normalizeRound(round);
-  const { tier2, tier3 } = wolfModeFactors(mode);
-  if (r < tier2) return 1;
-  if (r < tier3) return 2;
+export function wolfDisguiseTier(round, mode = DEFAULT_DIFFICULTY) {
+  const level = levelForRound(round);
+  if (level < WOLF_TIER2_LEVEL) return 1;
+  if (level < WOLF_TIER3_LEVEL) return 2;
   return 3;
 }
 
@@ -377,46 +374,23 @@ const WOLF_CUES = {
   3: 'its eyes glint',
 };
 
-export function wolfCueText(round, mode = 'normal') {
+export function wolfCueText(round, mode = DEFAULT_DIFFICULTY) {
   return WOLF_CUES[wolfDisguiseTier(round, mode)] || WOLF_CUES[3];
-}
-
-// The level's ladder length. The round pill reads "Round 5 of 9" (or
-// "of 12" on the levels above Expert) so a player always knows how far the
-// run goes; see roundBadgeText.
-export function totalRoundsFor(difficulty = DEFAULT_DIFFICULTY) {
-  const d = normalizeDifficulty(difficulty);
-  return d === 'insane' || d === 'chaos' || d === 'legend' ? 12 : TOTAL_ROUNDS;
-}
-
-// The on-screen round text: "Round 5 of 9" while the ladder has more
-// rungs above it, and plain "Round 9" once the flock has reached its cap
-// and the ladder has no further rung to name. The Speed Round keeps its
-// mode prefix so the badge stays honest about what is being played. The
-// levels above Expert run a longer 12-round ladder (totalRoundsFor).
-export function roundBadgeText(round, speedOn = false, difficulty = DEFAULT_DIFFICULTY) {
-  const r = normalizeRound(round);
-  const total = totalRoundsFor(difficulty);
-  const prefix = speedOn ? 'Speed round ' : 'Round ';
-  return r < total
-    ? `${prefix}${r} of ${total}`
-    : `${prefix}${r}`;
 }
 
 // Copy helpers live here beside the difficulty curve so the exact wording a
 // player reads can be asserted in tests/game.test.mjs without a browser.
-// Both renderers and the round-complete panel share these words.
+// Both renderers and the in-play pass banner share these words.
 export function sheepPhrase(n) {
   return n === 1 ? '1 sheep' : `${n} sheep`;
 }
 
 // The counting screen's hint, by where the round is: how to start, then
-// the hand-in. Mid-count it is empty: the count plate and its dots already
-// say how far along the round is, so a third copy of that number would
-// only be noise. Pure so tests can pin the words, like the other copy
-// helpers here.
+// how many sheep are left. The last line only shows in a duel turn, which
+// still ends on Done counting; a solo round passes on its last pop. Pure
+// so tests can pin the words, like the other copy helpers here.
 export function playHintText(count, realSheep, sheepCount) {
-  if (count === 0) return sheepCount === 1 ? 'Tap the sheep.' : 'Tap every sheep.';
+  if (count === 0) return sheepCount === 1 ? 'Tap the sheep to start.' : 'Tap every sheep.';
   if (count >= realSheep) return 'That is all of them. Tap Done counting.';
   return '';
 }
@@ -433,68 +407,21 @@ export function paceLine(round, difficulty = DEFAULT_DIFFICULTY) {
   return 'This one stands still.';
 }
 
-// The pre-round briefing's first line: what this round asks for. Reads
-// "Round 1 has 1 sheep. This one stands still." for a fresh run and names a
-// bigger, faster flock for a run that starts on a later round.
-export function roundIntroText(round, difficulty = DEFAULT_DIFFICULTY, speedOn = false, calmOn = false) {
-  const r = normalizeRound(round);
-  const d = normalizeDifficulty(difficulty);
-  const intro = `Round ${r} has ${sheepPhrase(sheepForRound(r, d))}. ${paceLine(r, d)}`;
-  return speedOn
-    ? `${intro} Count them all before the clock runs out.`
-    : calmOn
-      ? `${intro} Calm mode keeps them slow.`
-      : intro;
-}
-
-// The round-complete card line for the just-played round: a Speed Round
-// names its mode so the result reads differently from a normal round.
-export function roundCompleteTitle(round, speedOn = false) {
-  return speedOn ? `Speed Round ${normalizeRound(round)} counted.` : `Round ${normalizeRound(round)} counted.`;
-}
-
-// Whole seconds said plainly: "41 seconds", "1 second". The recap card's
-// time lines share it, so the count and the best never disagree on how a
-// duration reads.
-export function formatRoundSeconds(seconds) {
-  const s = Math.max(0, Math.round(Number(seconds) || 0));
-  return s === 1 ? '1 second' : `${s} seconds`;
-}
-
-// The recap card's fact lines, added under the round line in the facts
-// box: what was counted (the big number's spoken name) and how long it
-// took (the daily line follows). Pure so tests/game.test.mjs can pin the words, like
-// the other copy helpers here.
+// The pass banner's line: what was just counted. Shown in the meadow for
+// a moment between rounds, under "Level N!" when the pass is a level-up.
 export function recapSheepLine(count) {
   const n = Math.max(0, Math.floor(Number(count) || 0));
   return `You counted ${sheepPhrase(n)}.`;
 }
 
-// The card's one time line: the best time is named only when this round
-// just set it, so a plain round reads as a single quiet fact.
-export function recapTimeLine(seconds, newBest = false) {
-  const base = `That took ${formatRoundSeconds(seconds)}.`;
-  return newBest ? `${base} A new best!` : base;
-}
-
-// The recap card's daily line: every sheep tapped on this device since
-// midnight, named in the same plain sentence style as the lines above.
-export function recapTodayLine(count) {
-  const n = Math.max(0, Math.floor(Number(count) || 0));
-  return `You have counted ${sheepPhrase(n)} today.`;
+export function passLine(counted) {
+  return recapSheepLine(counted);
 }
 
 // The weekly leaderboard's score text: a Speed Round keeps its own tag so
 // it is distinguishable from a normal round at the same number.
 export function weeklyScoreLabel(roundReached, speedOn = false) {
   return speedOn ? `Speed ${normalizeRound(roundReached)}` : `Round ${normalizeRound(roundReached)}`;
-}
-
-// The praise line at the top of the round-complete card. Leads the card so
-// finishing a round reads as a reward, not a status readout. The round line
-// and next-up line below it carry the specifics.
-export function successMessage() {
-  return 'Great job! You found all the sheep.';
 }
 
 // ---- Play streak ----
