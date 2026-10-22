@@ -96,17 +96,30 @@
       "expectText": "of 3 sheep"
     },
     {
+      "id": "simplify.hint",
+      "name": "Mid-count the play hint hides so the count plate leads",
+      "path": "/?scene=midcount",
+      "expectSelector": "#play-hint[hidden]",
+      "expectText": "of 7 sheep",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Mid-count keeps the running tap count on screen",
       "path": "/?scene=midcount",
       "expectSelector": "#count-display",
       "expectText": "Level 6"
     },
     {
-      "name": "Mid-count fills the first three progress dots and counts down",
+      "name": "Mid-count fills the first three progress dots with no extra hint",
       "id": "count.dots",
       "path": "/?scene=midcount",
       "expectSelector": "#count-dots .count-dot.is-filled:nth-child(3)",
-      "expectText": "4 left!",
+      "expectText": "3",
       "visual": true,
       "impact": [
         "public/index.html",

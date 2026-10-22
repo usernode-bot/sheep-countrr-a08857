@@ -148,6 +148,11 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   device-local, never a server column**, same precedent as the streak:
   recorded silently at every pass, saved in the per-user localStorage
   payload, normalized by `normalizeBestTimes` on restore.
+  **The daily tally (`state.todayCounted` / `state.todayCountedDay`) is
+  device-local too, never a server column**, with the same local-day rule
+  as the streak: every counted tap increments it, the wolf's bonus sheep
+  do not, and `todayTally` reads a save from another day as zero. It is
+  left out of snapshots and `/api/state`.
 - **`?round=N&autoplay=1|next` is a side-effect-free playable harness**
   for the load-only dapp.json checks: it rides the existing `?round=`
   auth exemption, forces the store ephemeral (unlike a plain `?round=N`,

@@ -44,6 +44,7 @@ import {
   paceLine,
   passLine,
   playHintText,
+  todayTally,
   roamRadius,
   roundInLevel,
   roundSeed,
@@ -142,8 +143,9 @@ test('levels, the corner tag and the level-up words', () => {
 test('the counting hint starts, counts down, then (in a duel) hands off to Done counting', () => {
   assert.equal(playHintText(0, 1, 1), 'Tap the sheep to start.');
   assert.equal(playHintText(0, 7, 7), 'Tap every sheep.');
-  assert.equal(playHintText(3, 7, 7), '4 left!');
-  assert.equal(playHintText(6, 7, 7), '1 left!');
+  // Mid-count the hint is empty: the count plate and its dots carry it.
+  assert.equal(playHintText(3, 7, 7), '');
+  assert.equal(playHintText(6, 7, 7), '');
   assert.ok(playHintText(7, 7, 7).includes('Tap Done counting'));
   // A wolf round: four real sheep counted out of four, five animals total.
   assert.ok(playHintText(4, 4, 5).includes('Tap Done counting'));
@@ -1631,6 +1633,54 @@ test('the server serves the app stylesheet and records wolf endings', () => {
     'the favicon probe and the missing-stylesheet case are the only empty answers: no stubs for /usernode-bridge/');
   assert.match(code, /\['doubleTap', 'missed', 'timeUp', 'wolf', 'complete'\]\.includes/);
 });
+
+// Request #88: the daily tally counts every sheep tapped on
+// this device since local midnight. It is device-local, like the streak:
+// it survives a local save and restore, and a new day starts it again.
+test('the daily tally counts counted taps and starts again on a new day', () => withMemoryStorage(async (read) => {
+  const store = new StateStore({ userId: 'today-tally' });
+  store.startRound(3, { silent: true });
+  store.state = { ...store.state, wolfIndex: null };
+  const n = store.state.sheepCount;
+  store.tapSheep(0);
+  store.flushPendingSave();
+  assert.equal(read(store.storageKey).todayCounted, 1, 'a counted tap saves the tally');
+  assert.equal(read(store.storageKey).todayCountedDay, localDayKey());
+  for (let i = 1; i < n; i += 1) store.tapSheep(i);
+  assert.equal(store.state.todayCounted, n, 'every counted tap adds one');
+
+  // A wolf dodge's bonus sheep are not tapped sheep, so they add nothing.
+  const wolfStore = new StateStore({ userId: 'today-tally-wolf' });
+  wolfStore.roundClock = () => 12;
+  wolfStore.startRound(3, { silent: true });
+  const m = wolfStore.state.sheepCount;
+  wolfStore.state = { ...wolfStore.state, wolfIndex: 0 };
+  for (let i = 1; i < m; i += 1) wolfStore.tapSheep(i);
+  assert.equal(wolfStore.state.bonusCounted, WOLF_BONUS);
+  assert.equal(wolfStore.state.todayCounted, m - 1);
+
+  // A save from yesterday starts the tally again on the next tap.
+  const rolled = new StateStore({ userId: 'today-tally' });
+  rolled.state = { ...rolled.state, todayCounted: 9, todayCountedDay: '2000-01-01' };
+  rolled.startRound(3, { silent: true });
+  rolled.state = { ...rolled.state, wolfIndex: null };
+  rolled.tapSheep(0);
+  assert.equal(rolled.state.todayCounted, 1);
+  assert.equal(rolled.state.todayCountedDay, localDayKey());
+
+  // An old save with no tally reads as zero and no day.
+  const { store: old } = newStore();
+  old.loadLocalFrom({ round: 2 });
+  assert.equal(old.state.todayCounted, 0);
+  assert.equal(old.state.todayCountedDay, null);
+
+  // An ephemeral store holds the tally in memory and never writes it.
+  const { store: held } = newStore();
+  held.startRound(1, { silent: true });
+  held.tapSheep(0);
+  held.saveLocal();
+  assert.equal(held.state.todayCounted, 1);
+}));
 
 // Passing a round stamps the pass banner's facts at the moment of the pass
 // and folds the elapsed time into the per-round best, silently. A first

@@ -445,13 +445,14 @@
       width: 3.5rem;
       height: 3.5rem;
       border-radius: 9999px;
-      background: var(--plum);
-      color: var(--cream);
+      background: rgba(255, 250, 242, 0.7);
+      border: 2px solid var(--pink-soft);
+      color: var(--plum-soft);
       font-size: 1.35rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(90, 60, 120, 0.12);
+      box-shadow: 0 3px 8px rgba(90, 60, 120, 0.12);
       -webkit-touch-callout: none;
       touch-action: none;
     }
@@ -466,13 +467,14 @@
       width: 3.5rem;
       height: 3.5rem;
       border-radius: 9999px;
-      background: var(--plum);
-      color: var(--cream);
+      background: rgba(255, 250, 242, 0.7);
+      border: 2px solid var(--pink-soft);
+      color: var(--plum-soft);
       font-size: 1.35rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(90, 60, 120, 0.12);
+      box-shadow: 0 3px 8px rgba(90, 60, 120, 0.12);
       -webkit-touch-callout: none;
       touch-action: none;
     }
@@ -650,6 +652,12 @@
       font-size: 1.1rem;
       font-weight: 800;
       color: var(--plum-soft);
+    }
+    /* The recap's one big number: the sheep counted, in the game over
+       card's yellow badge, sized so it leads the card. */
+    #recap-sheep .celebration-total {
+      font-size: 2.6rem;
+      line-height: 1.15;
     }
 
     /* ---- DOM fallback (no WebGL) ---- */

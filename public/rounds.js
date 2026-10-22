@@ -392,7 +392,7 @@ export function sheepPhrase(n) {
 export function playHintText(count, realSheep, sheepCount) {
   if (count === 0) return sheepCount === 1 ? 'Tap the sheep to start.' : 'Tap every sheep.';
   if (count >= realSheep) return 'That is all of them. Tap Done counting.';
-  return `${realSheep - count} left!`;
+  return '';
 }
 
 // A short, honest warning about what the flock will do.
@@ -464,4 +464,14 @@ export function advanceStreak(prevDays, bestDays, lastDayKey, todayKey) {
   const grew = !!lastDayKey && dayDistance(lastDayKey, todayKey) === 1;
   const days = grew ? prev + 1 : 1;
   return { days, best: Math.max(best, days), changed: true };
+}
+
+// The daily sheep tally's day rule: a count only stands for the day it was
+// recorded on. A missing, mangled or older day reads as zero, so the tally
+// starts again from the first tap after midnight, the same local day rule
+// the streak uses.
+export function todayTally(count, dayKey, todayKey) {
+  if (!dayKey || !todayKey || dayKey !== todayKey) return 0;
+  const n = Math.floor(Number(count));
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }

@@ -202,7 +202,6 @@ const els = {
   gameOver: document.getElementById('game-over'),
   gameOverEyebrow: document.getElementById('game-over-eyebrow'),
   gameOverReason: document.getElementById('game-over-reason'),
-  gameOverStreak: document.getElementById('game-over-streak'),
   gameOverRound: document.getElementById('game-over-round'),
   restartBtn: document.getElementById('restart-btn'),
   grownupsBtn: document.getElementById('grownups-btn'),
@@ -1001,6 +1000,7 @@ function syncDuelClock(state) {
 function syncDuelTurnHint() {
   if (duelState && !duelState.done && duelSecondsLeft === 0) {
     els.playHint.textContent = 'Time to pass the device. Tap Done counting.';
+    els.playHint.hidden = false;
   }
 }
 
@@ -1410,14 +1410,14 @@ function syncPanels(state) {
     return;
   }
 
-  // The pass banner: what was just counted, and on a level-up the new
-  // level above it. It floats in the meadow and never takes a tap.
-  const pass = passed ? state.lastPass : null;
-  els.flowBanner.hidden = !pass;
-  if (pass) {
-    els.flowBannerLine.textContent = passLine(pass.counted);
-    els.flowBannerTitle.hidden = !pass.levelUp;
-    els.flowBannerTitle.textContent = levelUpTitle(levelForRound(pass.round + 1));
+  // Mid-count the hint is empty and the bubble hides, so the count plate
+  // is the only number on the board while the child counts.
+  const hint = hintFor(state);
+  els.playHint.textContent = hint;
+  els.playHint.hidden = !hint;
+  // Done counting is a duel turn's hand-in only: a solo round passes on
+  // its last pop, so the button would only ever be a trap there.
+  els.submitBtn.hidden = !state.duel;
   }
   if (over) {
     els.gameOverRound.textContent = String(levelForRound(state.round));
