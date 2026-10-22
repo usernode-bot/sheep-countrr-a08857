@@ -393,6 +393,16 @@
     .duel-score-name { color: var(--plum-soft); text-align: left; }
     .duel-score-value { font-weight: 900; color: var(--plum); font-variant-numeric: tabular-nums; }
     .setting-row.speed-toggle-row { width: 100%; }
+    /* Get ready's Game options: a closed setting row by default. The
+       summary is the row itself; the level it hides sits on the right
+       with a small caret that turns when the row opens. */
+    .intro-options { width: 100%; }
+    .intro-options > summary { list-style: none; cursor: pointer; }
+    .intro-options > summary::-webkit-details-marker { display: none; }
+    .intro-options-level { color: var(--plum-soft); }
+    .intro-options-level::after { content: "\25B8"; display: inline-block; margin-left: 0.4rem; transition: transform 0.2s ease; }
+    .intro-options[open] .intro-options-level::after { transform: rotate(90deg); }
+    .intro-options-body { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
 
     /* ---- Bottom action bar ---- */
     #action-bar {
@@ -446,13 +456,14 @@
       width: 3.5rem;
       height: 3.5rem;
       border-radius: 9999px;
-      background: var(--plum);
-      color: var(--cream);
+      background: rgba(255, 250, 242, 0.7);
+      border: 2px solid var(--pink-soft);
+      color: var(--plum-soft);
       font-size: 1.35rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(90, 60, 120, 0.12);
+      box-shadow: 0 3px 8px rgba(90, 60, 120, 0.12);
       -webkit-touch-callout: none;
       touch-action: none;
     }
@@ -467,13 +478,14 @@
       width: 3.5rem;
       height: 3.5rem;
       border-radius: 9999px;
-      background: var(--plum);
-      color: var(--cream);
+      background: rgba(255, 250, 242, 0.7);
+      border: 2px solid var(--pink-soft);
+      color: var(--plum-soft);
       font-size: 1.35rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(90, 60, 120, 0.12);
+      box-shadow: 0 3px 8px rgba(90, 60, 120, 0.12);
       -webkit-touch-callout: none;
       touch-action: none;
     }
@@ -659,6 +671,12 @@
       font-weight: 900;
       color: var(--plum);
       font-variant-numeric: tabular-nums;
+    }
+    /* The recap's one big number: the sheep counted, in the game over
+       card's yellow badge, sized so it leads the card. */
+    #recap-sheep .celebration-total {
+      font-size: 2.6rem;
+      line-height: 1.15;
     }
 
     /* ---- DOM fallback (no WebGL) ---- */
@@ -1065,22 +1083,18 @@
     </div>
 
     <!-- Round passed: the success state. Praise first, then the recap card's
-         facts (what was counted, how long it took, the best time for the
-         round, and the sheep counted today), then a preview of the next,
-         bigger flock. The polite live region announces the whole card when
-         it opens. -->
+         facts: the round, the sheep counted (big), and one small time line
+         that names a new best only when there is one. The board's own
+         confetti burst plays behind it. The polite live region announces
+         the whole card when it opens. -->
     <div id="round-complete" hidden role="status" aria-live="polite" class="panel-backdrop absolute inset-0 flex items-end sm:items-center justify-center">
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
-        <div class="confetti-strip w-full" aria-hidden="true"></div>
-        <p class="celebration-sheep" aria-hidden="true"><span>&#128017;</span><span>&#128017;</span><span>&#128017;</span></p>
         <p id="success-title" class="celebration-title">Great job! You found all the sheep.</p>
         <div class="round-complete-facts">
           <p id="round-complete-title" class="bedtime-message">Round 1 counted.</p>
-          <p id="recap-sheep" class="recap-line" hidden>You counted 1 sheep.</p>
-          <p id="recap-time" class="recap-line" hidden>That took 10 seconds.</p>
-          <p id="recap-best" class="recap-line" hidden>Best time for round 1: 10 seconds.</p>
-          <p id="recap-today" class="recap-line" hidden>You have counted 1 sheep today.</p>
-          <p id="round-complete-next" class="bedtime-message">2 sheep next.</p>
+          <p id="recap-sheep" class="recap-line" hidden aria-label="You counted 1 sheep."><span id="recap-sheep-value" class="celebration-total" aria-hidden="true">1</span> <span aria-hidden="true">sheep</span></p>
+          <p id="recap-time" class="bedtime-message" hidden>That took 10 seconds.</p>
+          <p id="recap-today" class="bedtime-message" hidden>You have counted 1 sheep today.</p>
         </div>
         <button id="next-round-btn" type="button" class="big-btn">
           Next round
@@ -1093,13 +1107,12 @@
       <div class="panel-card panel-pop w-full max-w-sm p-7 text-center flex flex-col items-center gap-4">
         <p id="game-over-eyebrow" class="bedtime-eyebrow">The flock scattered</p>
         <p id="game-over-reason" class="bedtime-message">Some sheep were left uncounted.</p>
-        <p id="game-over-streak" class="bedtime-message" hidden>You dodged some wolf rounds in a row.</p>
         <p class="celebration-title">You reached round <span id="game-over-round" class="celebration-total">1</span>.</p>
         <p id="shared-by" hidden class="bedtime-message"></p>
         <button id="restart-btn" type="button" class="big-btn">
           Start again
         </button>
-        <button id="share-btn" type="button" class="big-btn">
+        <button id="share-btn" type="button" class="soft-btn">
           Share result
         </button>
       </div>
@@ -1130,13 +1143,17 @@
         <p class="bedtime-eyebrow">Get ready</p>
         <p class="celebration-title">Tap every sheep.</p>
         <p id="round-intro-size" class="bedtime-message">Round 1 has 1 sheep. This one stands still.</p>
-        <p id="round-intro-how" class="bedtime-message">Tap a sheep to count it. It gets a number and stops.</p>
-        <p id="round-intro-rule" class="bedtime-message">Tap each sheep once to pop it, then tap Done counting. Saying done too early ends the run.</p>
-        <p id="round-intro-wolf" class="bedtime-message">One of the flock might be a wolf. Counting it ends the run.</p>
+        <p id="round-intro-rule" class="bedtime-message">Tap each sheep once to pop it, then tap Done counting. Saying done too early ends the run. Watch out for the wolf.</p>
         <div class="intro-chip-row">
         <p id="best-round-chip" class="best-round-chip" aria-live="off"><span class="chip-label">Best round</span> <span id="best-round-value" class="chip-value">1</span></p>
-        <p id="streak-chip" class="best-round-chip" aria-live="off"><svg class="streak-flame" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 C 13 6, 17 8, 17 13 A 5 5.5 0 0 1 7 13 C 7 8, 11 6, 12 2 Z" fill="#ffb347"></path><path d="M12 8.6 C 12.8 10.8, 15 11.8, 15 14.6 A 3 3.4 0 0 1 9 14.6 C 9 11.8, 11.2 10.8, 12 8.6 Z" fill="#ff8fab"></path></svg><span class="chip-label">Day streak</span> <span id="streak-value" class="chip-value">1</span> <span id="streak-best" class="chip-label streak-best-label">Best 1</span></p>
+        <p id="streak-chip" class="best-round-chip" aria-live="off"><svg class="streak-flame" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2 C 13 6, 17 8, 17 13 A 5 5.5 0 0 1 7 13 C 7 8, 11 6, 12 2 Z" fill="#ffb347"></path><path d="M12 8.6 C 12.8 10.8, 15 11.8, 15 14.6 A 3 3.4 0 0 1 9 14.6 C 9 11.8, 11.2 10.8, 12 8.6 Z" fill="#ff8fab"></path></svg><span class="chip-label">Day streak</span> <span id="streak-value" class="chip-value">1</span> <span id="streak-best" class="chip-label streak-best-label" hidden>Best 1</span></p>
         </div>
+        <!-- Game options: the level, Speed Round and Duel, folded into one
+             closed row so the card's one job (Start counting) leads. The
+             summary names the current level (app.js keeps it in sync). -->
+        <details id="intro-options" class="intro-options">
+        <summary class="setting-row"><span>Game options</span><span id="intro-options-level" class="intro-options-level">Normal</span></summary>
+        <div class="intro-options-body">
         <label id="speed-toggle-row" class="setting-row speed-toggle-row" for="speed-toggle">
           <span>Speed Round</span>
           <input id="speed-toggle" type="checkbox">
@@ -1156,6 +1173,8 @@
           <button type="button" class="difficulty-pill" data-difficulty="chaos" role="radio" aria-checked="false">Chaos</button>
           <button type="button" class="difficulty-pill" data-difficulty="legend" role="radio" aria-checked="false">Legend</button>
         </div>
+        </div>
+        </details>
         <button id="start-counting-btn" type="button" class="big-btn">
           Start counting
         </button>

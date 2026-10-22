@@ -93,7 +93,7 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   or writes localStorage or the server. That is what lets it share the
   auth exemption with `?scene=`; keep it side-effect-free.
 - **Frozen screenshot fixtures live behind `?scene=`** (`portrait`,
-  `empty`, `midcount`, `allcounted`, `roundcomplete`, `gameover`,
+  `empty`, `midcount`, `allcounted`, `roundcomplete`, `roundcompletebest`, `gameover`,
   `grownups`, `flock`, `moon` — see `dapp.json`'s `tests`). `public/app.js`'s
   `staticMode` branch
   renders these from hardcoded data only (`buildStaticState()`) and never
@@ -145,8 +145,8 @@ and a mute made after it persists the marker and stays off. See `README.md` for 
   `todayTally` reads a save from another day as zero. It is left out of
   snapshots and `/api/state`, and the recap copy helpers
   (`formatRoundSeconds`, `recapSheepLine`, `recapTimeLine`,
-  `recapBestLine`, `recapTodayLine`) live in `rounds.js` and are asserted
-  in `tests/game.test.mjs`.
+  `recapTodayLine`; `recapTimeLine` names a new best) live in `rounds.js` and are
+  asserted in `tests/game.test.mjs`.
 - **`?round=N&autoplay=button|tap|1` is a side-effect-free playable
   harness** for the load-only dapp.json checks: it rides the existing
   `?round=` auth exemption, forces the store ephemeral (unlike a plain

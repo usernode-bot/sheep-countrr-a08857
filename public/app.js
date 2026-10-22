@@ -19,9 +19,7 @@ import {
   normalizeRound,
   normalizeScenery,
   normalizeSpeedRound,
-  paceLine,
   playHintText,
-  recapBestLine,
   recapSheepLine,
   recapTimeLine,
   recapTodayLine,
@@ -192,7 +190,6 @@ const els = {
   roundIntro: document.getElementById('round-intro'),
   roundIntroSize: document.getElementById('round-intro-size'),
   roundIntroRule: document.getElementById('round-intro-rule'),
-  roundIntroWolf: document.getElementById('round-intro-wolf'),
   speedToggleRow: document.getElementById('speed-toggle-row'),
   duelToggleRow: document.getElementById('duel-toggle-row'),
   countdownOverlay: document.getElementById('countdown-overlay'),
@@ -220,15 +217,13 @@ const els = {
   successTitle: document.getElementById('success-title'),
   roundCompleteTitle: document.getElementById('round-complete-title'),
   recapSheep: document.getElementById('recap-sheep'),
+  recapSheepValue: document.getElementById('recap-sheep-value'),
   recapTime: document.getElementById('recap-time'),
-  recapBest: document.getElementById('recap-best'),
   recapToday: document.getElementById('recap-today'),
-  roundCompleteNext: document.getElementById('round-complete-next'),
   nextRoundBtn: document.getElementById('next-round-btn'),
   gameOver: document.getElementById('game-over'),
   gameOverEyebrow: document.getElementById('game-over-eyebrow'),
   gameOverReason: document.getElementById('game-over-reason'),
-  gameOverStreak: document.getElementById('game-over-streak'),
   gameOverRound: document.getElementById('game-over-round'),
   restartBtn: document.getElementById('restart-btn'),
   grownupsBtn: document.getElementById('grownups-btn'),
@@ -252,6 +247,8 @@ const els = {
   exportStatus: document.getElementById('export-status'),
   difficultyValue: document.getElementById('difficulty-value'),
   difficultyPicker: document.getElementById('difficulty-picker'),
+  introOptions: document.getElementById('intro-options'),
+  introOptionsLevel: document.getElementById('intro-options-level'),
   a11yList: document.getElementById('a11y-sheep-list'),
   a11yRoundProgress: document.getElementById('a11y-round-progress'),
   leaderboardBtn: document.getElementById('leaderboard-btn'),
@@ -438,6 +435,18 @@ function buildStaticState() {
       // the whole flock counted in 41 seconds, against a 34 second best.
       recap: { round: 4, counted: n, seconds: 41, bestSeconds: 34, newBest: false, todayCounted: 23 },
       bestTimes: { [difficultyParam]: { 4: 34 } },
+    });
+  }
+  if (sceneParam === 'roundcompletebest') {
+    // The same recap card, but the round just set its new best time, so
+    // the time line names it. Hardcoded like the fixture above.
+    const n = sheepForRound(4, difficultyParam);
+    return at(4, {
+      count: n,
+      counted: [...Array(n).keys()],
+      phase: ROUND_PASSED,
+      recap: { round: 4, counted: n, seconds: 29, bestSeconds: 29, newBest: true },
+      bestTimes: { [difficultyParam]: { 4: 29 } },
     });
   }
   if (sceneParam === 'allcounted') {
@@ -656,6 +665,10 @@ async function boot() {
   // The frozen intro fixture shows the card with the Best Round chip filled
   // from hardcoded data, so the chip's check has a deterministic route.
   if (staticMode && sceneParam === 'intro') showRoundIntro(store.state);
+  // Game options start closed. The intro fixture and a ?difficulty= deep
+  // link open them, so their screenshots show the toggles and the level
+  // they pin rather than a closed row.
+  if ((staticMode && sceneParam === 'intro') || hasDifficultyParam) els.introOptions.open = true;
   // The frozen countdown fixture: the overlay up with the first number on
   // it, and the a11y mirror in the same state the live overlay puts it in.
   if (staticMode && sceneParam === 'countdown') {
@@ -1083,6 +1096,7 @@ function syncDuelClock(state) {
 function syncDuelTurnHint() {
   if (duelState && !duelState.done && duelSecondsLeft === 0) {
     els.playHint.textContent = 'Time to pass the device. Tap Done counting.';
+    els.playHint.hidden = false;
   }
 }
 
@@ -1205,12 +1219,11 @@ function dismissDuelPanel() {
 const DIFFICULTY_LABELS = { calm: 'Calm', easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert', insane: 'Insane', chaos: 'Chaos', legend: 'Legend' };
 
 // Calm drops the card's challenge lines: its rule line promises the
-// forgiving tap, and the wolf warning, Speed Round and Duel (each a way
-// to end a run) are hidden while Calm is picked.
+// forgiving tap without the wolf warning, and Speed Round and Duel (each a
+// way to end a run) are hidden while Calm is picked.
 function syncCalmCard(state) {
   const calm = isCalmLevel(state.difficulty);
   els.roundIntroRule.textContent = introRuleText(state.difficulty);
-  els.roundIntroWolf.hidden = calm;
   els.speedToggleRow.hidden = calm;
   els.duelToggleRow.hidden = calm;
   if (calm && store.state.duel) {
@@ -1225,7 +1238,10 @@ function syncDifficultyPicker(state) {
     btn.setAttribute('aria-checked', String(level === state.difficulty));
   }
   syncCalmCard(state);
-  els.difficultyValue.textContent = DIFFICULTY_LABELS[state.difficulty] || 'Normal';
+  const label = DIFFICULTY_LABELS[state.difficulty] || 'Normal';
+  els.difficultyValue.textContent = label;
+  // The closed Game options row names the level it hides.
+  els.introOptionsLevel.textContent = label;
   els.bestValue.textContent = String(store.bestRound);
 }
 
@@ -1530,7 +1546,11 @@ function updateChrome(state) {
   // counting "of N" with the wolf in N led a child straight to tapping it.
   els.countWord.textContent = `of ${sheepPhrase(realSheepCount(state))}`;
   renderCountDots(state, countedUp);
-  els.playHint.textContent = hintFor(state);
+  // Mid-count the hint is empty and the bubble hides, so the count plate
+  // is the only number on the board while the child counts.
+  const hint = hintFor(state);
+  els.playHint.textContent = hint;
+  els.playHint.hidden = !hint;
   els.submitBtn.disabled = state.phase !== COUNTING;
   // The quiet Done counting: a soft light button until counting starts,
   // then the usual dark one. It is never disabled during counting.
@@ -1575,21 +1595,20 @@ function syncPanels(state) {
   if (passed) {
     els.successTitle.textContent = successMessage();
     els.roundCompleteTitle.textContent = roundCompleteTitle(state.round, state.speedOn);
-    els.roundCompleteNext.textContent =
-      `Next up: ${sheepPhrase(sheepForRound(state.round + 1, state.difficulty))}. ${paceLine(state.round + 1, state.difficulty)}`;
-    // The recap lines: what was counted, how long it took, the best time
-    // for the round, and how many sheep were counted today. A state
-    // without a recap (older fixtures, duel turns) hides them rather than
-    // showing a stale one.
+    // The recap: the sheep counted, big, in the same yellow badge the game
+    // over card gives the round reached, then one small line for the time
+    // (naming a new best only when there is one). The big number keeps the
+    // full sentence as its spoken name. A state without a recap (older
+    // fixtures, duel turns) hides them rather than showing a stale one.
     const recap = state.recap || null;
     els.recapSheep.hidden = !recap;
     els.recapTime.hidden = !recap;
-    els.recapBest.hidden = !recap;
     els.recapToday.hidden = !recap || recap.todayCounted == null;
     if (recap) {
-      els.recapSheep.textContent = recapSheepLine(recap.counted);
-      els.recapTime.textContent = recapTimeLine(recap.seconds);
-      els.recapBest.textContent = recapBestLine(recap.round, recap.bestSeconds, recap.newBest);
+      const n = Math.max(0, Math.floor(Number(recap.counted) || 0));
+      els.recapSheepValue.textContent = String(n);
+      els.recapSheep.setAttribute('aria-label', recapSheepLine(n));
+      els.recapTime.textContent = recapTimeLine(recap.seconds, recap.newBest);
       if (recap.todayCounted != null) els.recapToday.textContent = recapTodayLine(recap.todayCounted);
     }
   }
@@ -1605,13 +1624,6 @@ function syncPanels(state) {
       : state.endedBy === ENDED_DOUBLE_TAP ? 'You counted the same sheep twice.'
       : state.endedBy === ENDED_TIME_UP ? 'The clock ran out.'
       : `You said done with ${state.count} of ${sheepPhrase(realSheepCount(state))} counted.`;
-    const dodged = state.safeStreak || 0;
-    els.gameOverStreak.hidden = !(dodged > 0);
-    if (!els.gameOverStreak.hidden) {
-      els.gameOverStreak.textContent = dodged === 1
-        ? 'You dodged 1 wolf round in a row.'
-        : `You dodged ${dodged} wolf rounds in a row.`;
-    }
     playBaa();
   }
   els.roundComplete.hidden = !passed;

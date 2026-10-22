@@ -20,19 +20,23 @@ keeping track of who you already counted does not.
   an uncounted one and empty grass never ends a run. The running tap count
   sits in a small counter in the top-left corner (with a row of progress
   dots underneath, one dot per sheep, filled in the counted sheep's
-  pastel colour), leaving the middle of the screen to the flock, and the
-  hint at the bottom counts down as sheep are counted: "Tap every sheep.",
-  then "4 left!" and so on, then "That is all of them. Tap Done counting.".
+  pastel colour), leaving the middle of the screen to the flock. That
+  counter is the one number on the board: the hint at the bottom reads
+  "Tap every sheep." before the first tap, hides while counting, and
+  comes back as "That is all of them. Tap Done counting." once every
+  sheep is counted. The grown-ups gear and the mute button sit pale in
+  the top-right corner so they never compete with the flock.
 - **Before you start.** The first round of a run opens on a short "Get
-  ready" card that names the round and its flock, explains that tapping a
-  sheep pops it, and warns that saying done too early ends the run. Its
-  one button, "Start counting", dismisses
+  ready" card that names the round and its flock and gives the rule in
+  one line (tap each sheep once, then Done counting; saying done too early
+  ends the run; watch out for the wolf). The level picker, Speed Round and
+  Pass-and-play Duel sit folded inside a closed "Game options" row that
+  names the current level. Its one button, "Start counting", dismisses
   the card and begins the round. It returns at the start of every run
   (after "Start again" or "Start over at round 1"), and later rounds in
-  a run skip it since the round-complete message already previews the
-  next flock. The card also carries a streak flame: how many days in a
-  row the player has played, with the best streak ever reached beside it.
-- **Calm, the default level.** The Get ready card lists Calm first, then
+  a run skip it. The card also carries a streak flame: how many days in a
+  row the player has played.
+- **Calm, the default level.** The Get ready card's Game options list Calm first, then
   Easy, Normal, Hard, Expert, and above Expert the long-run levels Insane,
   Chaos and Legend. A player with no saved level starts on
   Calm; a saved pick is kept. On Calm the sheep only ever drift as slowly
@@ -52,13 +56,16 @@ keeping track of who you already counted does not.
   than Normal's.
 - **Finishing a round.** Tapping the last sheep only marks it; the round
   waits for the "Done counting" tap. Saying done with every sheep counted
-  shows a short round-complete message, with the round's count, its time,
-  its best time, and every sheep counted on the device so far today, then
-  moves on.
+  shows the recap card: "Great job! You found all the sheep.", the round
+  counted, the sheep counted as one big number, and one small line with
+  the time ("That took 41 seconds.", plus "A new best!" when it is one),
+  and every sheep counted on the device so far today.
+  The Next round button, a tap anywhere or Enter moves on.
 - **Ending a run.** Saying you are done while sheep are still uncounted
   ends the run; a popped sheep's spot ignores taps, so it can never end
   one. The game-over screen names the round you reached and offers
-  "Start again", which returns to round 1.
+  "Start again", which returns to round 1, with a quieter "Share result"
+  beneath it.
 - **Touch first.** The whole board is taps: big hit targets, no drag, no
   pinch, and the Done button sits clear of the safe area at the bottom.
   The camera reframes on rotation so the whole flock stays visible.

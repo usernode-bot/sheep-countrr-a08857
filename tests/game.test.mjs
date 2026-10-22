@@ -36,7 +36,6 @@ import {
   sceneryFromServer,
   paceLine,
   playHintText,
-  recapBestLine,
   recapSheepLine,
   recapTimeLine,
   recapTodayLine,
@@ -132,11 +131,12 @@ test('the round badge names the round and the ladder length', () => {
   assert.equal(roundBadgeText(5, false, 'bogus'), 'Round 5 of 9');
 });
 
-test('the counting hint starts, counts down, then hands off to Done counting', () => {
+test('the counting hint starts, goes quiet mid-count, then hands off to Done counting', () => {
   assert.equal(playHintText(0, 1, 1), 'Tap the sheep.');
   assert.equal(playHintText(0, 7, 7), 'Tap every sheep.');
-  assert.equal(playHintText(3, 7, 7), '4 left!');
-  assert.equal(playHintText(6, 7, 7), '1 left!');
+  // Mid-count the hint is empty: the count plate and its dots carry it.
+  assert.equal(playHintText(3, 7, 7), '');
+  assert.equal(playHintText(6, 7, 7), '');
   assert.ok(playHintText(7, 7, 7).includes('Tap Done counting'));
   // A wolf round: four real sheep counted out of four, five animals total.
   assert.ok(playHintText(4, 4, 5).includes('Tap Done counting'));
@@ -1551,6 +1551,9 @@ test('the briefing rule line names the calm tap only on calm', () => {
   assert.match(introRuleText('calm'), /pop it/);
   assert.match(introRuleText('normal'), /ends the run/);
   assert.match(introRuleText('expert'), /ends the run/);
+  // The wolf warning lives in the rule line now, never on Calm (no wolf).
+  assert.match(introRuleText('normal'), /Watch out for the wolf\./);
+  assert.doesNotMatch(introRuleText('calm'), /wolf/);
   assert.ok(!/\u2014/.test(introRuleText('calm')));
   assert.ok(!/\u2014/.test(introRuleText('normal')));
   assert.equal(isCalmLevel(NEW_PLAYER_DIFFICULTY), true);
@@ -1701,18 +1704,13 @@ test('the recap lines read plainly and name their numbers', () => {
   assert.equal(recapTimeLine(41), 'That took 41 seconds.');
   assert.equal(recapTimeLine(1), 'That took 1 second.');
   assert.equal(recapTimeLine(0), 'That took 0 seconds.');
-  assert.equal(recapBestLine(4, 34, false), 'Best time for round 4: 34 seconds.');
-  assert.equal(recapBestLine(4, 34, true), 'Best time for round 4: 34 seconds. A new best!');
-  assert.equal(recapBestLine('3', '12'), 'Best time for round 3: 12 seconds.');
+  // The best time shares the time line, and only when it is a new best.
+  assert.equal(recapTimeLine(29, true), 'That took 29 seconds. A new best!');
+  assert.equal(recapTimeLine(41, false), 'That took 41 seconds.');
   assert.equal(recapTodayLine(12), 'You have counted 12 sheep today.');
   assert.equal(recapTodayLine(1), 'You have counted 1 sheep today.');
   assert.equal(recapTodayLine('lots'), 'You have counted 0 sheep today.');
-  for (const line of [
-    recapSheepLine(7),
-    recapTimeLine(41),
-    recapBestLine(4, 34, true),
-    recapTodayLine(12),
-  ]) {
+  for (const line of [recapSheepLine(7), recapTimeLine(41), recapTimeLine(29, true), recapTodayLine(12)]) {
     assert.doesNotMatch(line, /—/, 'user-facing copy carries no em dashes');
   }
 });

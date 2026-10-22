@@ -49,6 +49,19 @@
       ]
     },
     {
+      "id": "simplify.intro",
+      "name": "Get ready keeps the game options in a closed row",
+      "path": "/?round=1",
+      "expectSelector": "#round-intro details#intro-options:not([open]) summary",
+      "expectText": "Game options",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "dapp.json"
+      ]
+    },
+    {
       "name": "Round intro shows the Best Round chip",
       "id": "round.intro-best",
       "visual": true,
@@ -135,11 +148,11 @@
       "expectText": "Round 5"
     },
     {
-      "name": "Mid-count fills the first three progress dots and counts down",
+      "name": "Mid-count fills the first three progress dots with no extra hint",
       "id": "count.dots",
       "path": "/?scene=midcount",
       "expectSelector": "#count-dots .count-dot.is-filled:nth-child(3)",
-      "expectText": "4 left!",
+      "expectText": "3",
       "visual": true,
       "impact": [
         "public/index.html",
@@ -241,7 +254,20 @@
       ]
     },
     {
-      "name": "Round complete message names the next flock",
+      "id": "simplify.hint",
+      "name": "Mid-count the play hint hides so the count plate leads",
+      "path": "/?scene=midcount",
+      "expectSelector": "#play-hint[hidden]",
+      "expectText": "of 7 sheep",
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
+    },
+    {
+      "name": "Round complete message names the counted round",
       "path": "/?scene=roundcomplete",
       "expectSelector": "#round-complete-title",
       "expectText": "Round 4 counted."
@@ -294,12 +320,27 @@
     {
       "name": "The recap card shows the sheep counted in the round",
       "path": "/?scene=roundcomplete",
-      "expectText": "You counted 5 sheep."
+      "expectSelector": "#recap-sheep[aria-label='You counted 5 sheep.'] #recap-sheep-value",
+      "expectText": "5"
     },
     {
       "name": "The recap card shows the time the round took",
       "path": "/?scene=roundcomplete",
       "expectText": "That took 41 seconds."
+    },
+    {
+      "id": "simplify.recap",
+      "name": "The recap card drops the next-up line and the old best-time line",
+      "path": "/?scene=roundcomplete",
+      "expectSelector": "#round-complete .round-complete-facts:not(:has(#round-complete-next)):not(:has(#recap-best))",
+      "expectText": "That took 41 seconds.",
+      "visual": true,
+      "impact": [
+        "public/index.html",
+        "public/app.js",
+        "public/rounds.js",
+        "dapp.json"
+      ]
     },
     {
       "name": "The recap card names the round it recaps",
@@ -308,9 +349,10 @@
       "expectText": "Round 4 counted."
     },
     {
-      "name": "The recap card shows the best time for that round",
-      "path": "/?scene=roundcomplete",
-      "expectText": "Best time for round 4: 34 seconds."
+      "name": "The recap card names a new best on the time line",
+      "path": "/?scene=roundcompletebest",
+      "expectText": "That took 29 seconds. A new best!",
+      "expectSelector": "#recap-time"
     },
     {
       "name": "The recap card shows the sheep counted today",
@@ -333,9 +375,9 @@
       "expectText": "You finished all 9 rounds."
     },
     {
-      "name": "The recap lines render large and readable",
+      "name": "The recap card shows the sheep counted big",
       "path": "/?scene=roundcomplete",
-      "expectSelector": "#round-complete .recap-line"
+      "expectSelector": "#round-complete #recap-sheep .celebration-total"
     },
     {
       "name": "The recap card is announced politely to screen readers",
@@ -352,6 +394,17 @@
       "name": "Game over offers Share result",
       "path": "/?scene=gameover",
       "expectText": "Share result"
+    },
+    {
+      "id": "simplify.gameover",
+      "name": "Game over has one dark button: Start again",
+      "path": "/?scene=gameover",
+      "expectSelector": "#restart-btn.big-btn ~ #share-btn.soft-btn",
+      "expectText": "Share result",
+      "impact": [
+        "public/index.html",
+        "dapp.json"
+      ]
     },
     {
       "id": "share.view",
